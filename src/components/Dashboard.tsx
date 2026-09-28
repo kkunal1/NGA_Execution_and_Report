@@ -13,11 +13,14 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { BarChart3, CheckCircle2, Clock, Download as DownloadIcon, ListChecks, PlayCircle, ShieldBan, XCircle } from "lucide-react";
+import { BarChart3, CheckCircle2, Clock, Download as DownloadIcon, ListChecks, PlayCircle, Plus, ShieldBan, Trash2, X, XCircle } from "lucide-react";
 import type { RunResult, Summary, TestRow } from "@/lib/types";
+import { normalizeSuiteNames } from "@/lib/normalize";
+import { summarize } from "@/lib/summarize";
 import { DATA_PROVIDER_KEY, readNgaiNetworkOverride, type DataProvider } from "@/lib/provider";
 import { THEME_KEY } from "@/lib/theme";
 import { buildReportFilename } from "@/lib/report-html";
+import { useAppRole } from "@/components/auth-context";
 
 const SUITE_INPUT_KEY = "nga-suite-name-input";
 const NGAI_RUN_KEY = "nga-ngai-last-run";
@@ -30,6 +33,12 @@ const COLORS: Record<string, string> = {
   "In Progress": "#0ea5e9",
   "Not Run": "#94a3b8",
   Other: "#8b5cf6",
+};
+
+const RAW_STATE_COLORS: Record<string, string> = {
+  inprogress: "#f59e0b",
+  passed: "#16a34a",
+  failed: "#dc2626",
 };
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
@@ -67,33 +76,42 @@ function Card({
 export default function Dashboard() {
   // Restored lazily in an effect (not during render) so the client's first render matches SSR - reading
   // sessionStorage synchronously during the initial render/state-initializers caused a hydration mismatch.
-  const restoredNgaiRef = useRef<{ suiteName: string; run: RunResult } | null>(null);
+  const restoredNgaiRef = useRef<{ suiteName?: string; suiteNames?: string[]; run: RunResult } | null>(null);
+  const isAdmin = useAppRole() === "admin";
 
   const [run, setRun] = useState<RunResult | null>(null);
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [checkedDataSuites, setCheckedDataSuites] = useState<string[]>([]);
   const [abortedRows, setAbortedRows] = useState<TestRow[]>([]);
   const [runs, setRuns] = useState<string[]>([]);
+  const [suiteStateRestored, setSuiteStateRestored] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [suiteNameInput, setSuiteNameInput] = useState("");
+  const [suiteNames, setSuiteNames] = useState<string[]>([]);
+  const [suiteDraft, setSuiteDraft] = useState("");
   const [provider, setProvider] = useState<DataProvider>("ngai");
   const [persisted, setPersisted] = useState(true);
   const [abortFrom, setAbortFrom] = useState("");
   const [abortTo, setAbortTo] = useState("");
   const [testFrom, setTestFrom] = useState("");
   const [testTo, setTestTo] = useState("");
+  const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
+  const autoRefreshInFlight = useRef(false);
 
   const load = useCallback(async (runId?: string) => {
     const res = await fetch(`/api/runs${runId ? `?runId=${runId}` : ""}`);
-    const data = (await res.json()) as { run: RunResult | null; runs: string[] };
+    const data = (await res.json()) as { run: RunResult | null; runs: string[]; version: string | null };
     setRuns(data.runs);
-    if (runId || !restoredNgaiRef.current) setRun(data.run);
+    if (runId || data.run || !restoredNgaiRef.current) setRun(data.run);
+    setLatestVersion(data.version);
+    if (data.run) setPersisted(data.run.meta.source !== "network");
   }, []);
 
   useEffect(() => {
     try {
       const raw = window.sessionStorage.getItem(NGAI_RUN_KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as { suiteName: string; run: RunResult };
+        const parsed = JSON.parse(raw) as { suiteName?: string; suiteNames?: string[]; run: RunResult };
         restoredNgaiRef.current = parsed;
         setRun(parsed.run);
         setPersisted(false);
@@ -107,13 +125,38 @@ export default function Dashboard() {
     } catch {
       /* ignore corrupt cache */
     }
-    setSuiteNameInput(window.sessionStorage.getItem(SUITE_INPUT_KEY) ?? restoredNgaiRef.current?.suiteName ?? "");
+    const savedSuites = window.sessionStorage.getItem(SUITE_INPUT_KEY);
+    setSuiteNames(normalizeSuiteNames(
+      savedSuites ?? restoredNgaiRef.current?.suiteNames ?? restoredNgaiRef.current?.suiteName,
+    ));
+    setSuiteStateRestored(true);
     void load();
   }, [load]);
 
   useEffect(() => {
-    window.sessionStorage.setItem(SUITE_INPUT_KEY, suiteNameInput);
-  }, [suiteNameInput]);
+    if (!suiteStateRestored) return;
+    window.sessionStorage.setItem(SUITE_INPUT_KEY, suiteNames.join("\n"));
+  }, [suiteNames, suiteStateRestored]);
+
+  const selectedSuiteNames = normalizeSuiteNames([...suiteNames, suiteDraft]);
+  const autoRefreshSuites = useMemo(
+    () => suiteNames.length > 0
+      ? suiteNames
+      : run?.meta.source === "network"
+        ? normalizeSuiteNames(run.meta.filter.value)
+        : [],
+    [suiteNames, run?.meta.source, run?.meta.filter.value],
+  );
+
+  const addSuiteNames = (values: string[]) => {
+    setSuiteNames((current) => normalizeSuiteNames([...current, ...values]));
+    setSuiteDraft("");
+  };
+
+  const addSuiteDraft = () => {
+    const values = normalizeSuiteNames(suiteDraft);
+    if (values.length) addSuiteNames(values);
+  };
 
   useEffect(() => {
     const stored = window.localStorage.getItem(DATA_PROVIDER_KEY);
@@ -125,14 +168,14 @@ export default function Dashboard() {
     return () => window.removeEventListener("storage", onStorage);
   }, []);
 
-  const capture = async (headless: boolean, suiteName?: string) => {
+  const capture = async (headless: boolean, suites?: string[]) => {
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/scrape", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ headless, suiteName }),
+        body: JSON.stringify({ headless, suiteNames: suites }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Capture failed");
@@ -148,13 +191,16 @@ export default function Dashboard() {
   };
 
   const captureNgai = async () => {
+    const suites = selectedSuiteNames;
+    if (suiteDraft.trim()) setSuiteNames(suites);
+    setSuiteDraft("");
     setBusy(true);
     setError(null);
     try {
       const res = await fetch("/api/test-run-data", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ suiteName: suiteNameInput.trim(), ...readNgaiNetworkOverride() }),
+        body: JSON.stringify({ suiteNames: suites, persist: true, ...readNgaiNetworkOverride() }),
       });
       const data = (await res.json()) as {
         error?: string;
@@ -162,15 +208,17 @@ export default function Dashboard() {
         summary?: Summary;
         rows?: TestRow[];
         warnings?: string[];
+        runId?: string;
+        version?: string | null;
       };
       if (!res.ok) throw new Error(data.error ?? "NGAi query failed");
       const rows = data.rows ?? [];
       const adapted: RunResult = {
         meta: {
-          runId: `ngai-${Date.now()}`,
+          runId: data.runId ?? `ngai-${Date.now()}`,
           capturedAt: new Date().toISOString(),
           url: data.url ?? "",
-          filter: { entity: "TestLine", field: "Suite", operator: "Equal", value: suiteNameInput.trim() },
+          filter: { entity: "TestLine", field: "Suite", operator: "Equal", value: suites.join("\n") },
           source: "network",
           stateColumn: "State",
           gridUnlocked: true,
@@ -187,14 +235,15 @@ export default function Dashboard() {
       };
       setRun(adapted);
       setPersisted(false);
+      setLatestVersion(data.version ?? null);
       // Don't cache a zero-match result (usually a typo'd suite name) - otherwise it keeps
       // auto-restoring on reload, hiding the input box's real value and blocking new attempts.
       if (rows.length > 0) {
-        window.sessionStorage.setItem(NGAI_RUN_KEY, JSON.stringify({ suiteName: suiteNameInput.trim(), run: adapted }));
+        window.sessionStorage.setItem(NGAI_RUN_KEY, JSON.stringify({ suiteNames: suites, run: adapted }));
       } else {
         window.sessionStorage.removeItem(NGAI_RUN_KEY);
       }
-      await loadAbortedTests(suiteNameInput.trim());
+      await loadAbortedTests(suites);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -202,25 +251,154 @@ export default function Dashboard() {
     }
   };
 
-  const loadAbortedTests = async (suiteName: string) => {
+  const loadAbortedTests = async (suites: string[]) => {
     try {
       const res = await fetch("/api/aborted-tests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ suiteName, ...readNgaiNetworkOverride() }),
+        body: JSON.stringify({ suiteNames: suites, ...readNgaiNetworkOverride() }),
       });
       const data = (await res.json()) as { error?: string; rows?: TestRow[] };
       if (!res.ok) throw new Error(data.error ?? "Could not load aborted tests");
       const rows = data.rows ?? [];
       setAbortedRows(rows);
-      window.sessionStorage.setItem(NGAI_ABORTED_KEY, JSON.stringify({ suiteName, rows }));
+      window.sessionStorage.setItem(NGAI_ABORTED_KEY, JSON.stringify({ suiteNames: suites, rows }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    void fetch("/api/settings/refresh", { cache: "no-store" })
+      .then(async (response) => {
+        const settings = (await response.json()) as { intervalSeconds?: number };
+        if (response.ok) setRefreshIntervalSeconds(settings.intervalSeconds ?? 0);
+      })
+      .catch(() => setRefreshIntervalSeconds(0));
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!latestVersion) return;
+    let checking = false;
+    const checkForUpdate = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const checkResponse = await fetch("/api/runs?checkOnly=1", { cache: "no-store" });
+        if (!checkResponse.ok) return;
+        const check = (await checkResponse.json()) as { version: string | null };
+        if (!check.version || check.version === latestVersion) return;
+        const latestResponse = await fetch("/api/runs?latestOnly=1", { cache: "no-store" });
+        if (!latestResponse.ok) return;
+        const data = (await latestResponse.json()) as { run: RunResult | null; version: string | null };
+        if (data.run) {
+          setRun(data.run);
+          setPersisted(data.run.meta.source !== "network");
+        }
+        setLatestVersion(data.version);
+      } catch {
+        // Keep the last known snapshot visible if the server is temporarily unavailable.
+      } finally {
+        checking = false;
+      }
+    };
+    const timer = window.setInterval(() => void checkForUpdate(), 5000);
+    return () => window.clearInterval(timer);
+  }, [latestVersion]);
+
+  useEffect(() => {
+    if (!isAdmin || refreshIntervalSeconds === 0 || run?.meta.source !== "network" || autoRefreshSuites.length === 0) return;
+    let cancelled = false;
+    const refresh = async () => {
+      if (autoRefreshInFlight.current || document.visibilityState === "hidden") return;
+      autoRefreshInFlight.current = true;
+      try {
+        const response = await fetch("/api/test-run-data", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            suiteNames: autoRefreshSuites,
+            persist: true,
+            automatic: true,
+            ...readNgaiNetworkOverride(),
+          }),
+        });
+        const result = (await response.json()) as { error?: string; changed?: boolean; version?: string | null };
+        if (!response.ok) throw new Error(result.error || "Automatic NGAi refresh failed.");
+        if (cancelled) return;
+        setLatestVersion(result.version ?? null);
+        if (result.changed) {
+          const latestResponse = await fetch("/api/runs?latestOnly=1", { cache: "no-store" });
+          if (latestResponse.ok) {
+            const latest = (await latestResponse.json()) as { run: RunResult | null; version: string | null };
+            if (latest.run) {
+              setRun(latest.run);
+              setPersisted(false);
+              setLatestVersion(latest.version);
+            }
+          }
+          const abortedResponse = await fetch("/api/aborted-tests", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ suiteNames: autoRefreshSuites, ...readNgaiNetworkOverride() }),
+          });
+          if (abortedResponse.ok) {
+            const aborted = (await abortedResponse.json()) as { rows?: TestRow[] };
+            setAbortedRows(aborted.rows ?? []);
+          }
+        }
+      } catch (error) {
+        if (!cancelled) setError(error instanceof Error ? error.message : "Automatic NGAi refresh failed.");
+      } finally {
+        autoRefreshInFlight.current = false;
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), refreshIntervalSeconds * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [isAdmin, refreshIntervalSeconds, run?.meta.source, autoRefreshSuites]);
+
+  const availableSuites = useMemo(() => run
+    ? normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])
+    : [], [run]);
+
+  useEffect(() => {
+    setCheckedDataSuites(availableSuites);
+  }, [availableSuites]);
+
+  const checkedSuiteKeys = useMemo(
+    () => new Set(checkedDataSuites.map((suite) => suite.toLowerCase())),
+    [checkedDataSuites],
+  );
+
+  const visibleRows = useMemo(() => {
+    const rows = run?.rows ?? [];
+    if (availableSuites.length < 2 || checkedDataSuites.length === availableSuites.length) return rows;
+    return rows.filter((row) => checkedSuiteKeys.has(row.suite.trim().toLowerCase()));
+  }, [run, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
+
+  const visibleSummary = useMemo(
+    () => run ? summarize(visibleRows) : undefined,
+    [run, visibleRows],
+  );
+  const displayedRun = run
+    ? {
+        ...run,
+        rows: visibleRows,
+        summary: visibleSummary,
+        meta: {
+          ...run.meta,
+          filter: { ...run.meta.filter, value: checkedDataSuites.join("\n") },
+        },
+      }
+    : null;
+  const allSuitesSelected = availableSuites.length < 2 || checkedDataSuites.length === availableSuites.length;
+
   const downloadReport = async () => {
-    if (!run) return;
+    if (!displayedRun) return;
     setError(null);
     try {
       const abortRangeLabel = abortFrom || abortTo ? `${abortFrom || "earliest"} to ${abortTo || "latest"}` : "";
@@ -229,7 +407,7 @@ export default function Dashboard() {
       const res = await fetch("/api/report", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ run, abortedRows: filteredAbortedRows, abortRangeLabel, theme, latestExecutedRows, testRangeLabel }),
+        body: JSON.stringify({ run: displayedRun, abortedRows: filteredAbortedRows, abortRangeLabel, theme, latestExecutedRows, testRangeLabel }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -239,7 +417,7 @@ export default function Dashboard() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = buildReportFilename(run.meta.filter.value);
+      a.download = buildReportFilename(displayedRun.meta.filter.value);
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
@@ -247,7 +425,7 @@ export default function Dashboard() {
     }
   };
 
-  const s = run?.summary;
+  const s = run ? visibleSummary : undefined;
   const failRatePct = s ? pctOf(s.failed, s.tests) : 0;
   const blockedRatePct = s ? pctOf(s.blocked, s.tests) : 0;
 
@@ -269,6 +447,8 @@ export default function Dashboard() {
     const fromMs = abortFrom ? new Date(abortFrom).getTime() : null;
     const toMs = abortTo ? new Date(abortTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
     return abortedRows.filter((r) => {
+      if (availableSuites.length > 1 && checkedDataSuites.length !== availableSuites.length &&
+        !checkedSuiteKeys.has(r.suite.trim().toLowerCase())) return false;
       if (!fromMs && !toMs) return true;
       if (!r.date) return false;
       const ms = new Date(r.date).getTime();
@@ -277,12 +457,12 @@ export default function Dashboard() {
       if (toMs != null && ms > toMs) return false;
       return true;
     });
-  }, [abortedRows, abortFrom, abortTo]);
+  }, [abortedRows, abortFrom, abortTo, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
 
   const abortedByStep = useMemo(() => {
     const byStep = new Map<string, number>();
     for (const r of filteredAbortedRows) {
-      const key = r.abortStep || "(no step recorded)";
+      const key = r.abortStep || "Aborted Manually";
       byStep.set(key, (byStep.get(key) ?? 0) + 1);
     }
     return {
@@ -294,7 +474,7 @@ export default function Dashboard() {
   const latestExecutedRows = useMemo(() => {
     const fromMs = testFrom ? new Date(testFrom).getTime() : null;
     const toMs = testTo ? new Date(testTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
-    const executed = (run?.rows ?? []).filter((r) => r.bucket === "Passed" || r.bucket === "Failed");
+    const executed = visibleRows.filter((r) => r.bucket === "Passed" || r.bucket === "Failed");
     const filtered = executed.filter((r) => {
       if (!fromMs && !toMs) return true;
       if (!r.date) return false;
@@ -305,7 +485,7 @@ export default function Dashboard() {
       return true;
     });
     return [...filtered].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
-  }, [run, testFrom, testTo]);
+  }, [visibleRows, testFrom, testTo]);
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -328,13 +508,67 @@ export default function Dashboard() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <input
-            type="text"
-            value={suiteNameInput}
-            onChange={(e) => setSuiteNameInput(e.target.value)}
-            placeholder="Oak_Stream_Platform_1_DMR-Platform_Beta-PAIV-Platform-AP1_Beta_Regression_Cycle"
-            className="w-80 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] shadow-sm outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-200"
-          />
+          {isAdmin && (
+          <div className="flex min-h-10 min-w-[min(100%,20rem)] flex-1 flex-wrap items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 shadow-sm focus-within:border-slate-400 focus-within:ring-2 focus-within:ring-slate-200">
+            {suiteNames.map((suite) => (
+              <span key={suite.toLowerCase()} className="inline-flex max-w-full items-center gap-1 rounded border border-[var(--border)] bg-[var(--surface-alt)] py-1 pl-2 pr-1 text-sm text-[var(--text)]">
+                <span className="max-w-64 truncate" title={suite}>{suite}</span>
+                <button
+                  type="button"
+                  aria-label={`Remove suite ${suite}`}
+                  title={`Remove ${suite}`}
+                  onClick={() => setSuiteNames((current) => current.filter((value) => value.toLowerCase() !== suite.toLowerCase()))}
+                  className="flex h-5 w-5 shrink-0 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--border)] hover:text-[var(--text)]"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </span>
+            ))}
+            <input
+              type="text"
+              value={suiteDraft}
+              onChange={(event) => setSuiteDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  addSuiteDraft();
+                }
+              }}
+              onPaste={(event) => {
+                const pasted = event.clipboardData.getData("text");
+                if (/\r?\n/.test(pasted)) {
+                  event.preventDefault();
+                  addSuiteNames(pasted.split(/\r?\n/));
+                }
+              }}
+              placeholder="Type or paste suite name"
+              aria-label="Suite name"
+              className="min-w-48 flex-1 border-0 bg-transparent px-1 py-1 text-sm text-[var(--text)] outline-none placeholder:text-[var(--text-muted)]"
+            />
+            {suiteNames.length > 0 && (
+              <button
+                type="button"
+                aria-label="Clear all suites"
+                title="Clear all suites"
+                onClick={() => setSuiteNames([])}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded text-[var(--text-muted)] hover:bg-[var(--surface-alt)] hover:text-[var(--text)]"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            )}
+            {suiteDraft.trim() && (
+              <button
+                type="button"
+                aria-label="Add suite"
+                title="Add suite"
+                onClick={addSuiteDraft}
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded bg-[var(--accent)] text-[var(--accent-text)]"
+              >
+                <Plus className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          )}
           <select
             className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] shadow-sm"
             value={run?.meta.runId ?? ""}
@@ -347,20 +581,22 @@ export default function Dashboard() {
               </option>
             ))}
           </select>
-          <button
+          {isAdmin && <button
             onClick={() => {
               if (provider === "ngai") {
                 void captureNgai();
                 return;
               }
-              void capture(false, suiteNameInput.trim());
+              setSuiteNames(selectedSuiteNames);
+              setSuiteDraft("");
+              void capture(false, selectedSuiteNames);
             }}
-            disabled={busy || (provider === "sso" && !suiteNameInput.trim())}
+            disabled={busy || (provider === "sso" && selectedSuiteNames.length === 0)}
             className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {busy ? "Capturing…" : provider === "ngai" ? "Load NGAi data" : "Capture (visible)"}
-          </button>
-          {persisted && (
+          </button>}
+          {persisted && allSuitesSelected && (
             <a
               href={`/api/report${run ? `?runId=${run.meta.runId}` : ""}`}
               target="_blank"
@@ -382,6 +618,28 @@ export default function Dashboard() {
           )}
         </div>
       </header>
+
+      {availableSuites.length > 1 && (
+        <fieldset aria-label="Filter dashboard by loaded suite" className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+          <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Loaded suites</legend>
+          {availableSuites.map((suite) => (
+            <label key={suite.toLowerCase()} className="inline-flex max-w-full cursor-pointer items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-alt)] px-3 py-2 text-sm text-[var(--text)]">
+              <input
+                type="checkbox"
+                checked={checkedSuiteKeys.has(suite.toLowerCase())}
+                onChange={(event) => setCheckedDataSuites((current) => event.target.checked
+                  ? normalizeSuiteNames([...current, suite])
+                  : current.filter((value) => value.toLowerCase() !== suite.toLowerCase()))}
+                className="h-4 w-4 shrink-0 accent-[var(--accent)]"
+              />
+              <span className="max-w-[min(70vw,32rem)] truncate" title={suite}>{suite}</span>
+            </label>
+          ))}
+          <span className="ml-auto text-xs tabular-nums text-[var(--text-muted)]">
+            {checkedDataSuites.length} / {availableSuites.length} selected
+          </span>
+        </fieldset>
+      )}
 
       {error && (
         <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 shadow-sm">
@@ -541,7 +799,14 @@ export default function Dashboard() {
                     <XAxis type="number" />
                     <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
                     <Tooltip />
-                    <Bar dataKey="value" fill="#0ea5e9" />
+                    <Bar dataKey="value" fill="#0ea5e9">
+                      {s.byRawState.slice(0, 12).map((entry) => (
+                        <Cell
+                          key={entry.name}
+                          fill={RAW_STATE_COLORS[entry.name.replace(/\s+/g, "").toLowerCase()] ?? "#0ea5e9"}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>

@@ -1,10 +1,25 @@
 // Sanity checks for state bucketing and payload harvesting.
 // Run with: npm run test
 import assert from "node:assert/strict";
-import { bucketOf, harvestRecords, makeRowFactory, findReportedTotal } from "../src/lib/normalize.ts";
+import { bucketOf, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
+import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
+import { buildReportFilename } from "../src/lib/report-filename.ts";
+
+const encryptionKey = Buffer.alloc(32, 7);
+const encryptedToken = encryptNgaiToken("sample-pat", encryptionKey);
+assert.notEqual(encryptedToken.ciphertext, "sample-pat");
+assert.equal(decryptNgaiToken(encryptedToken, encryptionKey), "sample-pat");
+assert.throws(() => decryptNgaiToken(encryptedToken, Buffer.alloc(32, 8)), /Could not decrypt/);
+assert.deepEqual(
+  normalizeSuiteNames([" Suite One ", "", "suite one", "Suite Two\nSuite Three"]),
+  ["Suite One", "Suite Two", "Suite Three"],
+);
+const multiSuiteFilename = buildReportFilename("Suite_One\nSuite_Two");
+assert.ok(!/[\r\n\t]/.test(multiSuiteFilename), "report filename must not contain control characters");
+assert.ok(multiSuiteFilename.startsWith("Suite_One_Suite_Two_"));
 
 assert.equal(
   scoped('[data-nga-row="1"] ', 'select, [role="combobox"]'),
@@ -83,7 +98,7 @@ const cases = [
   ["InProgress", "In Progress"],
   ["In Progress", "In Progress"],
   ["PendingRunning", "Not Run"],
-  ["PendingGatekeepers", "Blocked"],
+  ["PendingGatekeepers", "Not Run"],
   ["In Queue", "Not Run"],
   ["Not Run", "Not Run"],
   ["", "Not Run"],
@@ -93,6 +108,9 @@ const cases = [
 for (const [input, expected] of cases) {
   assert.equal(bucketOf(input), expected, `bucketOf("${input}")`);
 }
+assert.equal(bucketOf("PendingGatekeepers", "Blocked"), "Blocked");
+assert.equal(bucketOf("PendingGatekeepers", "Go"), "Not Run");
+assert.equal(bucketOf("PendingGatekeepers", "blocked"), "Blocked");
 
 const payload = {
   data: {
@@ -114,6 +132,14 @@ const rows = records.map(toRow);
 assert.equal(rows[0].name, "test_a");
 assert.equal(rows[0].testline, "TL1");
 assert.equal(rows[1].bucket, "Failed");
+assert.equal(
+  toRow({ Name: "gatekeeper_blocked", "Last Rerun State": "PendingGatekeepers", "Go Status": "Blocked" }, 3).bucket,
+  "Blocked",
+);
+assert.equal(
+  toRow({ Name: "gatekeeper_go", "Last Rerun State": "PendingGatekeepers", "Go Status": "Go" }, 4).bucket,
+  "Not Run",
+);
 
 const s = summarize(rows);
 assert.equal(s.tests, 3);

@@ -1,24 +1,25 @@
 import type { Page } from "playwright";
 import { looksLikeLogin, openSession } from "./browser";
 import { config } from "./config";
-import { bucketOf, findReportedTotal, harvestRecords, looksLikeTestRecord, toText } from "./normalize";
+import { bucketOf, findReportedTotal, harvestRecords, looksLikeTestRecord, normalizeSuiteNames, toText } from "./normalize";
 import { summarize } from "./summarize";
 import type { RunResult, TestRow } from "./types";
 
 export class AuthRequiredError extends Error {}
 type Capture = { url: string; payload: unknown };
 
-function normalizeRow(record: Record<string, unknown>, index: number): TestRow {
+function normalizeRow(record: Record<string, unknown>, index: number, suiteName: string): TestRow {
   const state = toText(record[config.stateColumn] ?? record.state ?? record.status) || "(empty)";
+  const goStatus = toText(record["Go Status"] ?? record.goStatus ?? record.GoStatus);
   const testline = toText(record["Testline Name"] ?? record.testline ?? record.testLine);
   const name = toText(record.Name ?? record.name ?? record.testName) || `row-${index + 1}`;
   return {
     id: toText(record.id ?? record.Id ?? record.testId) || `${index}`,
     name,
     testline,
-    suite: toText(record.Suite ?? record.suite) || testline,
+    suite: suiteName || toText(record.Suite ?? record.suite) || testline,
     state,
-    bucket: bucketOf(state),
+    bucket: bucketOf(state, goStatus),
     owner: toText(record.owner ?? record.Owner),
     platform: toText(record.platform ?? record.Platform),
     raw: record,
@@ -78,10 +79,17 @@ async function configureFilter(page: Page, suiteName: string) {
   return values.map((value) => value.trim()).filter(Boolean).slice(0, 3);
 }
 
-export async function scrapeTestlines(options: { headless?: boolean; suiteName?: string } = {}): Promise<RunResult> {
+export async function scrapeTestlines(options: { headless?: boolean; suiteName?: string; suiteNames?: string[] } = {}): Promise<RunResult> {
   const started = Date.now();
-  const suiteName = options.suiteName?.trim() || config.suiteName;
+  const suiteNames = normalizeSuiteNames(options.suiteNames ?? options.suiteName ?? config.suiteName);
+  const selectedSuites = suiteNames.length ? suiteNames : [config.suiteName];
   const captures: Capture[] = [];
+  const capturesBySuite: Capture[][] = [];
+  const appliedConditions: string[][] = [];
+  const records: Record<string, unknown>[] = [];
+  const rows: TestRow[] = [];
+  let reportedTotal = 0;
+  let hasReportedTotal = false;
   const observed = new Set<string>();
   const session = await openSession({ headless: options.headless ?? config.headless });
   const page = session.context.pages()[0] ?? (await session.context.newPage());
@@ -96,30 +104,49 @@ export async function scrapeTestlines(options: { headless?: boolean; suiteName?:
     if (looksLikeLogin(page.url(), await page.title())) throw new AuthRequiredError("NGA requires Intel SSO. Run `npm run auth` once, then retry.");
     const unlocked = await clickButton(page, new RegExp(config.unlockButton, "i"), 2500);
     if (unlocked) await page.waitForTimeout(config.settleMs);
-    const appliedCondition = await configureFilter(page, suiteName);
-    await clickButton(page, /^search$/i);
-    await page.waitForTimeout(config.settleMs);
-    const deadline = Date.now() + config.navTimeoutMs;
-    while (!captures.length && Date.now() < deadline) await page.waitForTimeout(250);
-    const records = captures.flatMap(({ payload }) => harvestRecords(payload, looksLikeTestRecord));
-    const rows = records.map(normalizeRow);
-    if (!rows.length) {
-      const domRows = await page.locator("tr").evaluateAll((trs) => trs.slice(1).map((tr) => {
-        const cells = [...tr.querySelectorAll("td")].map((cell) => cell.textContent?.trim() ?? "");
-        return { Name: cells[0], "Testline Name": cells[1], "Last Rerun State": cells[2] };
-      })).catch(() => []);
-      rows.push(...domRows.filter((row) => row.Name).map(normalizeRow));
+    for (const suiteName of selectedSuites) {
+      captures.length = 0;
+      const appliedCondition = await configureFilter(page, suiteName);
+      appliedConditions.push(appliedCondition);
+      await clickButton(page, /^search$/i);
+      await page.waitForTimeout(config.settleMs);
+      const captureWaitMs = capturesBySuite.length === 0 ? config.navTimeoutMs : config.settleMs;
+      const deadline = Date.now() + captureWaitMs;
+      while (!captures.length && Date.now() < deadline) await page.waitForTimeout(250);
+      const suiteCaptures = [...captures];
+      capturesBySuite.push(suiteCaptures);
+      const suiteRecords = suiteCaptures.flatMap(({ payload }) => harvestRecords(payload, looksLikeTestRecord));
+      records.push(...suiteRecords);
+      const total = suiteCaptures[0] ? findReportedTotal(suiteCaptures[0].payload) : null;
+      if (total != null) {
+        reportedTotal += total;
+        hasReportedTotal = true;
+      }
+      const suiteRows = suiteRecords.map((record, index) => normalizeRow(record, rows.length + index, suiteName));
+      if (!suiteRows.length) {
+        const domRows = await page.locator("tr").evaluateAll((trs) => trs.slice(1).map((tr) => {
+          const cells = [...tr.querySelectorAll("td")].map((cell) => cell.textContent?.trim() ?? "");
+          return { Name: cells[0], "Testline Name": cells[1], "Last Rerun State": cells[2], "Go Status": cells[3] };
+        })).catch(() => []);
+        suiteRows.push(...domRows.filter((row) => row.Name).map((row, index) => normalizeRow(row, rows.length + index, suiteName)));
+      }
+      rows.push(...suiteRows);
     }
+    const appliedCondition = appliedConditions.at(-1) ?? [];
     const expected = [config.filterEntity, config.filterField, config.filterOperator];
+    const filterVerified = appliedConditions.length === selectedSuites.length && appliedConditions.every((condition) =>
+      condition.length >= 3 && condition.slice(0, 3).every((value, index) => value.toLowerCase() === expected[index].toLowerCase()),
+    );
     const meta = {
       runId: new Date().toISOString().replace(/[-:.TZ]/g, "").slice(0, 17),
       capturedAt: new Date().toISOString(), url: config.url,
-      filter: { entity: config.filterEntity, field: config.filterField, operator: config.filterOperator, value: suiteName },
-      source: captures.length ? "network" as const : "dom" as const, stateColumn: config.stateColumn,
+      filter: { entity: config.filterEntity, field: config.filterField, operator: config.filterOperator, value: selectedSuites.join("\n") },
+      source: capturesBySuite.some((suiteCapture) => suiteCapture.length) ? "network" as const : "dom" as const, stateColumn: config.stateColumn,
       gridUnlocked: unlocked,
-      filterVerified: appliedCondition.length >= 3 && appliedCondition.slice(0, 3).every((value, index) => value.toLowerCase() === expected[index].toLowerCase()),
-      appliedCondition, reportedTotal: captures.length ? findReportedTotal(captures[0].payload) : null,
-      durationMs: Date.now() - started, warnings: rows.length ? [] : ["No records were returned."],
+      filterVerified,
+      appliedCondition, reportedTotal: hasReportedTotal ? reportedTotal : rows.length,
+      durationMs: Date.now() - started,
+      warnings: rows.length ? [] : [`No records were returned for suites: ${selectedSuites.join(", ")}.`],
       observedEndpoints: [...observed].slice(0, 30), sampleRecord: records[0] ?? null,
     };
     return { meta, rows, summary: summarize(rows) };

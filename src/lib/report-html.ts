@@ -1,20 +1,7 @@
 import type { RunResult, TestRow } from "./types";
 import { THEMES, type ThemeId } from "./theme";
-
-const pad2 = (n: number) => String(n).padStart(2, "0");
-
-/** Builds a "<suite>_DD_MM_YYYY_hh:mmAM.html" style filename for a downloaded report. */
-export function buildReportFilename(suiteName: string, date = new Date()): string {
-  const safeSuite = (suiteName || "execution-report").replace(/[\\/:*?"<>|]/g, "_");
-  const day = pad2(date.getDate());
-  const month = pad2(date.getMonth() + 1);
-  const year = date.getFullYear();
-  const hours24 = date.getHours();
-  const period = hours24 >= 12 ? "PM" : "AM";
-  const hours12 = pad2(hours24 % 12 || 12);
-  const minutes = pad2(date.getMinutes());
-  return `${safeSuite}_${day}_${month}_${year}_${hours12}:${minutes}${period}.html`;
-}
+import { buildReportFilename } from "./report-filename";
+export { buildReportFilename } from "./report-filename";
 
 const pctOfTotal = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
 
@@ -84,7 +71,7 @@ function testsTable(rows: TestRow[]) {
 function abortTable(rows: TestRow[]) {
   const byStep = new Map<string, number>();
   for (const r of rows) {
-    const key = r.abortStep || "(no step recorded)";
+    const key = r.abortStep || "Aborted Manually";
     byStep.set(key, (byStep.get(key) ?? 0) + 1);
   }
   const sorted = [...byStep.entries()].sort((a, b) => b[1] - a[1]);

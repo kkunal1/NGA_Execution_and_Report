@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { authorizeRequest } from "@/lib/auth";
 import { buildReportFilename, renderReportHtml } from "@/lib/report-html";
 import { loadLatest, loadRun, saveReport } from "@/lib/store";
 import { isThemeId } from "@/lib/theme";
@@ -8,6 +9,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
+  const denied = await authorizeRequest(req);
+  if (denied) return denied;
   const params = new URL(req.url).searchParams;
   const runId = params.get("runId");
   const download = params.get("download") === "1";
@@ -37,6 +40,8 @@ export async function GET(req: Request) {
 
 // Renders/downloads a run's HTML report directly from client state, for runs (e.g. NGAi) that aren't persisted server-side.
 export async function POST(req: Request) {
+  const denied = await authorizeRequest(req);
+  if (denied) return denied;
   let run: RunResult | undefined;
   let abortedRows: TestRow[] = [];
   let abortRangeLabel = "";

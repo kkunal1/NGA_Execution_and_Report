@@ -1,5 +1,7 @@
 import { request as undiciRequest } from "undici";
 import { config } from "./config";
+import { getNgaiApiToken } from "./ngai-token";
+import { normalizeSuiteNames } from "./normalize";
 import { resolveDispatcher, type NetworkOverride } from "./proxy";
 
 export const NGAI_SUITE_NAME =
@@ -28,6 +30,17 @@ function describeFetchFailure(error: unknown) {
 
 function escapeOData(value: string) {
   return value.replace(/'/g, "''");
+}
+
+function responseError(bodyText: string) {
+  try {
+    const payload = JSON.parse(bodyText) as { error?: string | { message?: string } };
+    if (typeof payload.error === "string") return payload.error;
+    if (payload.error?.message) return payload.error.message;
+  } catch {
+    return bodyText.slice(0, 500);
+  }
+  return bodyText.slice(0, 500);
 }
 
 function recordsFromPayload(payload: unknown): ApiRecord[] {
@@ -82,7 +95,9 @@ async function pageThroughOData(
         `Intel NGAi rejected the request (${statusCode}). Verify that NGAI_API_TOKEN is an active NGA PAT sent through X-NGA-PAT, or configure NGAI_COOKIE in .env.local.${bodyText ? ` Server said: ${bodyText.slice(0, 500)}` : ""}`,
       );
     }
-    if (statusCode < 200 || statusCode >= 300) throw new Error(`Intel NGAi request failed (${statusCode})`);
+    if (statusCode < 200 || statusCode >= 300) {
+      throw new Error(`Intel NGAi request failed (${statusCode})${bodyText ? `: ${responseError(bodyText)}` : ""}`);
+    }
     const payload = JSON.parse(bodyText) as unknown;
     if (page === 0) totalCount = totalCountFromPayload(payload);
     const batch = recordsFromPayload(payload);
@@ -95,13 +110,12 @@ async function pageThroughOData(
   return { url: firstUrl.toString(), records: allRecords, totalCount, truncated };
 }
 
-export async function fetchNGAiSuite(suiteName = NGAI_SUITE_NAME, network?: NetworkOverride) {
+async function fetchNGAiSuiteSingle(suiteName: string, dispatcher: ReturnType<typeof resolveDispatcher>) {
   const pageSize = config.ngaiPageSize;
-  const dispatcher = resolveDispatcher(network);
-  const normalizedSuite = suiteName.toLowerCase();
+  const normalizedSuite = escapeOData(suiteName.toLowerCase());
   const filter = [
     "nonTriageLatestRunFlag eq true",
-    `((tolower(TestLine/TestSuite/TestSuiteName) eq '${escapeOData(normalizedSuite)}') or (tolower(TestLineRevision/TestSuite/testSuiteName) eq '${escapeOData(normalizedSuite)}'))`,
+    `((tolower(TestLine/TestSuite/TestSuiteName) eq '${normalizedSuite}') or (tolower(TestLineRevision/TestSuite/testSuiteName) eq '${normalizedSuite}'))`,
   ].join(" and ");
 
   const buildUrl = (skip: number) => {
@@ -116,20 +130,53 @@ export async function fetchNGAiSuite(suiteName = NGAI_SUITE_NAME, network?: Netw
   };
 
   const headers: Record<string, string> = { accept: "application/json" };
-  if (config.ngaiApiToken) headers["X-NGA-PAT"] = config.ngaiApiToken;
+  const apiToken = await getNgaiApiToken();
+  if (apiToken) headers["X-NGA-PAT"] = apiToken;
   if (config.ngaiCookie) headers.cookie = config.ngaiCookie;
 
   return pageThroughOData(buildUrl, headers, dispatcher);
 }
 
+async function fetchSuitesInBatches<T>(suiteNames: string[], query: (suiteName: string) => Promise<T>) {
+  const results: T[] = [];
+  for (let index = 0; index < suiteNames.length; index += 3) {
+    results.push(...await Promise.all(suiteNames.slice(index, index + 3).map(query)));
+  }
+  return results;
+}
+
+function combineSuiteResults<T extends { url: string; records: ApiRecord[]; totalCount: number | null; truncated: boolean }>(
+  suiteNames: string[],
+  results: T[],
+) {
+  return {
+    url: results[0]?.url ?? "",
+    records: results.flatMap((result, index) => result.records.map((record) => ({
+      ...record,
+      requestedSuiteName: suiteNames[index],
+    }))),
+    totalCount: results.every((result) => result.totalCount != null)
+      ? results.reduce((total, result) => total + (result.totalCount ?? 0), 0)
+      : null,
+    truncated: results.some((result) => result.truncated),
+  };
+}
+
+export async function fetchNGAiSuite(suiteName: string | string[] = NGAI_SUITE_NAME, network?: NetworkOverride) {
+  const requestedNames = normalizeSuiteNames(suiteName);
+  const suiteNames = requestedNames.length ? requestedNames : [NGAI_SUITE_NAME];
+  const dispatcher = resolveDispatcher(network);
+  const results = await fetchSuitesInBatches(suiteNames, (name) => fetchNGAiSuiteSingle(name, dispatcher));
+  return combineSuiteResults(suiteNames, results);
+}
+
 // Fetches every historical Aborted run for the suite (not just the latest-per-testline snapshot
 // fetchNGAiSuite uses), so date-range filtering has real abort history to work with.
-export async function fetchAbortedTests(suiteName = NGAI_SUITE_NAME, network?: NetworkOverride) {
-  const dispatcher = resolveDispatcher(network);
-  const normalizedSuite = suiteName.toLowerCase();
+async function fetchAbortedTestsSingle(suiteName: string, dispatcher: ReturnType<typeof resolveDispatcher>) {
+  const normalizedSuite = escapeOData(suiteName.toLowerCase());
   const filter = [
     "State eq 'Aborted'",
-    `((tolower(TestLine/TestSuite/TestSuiteName) eq '${escapeOData(normalizedSuite)}') or (tolower(TestLineRevision/TestSuite/testSuiteName) eq '${escapeOData(normalizedSuite)}'))`,
+    `((tolower(TestLine/TestSuite/TestSuiteName) eq '${normalizedSuite}') or (tolower(TestLineRevision/TestSuite/testSuiteName) eq '${normalizedSuite}'))`,
   ].join(" and ");
 
   const buildUrl = (skip: number) => {
@@ -144,8 +191,17 @@ export async function fetchAbortedTests(suiteName = NGAI_SUITE_NAME, network?: N
   };
 
   const headers: Record<string, string> = { accept: "application/json" };
-  if (config.ngaiApiToken) headers["X-NGA-PAT"] = config.ngaiApiToken;
+  const apiToken = await getNgaiApiToken();
+  if (apiToken) headers["X-NGA-PAT"] = apiToken;
   if (config.ngaiCookie) headers.cookie = config.ngaiCookie;
 
   return pageThroughOData(buildUrl, headers, dispatcher);
+}
+
+export async function fetchAbortedTests(suiteName: string | string[] = NGAI_SUITE_NAME, network?: NetworkOverride) {
+  const requestedNames = normalizeSuiteNames(suiteName);
+  const suiteNames = requestedNames.length ? requestedNames : [NGAI_SUITE_NAME];
+  const dispatcher = resolveDispatcher(network);
+  const results = await fetchSuitesInBatches(suiteNames, (name) => fetchAbortedTestsSingle(name, dispatcher));
+  return combineSuiteResults(suiteNames, results);
 }

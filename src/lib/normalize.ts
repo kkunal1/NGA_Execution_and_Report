@@ -2,6 +2,16 @@ import type { StateBucket, TestRow } from "./types";
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+export function normalizeSuiteNames(input: string | string[] | undefined): string[] {
+  const values = Array.isArray(input) ? input : [input ?? ""];
+  const unique = new Map<string, string>();
+  for (const name of values.flatMap((value) => value.split(/\r?\n/))) {
+    const trimmed = name.trim();
+    if (trimmed && !unique.has(trimmed.toLowerCase())) unique.set(trimmed.toLowerCase(), trimmed);
+  }
+  return [...unique.values()];
+}
+
 function pick(rec: Record<string, unknown>, candidates: string[]): unknown {
   const entries = Object.entries(rec).map(
     ([k, v]) => [norm(k), v] as [string, unknown],
@@ -32,11 +42,12 @@ export function toText(v: unknown): string {
 }
 
 /** Map any NGA state string onto a reporting bucket. */
-export function bucketOf(state: string): StateBucket {
+export function bucketOf(state: string, goStatus = ""): StateBucket {
   const s = state.toLowerCase().trim();
   if (!s || /^(n\/?a|-|none|null|undefined)$/.test(s)) return "Not Run";
-  // "PendingGatekeepers" is waiting on approval, i.e. blocked - checked before the generic "pending" match below.
-  if (/gatekeeper/.test(s)) return "Blocked";
+  if (norm(s) === "pendinggatekeepers") {
+    return goStatus.toLowerCase().trim() === "blocked" ? "Blocked" : "Not Run";
+  }
   // "PendingRunning" is NGA's queued-but-not-started state, not actually in progress.
   if (/not\s*run|not\s*exec|unexecuted|new\b|created|planned|todo|pending|queue/.test(s))
     return "Not Run";
@@ -78,6 +89,7 @@ export function makeRowFactory(stateColumn: string) {
     index: number,
   ): TestRow {
     const state = toText(pick(rec, stateKeys));
+    const goStatus = toText(pick(rec, ["go status", "goStatus"]));
     const testline = toText(pick(rec, TESTLINE_KEYS));
     return {
       id: toText(pick(rec, ["testid", "testcaseid", "id", "key", "uuid"])) || `${index}`,
@@ -85,7 +97,7 @@ export function makeRowFactory(stateColumn: string) {
       testline,
       suite: toText(pick(rec, ["testlinesuite", "suitename", "suite", "cycle"])) || testline,
       state: state || "(empty)",
-      bucket: bucketOf(state),
+      bucket: bucketOf(state, goStatus),
       owner: toText(pick(rec, ["owner", "assignee", "user", "wwid", "reporter"])),
       platform: toText(pick(rec, ["platform", "program", "project", "product"])),
       raw: rec,

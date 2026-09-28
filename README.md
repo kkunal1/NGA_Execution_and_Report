@@ -24,21 +24,30 @@ npm run dev
 
 > Port 3000 may already be taken on your machine; use `npm run dev -- -p 3100` if so.
 
-## Single-user by design
+## Shared Access
 
-`dev` and `start` bind to `127.0.0.1`, so the app is reachable only from this machine.
-There is **one** server process and **one** `data/` store — if you expose it on your LAN IP,
-every viewer shares the same state and each capture overwrites the previous one for everybody.
-`POST /api/scrape` is unauthenticated and drives *your* signed-in Chrome profile, so anyone
-who can reach the port can pull NGA data as you.
+The app has two roles. Admin credentials are configured with `APP_ADMIN_USERNAME` (use a
+name other than `root`) and `APP_ADMIN_PASSWORD` in the server environment. The fixed `root` / `root` account is
+read-only: it can view runs and download reports, but cannot load data or change Settings.
+Admin-only permissions are enforced by the API as well as the UI.
 
-`npm run dev:lan` binds `0.0.0.0` if you deliberately want to share it. Prefer sending the
-generated `reports/execution-report-<runId>.html` file instead — it is self-contained.
+The fixed viewer password is intentionally simple and is not suitable as a security
+boundary. Anyone who can reach the app can sign in as a viewer. Restrict network access
+to your trusted team/VPN and put a shared production deployment behind HTTPS. A shared
+server has one data store, one NGAi token and one signed-in browser profile; all viewers
+see the same captured data.
+
+For a LAN-bound production server, build first and then run `npm run start:lan`. Configure
+the admin credentials on the host before starting it. Do not use `npm run dev:lan` for a
+shared deployment; development mode is not intended to be exposed to a network.
 
 ## Usage
 
 Open http://localhost:3000 and:
 
+- Add one or more suite names in the suite field; press Enter after each name, or paste a newline-separated list. Remove suites with the `x` on each chip.
+- After a multi-suite capture, use the **Loaded suites** checkboxes to filter the dashboard and downloaded report locally without another NGAi query.
+- In Settings, set **Automatic NGAi refresh** to a whole number from 15 to 3600 seconds (`0` disables it). Keep the admin dashboard open; it checks for changed rows and saves a new shared latest snapshot only when data changes. Viewers pick up that snapshot automatically.
 - **Capture (headless)** – runs the scrape in the background and stores a run in `data/`.
 - **Capture (visible / sign in)** – same, but with the browser window shown (use if SSO expired).
 - **HTML report** – opens `/api/report`, which also writes `reports/execution-report-<runId>.html`.
@@ -49,7 +58,8 @@ Open http://localhost:3000 and:
 | Route | Purpose |
 | --- | --- |
 | `POST /api/scrape` | Runs the browser capture, saves and returns the run. Body: `{ "headless": boolean }` |
-| `POST /api/test-run-data` | Queries the configured NGAi TestRunComposite endpoint for the regression suite without launching Chrome |
+| `POST /api/test-run-data` | Queries the configured NGAi TestRunComposite endpoint for one or more suites without launching Chrome. Body accepts `suiteNames: string[]` (or legacy `suiteName: string`). |
+| `GET/PUT/DELETE /api/settings/ngai-token` | Reports token status, saves an encrypted token, or removes it; never returns the token |
 | `GET /api/runs` | Latest run + list of run ids. `?runId=` loads a specific run |
 | `GET /api/report` | Standalone HTML report. `?runId=`, `?download=1` |
 
@@ -86,8 +96,9 @@ Filter-UI selectors live in `applyFilter()` in `src/lib/scrape.ts`.
 
 The provider is selected at `/settings` and persisted in the browser. Intel SSO uses
 the Testlines browser flow and its TestLine / Suite / Equal filter. Intel NGAi uses
-`NGAI_API_URL` with an OData suite filter; set `NGAI_API_TOKEN` or `NGAI_COOKIE` when
-the gateway requires explicit credentials. `NGAI_API_TOKEN` must be an active NGA PAT;
+`NGAI_API_URL` with an OData suite filter; save a PAT from `/settings` or configure
+`NGAI_COOKIE` when the gateway requires explicit credentials. `NGAI_API_TOKEN` remains
+supported as a legacy fallback and must be an active NGA PAT;
 the client sends it in the `X-NGA-PAT` header, not `Authorization: Bearer`. The project uses the explicit `NGAI_API_URL`
 endpoint; it does not assume that the internal Intel NGAi agent gateway is available
 inside the project process. If a corporate proxy re-signs the Intel
@@ -105,3 +116,13 @@ and use `$env:NODE_EXTRA_CA_CERTS` with its PEM path instead. A single unrelated
 certificate file may still produce `UNABLE_TO_VERIFY_LEAF_SIGNATURE`.
 
 Do not disable TLS verification with `NODE_TLS_REJECT_UNAUTHORIZED=0`.
+
+To store an NGAi PAT, enter it in `/settings`; no token or encryption-key setup in
+`.env.local` is required. The app creates an AES-256-GCM key in the current OS user's
+`~/.nga-execution-and-report/` profile and stores the encrypted token in the ignored
+`data/ngai-token.json` file. Each colleague running a local copy gets a separate token
+and key. Keep the profile key file with its user; if it is lost or changed, the saved
+token cannot be decrypted. `NGAI_TOKEN_ENCRYPTION_KEY` can optionally override the
+generated key in the server environment. A saved Settings token takes precedence over
+the legacy `NGAI_API_TOKEN` variable, and the Settings page never returns it to the
+browser.

@@ -5,21 +5,25 @@ import { spawn } from "node:child_process";
 import http from "node:http";
 import fs from "node:fs/promises";
 import assert from "node:assert/strict";
+import { chromium } from "playwright";
 
 const MOCK_PORT = 4321;
 const APP_PORT = 3123;
 const DATA_DIR = ".e2e-data";
 const REPORTS_DIR = ".e2e-reports";
 const SUITE = "Oak_Stream_Platform_1_DMR-Platform_Beta-PAIV-Platform-AP1_Beta_Regression_Cycle";
+const SECOND_SUITE = "Second_QA_Suite";
 
-const TESTS = [
+const BASE_TESTS = [
   { Name: "boot_sanity", "Last Rerun State": "Passed" },
   { Name: "pcie_link", "Last Rerun State": "Passed" },
   { Name: "mem_train", "Last Rerun State": "Passed" },
   { Name: "thermal_soak", "Last Rerun State": "Failed" },
   { Name: "power_cycle", "Last Rerun State": "Infra Error" },
   { Name: "s3_resume", "Last Rerun State": "Not Run" },
-].map((t) => ({ ...t, "Testline Name": SUITE }));
+];
+const TESTS = BASE_TESTS.map((t) => ({ ...t, "Testline Name": SUITE }));
+const SECOND_TESTS = BASE_TESTS.map((t) => ({ ...t, Name: `${t.Name}_second`, "Testline Name": SECOND_SUITE }));
 
 const PAGE = `<!doctype html><html><head><meta charset="utf-8"><title>NGA Mock</title>
 <style>
@@ -141,12 +145,16 @@ const mock = http.createServer((req, res) => {
   if (url.pathname === "/api/testlines") {
     const p = url.searchParams;
     // Only the exact expected condition returns data.
-    const ok =
+    const suiteName = p.get("value");
+    const items =
       p.get("entity") === "TestLine" &&
       p.get("field") === "Suite" &&
       p.get("operator") === "Equal" &&
-      p.get("value") === SUITE;
-    const items = ok ? TESTS : [];
+      suiteName === SUITE ? TESTS :
+      p.get("entity") === "TestLine" &&
+      p.get("field") === "Suite" &&
+      p.get("operator") === "Equal" &&
+      suiteName === SECOND_SUITE ? SECOND_TESTS : [];
     res.writeHead(200, { "content-type": "application/json" });
     res.end(JSON.stringify({ total: items.length, items }));
     return;
@@ -161,6 +169,8 @@ const app = spawn(
   {
     env: {
       ...process.env,
+      APP_ADMIN_USERNAME: "e2e-admin",
+      APP_ADMIN_PASSWORD: "e2e-admin-password",
       NGA_URL: `http://localhost:${MOCK_PORT}/`,
       NGA_HEADLESS: "true",
       NGA_BROWSER_CHANNEL: "chrome",
@@ -176,13 +186,14 @@ const app = spawn(
 );
 
 let appLog = "";
+let browser;
 app.stdout.on("data", (d) => (appLog += d));
 app.stderr.on("data", (d) => (appLog += d));
 
 const waitForApp = async () => {
   for (let i = 0; i < 60; i++) {
     try {
-      const r = await fetch(`http://localhost:${APP_PORT}/api/runs`);
+      const r = await fetch(`http://localhost:${APP_PORT}/api/auth/session`);
       if (r.ok) return;
     } catch {
       /* not up yet */
@@ -193,6 +204,7 @@ const waitForApp = async () => {
 };
 
 const cleanup = async () => {
+  await browser?.close();
   app.stdout.destroy();
   app.stderr.destroy();
   app.kill();
@@ -207,11 +219,21 @@ try {
   await fs.rm(DATA_DIR, { recursive: true, force: true });
   await new Promise((r) => mock.listen(MOCK_PORT, r));
   await waitForApp();
+  assert.equal((await fetch(`http://localhost:${APP_PORT}/api/runs`)).status, 401, "run data must require sign-in");
+
+  const adminLogin = await fetch(`http://localhost:${APP_PORT}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "e2e-admin", password: "e2e-admin-password" }),
+  });
+  assert.equal(adminLogin.status, 200, "admin should be able to sign in");
+  const adminCookie = adminLogin.headers.get("set-cookie")?.split(";")[0];
+  assert.ok(adminCookie, "admin session cookie should be issued");
 
   const res = await fetch(`http://localhost:${APP_PORT}/api/scrape`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ headless: true }),
+    headers: { "content-type": "application/json", cookie: adminCookie },
+    body: JSON.stringify({ headless: true, suiteNames: [SUITE, SECOND_SUITE] }),
     signal: AbortSignal.timeout(300_000),
   });
   const run = await res.json();
@@ -227,19 +249,91 @@ try {
   );
   assert.equal(run.meta.filterVerified, true, "filter must verify");
   assert.equal(run.meta.gridUnlocked, true, "Get Latest Testline must be clicked");
-  assert.equal(run.summary.tests, 6, "test count");
-  assert.equal(run.summary.passed, 3, "passed");
-  assert.equal(run.summary.failed, 1, "failed");
-  assert.equal(run.summary.blocked, 1, "blocked (Infra Error)");
-  assert.equal(run.summary.notRun, 1, "not run");
-  assert.equal(run.summary.executed, 5, "executed");
+  assert.equal(run.summary.tests, 12, "combined test count");
+  assert.equal(run.summary.passed, 6, "combined passed");
+  assert.equal(run.summary.failed, 2, "combined failed");
+  assert.equal(run.summary.blocked, 2, "combined blocked (Infra Error)");
+  assert.equal(run.summary.notRun, 2, "combined not run");
+  assert.equal(run.summary.executed, 10, "combined executed");
+  assert.equal(run.rows.some((row) => row.testline === SECOND_SUITE), true, "second suite rows must be merged");
+
+  await fs.writeFile(`${DATA_DIR}/ngai-token.json`, "{}");
+  const historyResponse = await fetch(`http://localhost:${APP_PORT}/api/runs`, { headers: { cookie: adminCookie } });
+  const history = await historyResponse.json();
+  assert.ok(history.runs.includes(run.meta.runId), "capture should appear in history");
+  assert.ok(!history.runs.includes("ngai-token"), "encrypted token file must not appear in history");
+
+  browser = await chromium.launch({ headless: true });
+  const page = await browser.newPage();
+  let suiteQueryRequests = 0;
+  page.on("request", (request) => {
+    if (new URL(request.url()).pathname === "/api/test-run-data") suiteQueryRequests += 1;
+  });
+  await page.goto(`http://localhost:${APP_PORT}/`);
+  await page.getByLabel("Username").fill("e2e-admin");
+  await page.getByLabel("Password").fill("e2e-admin-password");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.locator('fieldset[aria-label="Filter dashboard by loaded suite"]').waitFor();
+  await page.evaluate(({ cachedRun, suites }) => {
+    sessionStorage.setItem("nga-ngai-last-run", JSON.stringify({ suiteNames: suites, run: cachedRun }));
+    sessionStorage.setItem("nga-suite-name-input", suites.join("\n"));
+  }, { cachedRun: run, suites: [SUITE, SECOND_SUITE] });
+  await page.reload();
+  const suiteCheckboxes = page.locator('fieldset[aria-label="Filter dashboard by loaded suite"] input[type="checkbox"]');
+  await suiteCheckboxes.first().waitFor();
+  assert.equal(await suiteCheckboxes.count(), 2, "one checkbox should be shown for each loaded suite");
+  const totalTests = page.getByText("Total tests", { exact: true });
+  const readTotal = () => totalTests.evaluate((element) => element.nextElementSibling?.textContent?.trim());
+  assert.equal(await readTotal(), "12", "all suites should be selected initially");
+  await suiteCheckboxes.nth(1).uncheck();
+  await page.waitForFunction(() => {
+    const label = [...document.querySelectorAll("div")].find((element) => element.textContent?.trim() === "Total tests");
+    return label?.nextElementSibling?.textContent?.trim() === "6";
+  });
+  await suiteCheckboxes.nth(1).check();
+  await page.waitForFunction(() => {
+    const label = [...document.querySelectorAll("div")].find((element) => element.textContent?.trim() === "Total tests");
+    return label?.nextElementSibling?.textContent?.trim() === "12";
+  });
+  assert.equal(suiteQueryRequests, 0, "checkbox changes must not send another NGAi query");
+  const downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const reportDownload = await downloadPromise;
+  assert.ok(!/[\r\n]/.test(reportDownload.suggestedFilename()), "multi-suite report filename must be safe");
+
+  const viewerLogin = await fetch(`http://localhost:${APP_PORT}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "root", password: "root" }),
+  });
+  const viewerResult = await viewerLogin.json();
+  assert.equal(viewerResult.role, "viewer", "root/root must sign in as a viewer");
+  const viewerCookie = viewerLogin.headers.get("set-cookie")?.split(";")[0];
+  assert.ok(viewerCookie, "viewer session cookie should be issued");
+  assert.equal((await fetch(`http://localhost:${APP_PORT}/api/runs`, { headers: { cookie: viewerCookie } })).status, 200);
+  assert.equal((await fetch(`http://localhost:${APP_PORT}/api/scrape`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie: viewerCookie },
+    body: JSON.stringify({ headless: true }),
+  })).status, 403, "viewer must not start a scrape");
+  assert.equal((await fetch(`http://localhost:${APP_PORT}/api/settings/ngai-token`, { headers: { cookie: viewerCookie } })).status, 403);
+  assert.equal((await fetch(`http://localhost:${APP_PORT}/api/settings/refresh`, { headers: { cookie: viewerCookie } })).status, 403);
+  assert.equal((await fetch(`http://localhost:${APP_PORT}/api/runs?checkOnly=1`, { headers: { cookie: viewerCookie } })).status, 200);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByLabel("Username").fill("root");
+  await page.getByLabel("Password").fill("root");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByText("Read-only viewer", { exact: true }).waitFor();
+  assert.equal(await page.getByRole("button", { name: "Load NGAi data" }).count(), 0);
+  assert.equal(await page.getByRole("link", { name: "Settings" }).count(), 0);
 
   const traversal = await fetch(
     `http://localhost:${APP_PORT}/api/runs?runId=..%2F..%2Fpackage`,
+    { headers: { cookie: adminCookie } },
   );
   assert.equal((await traversal.json()).run, null, "path traversal must be blocked");
 
-  const report = await fetch(`http://localhost:${APP_PORT}/api/report`);
+  const report = await fetch(`http://localhost:${APP_PORT}/api/report`, { headers: { cookie: adminCookie } });
   const html = await report.text();
   assert.ok(report.ok && html.includes("Filter verified"), "HTML report must render");
 

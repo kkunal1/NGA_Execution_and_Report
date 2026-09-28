@@ -42,6 +42,8 @@ const RAW_STATE_COLORS: Record<string, string> = {
 };
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
+const formatCountdown = (seconds: number) =>
+  `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
 function Card({
   label,
@@ -81,6 +83,8 @@ export default function Dashboard() {
 
   const [run, setRun] = useState<RunResult | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
+  const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
+  const [refreshSecondsLeft, setRefreshSecondsLeft] = useState(0);
   const [checkedDataSuites, setCheckedDataSuites] = useState<string[]>([]);
   const [abortedRows, setAbortedRows] = useState<TestRow[]>([]);
   const [runs, setRuns] = useState<string[]>([]);
@@ -100,10 +104,12 @@ export default function Dashboard() {
 
   const load = useCallback(async (runId?: string) => {
     const res = await fetch(`/api/runs${runId ? `?runId=${runId}` : ""}`);
-    const data = (await res.json()) as { run: RunResult | null; runs: string[]; version: string | null };
+    const data = (await res.json()) as { run: RunResult | null; runs: string[]; version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
     setRuns(data.runs);
     if (runId || data.run || !restoredNgaiRef.current) setRun(data.run);
     setLatestVersion(data.version);
+    setNextRefreshAt(data.nextRefreshAt);
+    setRefreshIntervalSeconds(data.intervalSeconds);
     if (data.run) setPersisted(data.run.meta.source !== "network");
   }, []);
 
@@ -210,6 +216,7 @@ export default function Dashboard() {
         warnings?: string[];
         runId?: string;
         version?: string | null;
+        nextRefreshAt?: number | null;
       };
       if (!res.ok) throw new Error(data.error ?? "NGAi query failed");
       const rows = data.rows ?? [];
@@ -236,6 +243,7 @@ export default function Dashboard() {
       setRun(adapted);
       setPersisted(false);
       setLatestVersion(data.version ?? null);
+      setNextRefreshAt(data.nextRefreshAt ?? null);
       // Don't cache a zero-match result (usually a typo'd suite name) - otherwise it keeps
       // auto-restoring on reload, hiding the input box's real value and blocking new attempts.
       if (rows.length > 0) {
@@ -287,16 +295,20 @@ export default function Dashboard() {
       try {
         const checkResponse = await fetch("/api/runs?checkOnly=1", { cache: "no-store" });
         if (!checkResponse.ok) return;
-        const check = (await checkResponse.json()) as { version: string | null };
+        const check = (await checkResponse.json()) as { version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
+        setNextRefreshAt(check.nextRefreshAt);
+        setRefreshIntervalSeconds(check.intervalSeconds);
         if (!check.version || check.version === latestVersion) return;
         const latestResponse = await fetch("/api/runs?latestOnly=1", { cache: "no-store" });
         if (!latestResponse.ok) return;
-        const data = (await latestResponse.json()) as { run: RunResult | null; version: string | null };
+        const data = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
         if (data.run) {
           setRun(data.run);
           setPersisted(data.run.meta.source !== "network");
         }
         setLatestVersion(data.version);
+        setNextRefreshAt(data.nextRefreshAt);
+        setRefreshIntervalSeconds(data.intervalSeconds);
       } catch {
         // Keep the last known snapshot visible if the server is temporarily unavailable.
       } finally {
@@ -324,18 +336,20 @@ export default function Dashboard() {
             ...readNgaiNetworkOverride(),
           }),
         });
-        const result = (await response.json()) as { error?: string; changed?: boolean; version?: string | null };
+        const result = (await response.json()) as { error?: string; changed?: boolean; version?: string | null; nextRefreshAt?: number | null };
         if (!response.ok) throw new Error(result.error || "Automatic NGAi refresh failed.");
         if (cancelled) return;
         setLatestVersion(result.version ?? null);
+        setNextRefreshAt(result.nextRefreshAt ?? null);
         if (result.changed) {
           const latestResponse = await fetch("/api/runs?latestOnly=1", { cache: "no-store" });
           if (latestResponse.ok) {
-            const latest = (await latestResponse.json()) as { run: RunResult | null; version: string | null };
+            const latest = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null };
             if (latest.run) {
               setRun(latest.run);
               setPersisted(false);
               setLatestVersion(latest.version);
+              setNextRefreshAt(latest.nextRefreshAt);
             }
           }
           const abortedResponse = await fetch("/api/aborted-tests", {
@@ -487,6 +501,19 @@ export default function Dashboard() {
     return [...filtered].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
   }, [visibleRows, testFrom, testTo]);
 
+  useEffect(() => {
+    const updateCountdown = () => {
+      if (!nextRefreshAt || refreshIntervalSeconds === 0) {
+        setRefreshSecondsLeft(0);
+        return;
+      }
+      setRefreshSecondsLeft(Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000)));
+    };
+    updateCountdown();
+    const timer = window.setInterval(updateCountdown, 1000);
+    return () => window.clearInterval(timer);
+  }, [nextRefreshAt, refreshIntervalSeconds]);
+
   return (
     <div className="mx-auto max-w-7xl">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 rounded-2xl border border-[var(--border)] bg-gradient-to-r from-[var(--header-from)] via-[var(--surface)] to-[var(--surface)] p-5 shadow-sm">
@@ -504,6 +531,15 @@ export default function Dashboard() {
                 {run?.meta.filter.value ??
                   "Oak_Stream_Platform_1_DMR-Platform_Beta-PAIV-Platform-AP1_Beta_Regression_Cycle"}
               </code>
+              {run?.meta.source === "network" && (
+                <span className="ml-2 inline-flex rounded-md bg-[var(--surface-alt)] px-2 py-0.5 text-xs tabular-nums text-[var(--text-muted)]" role="timer" aria-live="off">
+                  {refreshIntervalSeconds === 0
+                    ? "Auto-refresh off"
+                    : nextRefreshAt
+                      ? `Next refresh in ${formatCountdown(refreshSecondsLeft)}`
+                      : "Waiting for refresh schedule"}
+                </span>
+              )}
             </p>
           </div>
         </div>

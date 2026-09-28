@@ -20,6 +20,7 @@ export default function SettingsPage() {
   const [networkSaved, setNetworkSaved] = useState(false);
   const [theme, setTheme] = useState<ThemeId>("professional");
   const [themeSaved, setThemeSaved] = useState(false);
+  const [themeError, setThemeError] = useState("");
   const [ngaiToken, setNgaiToken] = useState("");
   const [ngaiTokenStatus, setNgaiTokenStatus] = useState<NgaiTokenStatus | null>(null);
   const [ngaiTokenMessage, setNgaiTokenMessage] = useState("");
@@ -37,6 +38,14 @@ export default function SettingsPage() {
     setProxyUrl(window.localStorage.getItem(NGAI_PROXY_KEY) ?? "");
     const storedTheme = window.localStorage.getItem(THEME_KEY);
     if (isThemeId(storedTheme)) setTheme(storedTheme);
+    void fetch("/api/settings/theme", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { theme?: ThemeId | null; error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not load shared theme.");
+        const sharedTheme = data.theme;
+        if (typeof sharedTheme === "string" && isThemeId(sharedTheme)) setTheme(sharedTheme);
+      })
+      .catch((error: unknown) => setThemeError(error instanceof Error ? error.message : "Could not load shared theme."));
     void fetch("/api/settings/ngai-token", { cache: "no-store" })
       .then(async (response) => {
         const data = (await response.json()) as NgaiTokenStatus & { error?: string };
@@ -131,12 +140,24 @@ export default function SettingsPage() {
     }
   };
 
-  const saveTheme = (value: ThemeId) => {
+  const saveTheme = async (value: ThemeId) => {
     setTheme(value);
     window.localStorage.setItem(THEME_KEY, value);
     document.documentElement.setAttribute("data-theme", value);
-    setThemeSaved(true);
-    window.setTimeout(() => setThemeSaved(false), 1800);
+    setThemeError("");
+    try {
+      const response = await fetch("/api/settings/theme", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theme: value }),
+      });
+      const data = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(data.error || "Could not save shared theme.");
+      setThemeSaved(true);
+      window.setTimeout(() => setThemeSaved(false), 1800);
+    } catch (error) {
+      setThemeError(error instanceof Error ? error.message : "Could not save shared theme.");
+    }
   };
 
   return (
@@ -318,8 +339,9 @@ export default function SettingsPage() {
           ))}
         </div>
         <p className="mt-5 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {themeSaved ? "Theme saved." : `Current theme: ${THEMES[theme].label}`}
+          {themeSaved ? "Shared theme saved." : `Current shared theme: ${THEMES[theme].label}`}
         </p>
+        {themeError && <p className="mt-2 text-sm text-red-600" role="alert">{themeError}</p>}
       </section>
     </div>
   );

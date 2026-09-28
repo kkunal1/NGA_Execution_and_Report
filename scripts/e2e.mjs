@@ -319,11 +319,28 @@ try {
   assert.equal((await fetch(`http://localhost:${APP_PORT}/api/settings/ngai-token`, { headers: { cookie: viewerCookie } })).status, 403);
   assert.equal((await fetch(`http://localhost:${APP_PORT}/api/settings/refresh`, { headers: { cookie: viewerCookie } })).status, 403);
   assert.equal((await fetch(`http://localhost:${APP_PORT}/api/runs?checkOnly=1`, { headers: { cookie: viewerCookie } })).status, 200);
+  assert.equal(await page.evaluate(async () => {
+    const response = await fetch("/api/settings/theme", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme: "blue" }),
+    });
+    return response.status;
+  }), 200, "admin can set the shared theme");
+  const refreshSetting = await fetch(`http://localhost:${APP_PORT}/api/settings/refresh`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", cookie: adminCookie },
+    body: JSON.stringify({ intervalSeconds: 15 }),
+  });
+  assert.equal(refreshSetting.status, 200, "admin can configure the refresh interval");
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByLabel("Username").fill("root");
   await page.getByLabel("Password").fill("root");
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByText("Read-only viewer", { exact: true }).waitFor();
+  await page.waitForFunction(() => document.documentElement.getAttribute("data-theme") === "blue");
+  await page.waitForFunction(() => document.querySelector('[role="timer"]')?.textContent?.startsWith("Next refresh in 00:"));
+  assert.match(await page.getByRole("timer").textContent(), /Next refresh in 00:/);
   assert.equal(await page.getByRole("button", { name: "Load NGAi data" }).count(), 0);
   assert.equal(await page.getByRole("link", { name: "Settings" }).count(), 0);
 

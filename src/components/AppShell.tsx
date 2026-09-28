@@ -81,17 +81,43 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const apply = () => {
-      const stored = window.localStorage.getItem(THEME_KEY);
-      document.documentElement.setAttribute("data-theme", isThemeId(stored) ? stored : "professional");
+    if (!role) return;
+    let cancelled = false;
+    const applyTheme = (value: string | null) => {
+      const selected = isThemeId(value) ? value : "professional";
+      document.documentElement.setAttribute("data-theme", selected);
+      window.localStorage.setItem(THEME_KEY, selected);
     };
-    apply();
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === THEME_KEY) apply();
+    const syncTheme = async () => {
+      try {
+        const response = await fetch("/api/settings/theme", { cache: "no-store" });
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as { theme: string | null };
+        if (data.theme) {
+          applyTheme(data.theme);
+        } else if (role === "admin") {
+          const localTheme = window.localStorage.getItem(THEME_KEY);
+          const initialTheme = isThemeId(localTheme) ? localTheme : "professional";
+          const saveResponse = await fetch("/api/settings/theme", {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ theme: initialTheme }),
+          });
+          if (!cancelled && saveResponse.ok) applyTheme(initialTheme);
+        } else {
+          applyTheme("professional");
+        }
+      } catch {
+        if (!cancelled) applyTheme(window.localStorage.getItem(THEME_KEY));
+      }
     };
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+    void syncTheme();
+    const timer = window.setInterval(() => void syncTheme(), 5000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [role]);
 
   if (checkingSession) {
     return <div className="flex min-h-screen items-center justify-center bg-[var(--page-bg)] text-sm text-[var(--text-muted)]">Checking sign-in…</div>;

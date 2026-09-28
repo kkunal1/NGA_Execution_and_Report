@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
 import { NGAiAuthError } from "@/lib/ngai-client";
 import { loadTestRunQuery } from "@/lib/test-run-data";
+import { getRefreshSettings, markRefreshCompleted } from "@/lib/refresh-settings";
 import { getLatestVersion, saveLatestIfChanged } from "@/lib/store";
 import type { NetworkOverride } from "@/lib/proxy";
 import type { RunResult } from "@/lib/types";
@@ -27,6 +28,8 @@ export async function POST(req: Request) {
   }
   try {
     const result = await loadTestRunQuery(suiteName, network);
+    const refreshSettings = await getRefreshSettings();
+    const refreshStatus = await markRefreshCompleted(refreshSettings.intervalSeconds);
     let changed = false;
     let runId: string | null = null;
     let version = await getLatestVersion();
@@ -57,8 +60,8 @@ export async function POST(req: Request) {
       runId = saved.run.meta.runId;
       version = saved.version;
     }
-    if (automatic) return NextResponse.json({ changed, runId, version });
-    return NextResponse.json({ ...result, changed, runId, version });
+    if (automatic) return NextResponse.json({ changed, runId, version, ...refreshStatus });
+    return NextResponse.json({ ...result, changed, runId, version, ...refreshStatus });
   } catch (error) {
     const status = error instanceof NGAiAuthError ? 401 : 500;
     return NextResponse.json(

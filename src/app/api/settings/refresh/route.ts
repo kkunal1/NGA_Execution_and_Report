@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
-import { getRefreshSettings, saveRefreshSettings, validateRefreshInterval } from "@/lib/refresh-settings";
+import { getRefreshSettings, getRefreshStatus, saveRefreshSettings, validateRefreshInterval } from "@/lib/refresh-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const denied = await authorizeRequest(req, true);
   if (denied) return denied;
-  return NextResponse.json(await getRefreshSettings());
+  return NextResponse.json({ ...await getRefreshSettings(), ...await getRefreshStatus() });
 }
 
 export async function PUT(req: Request) {
@@ -22,7 +22,7 @@ export async function PUT(req: Request) {
     }
     const settings = { intervalSeconds };
     await saveRefreshSettings(settings);
-    return NextResponse.json(settings);
+    return NextResponse.json({ ...settings, ...await getRefreshStatus() });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not save refresh settings." }, { status: 400 });
   }

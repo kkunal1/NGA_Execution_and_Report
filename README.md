@@ -95,7 +95,7 @@ HTTPS certificate and the corporate CA is installed in Windows, use Node's syste
 certificate store before starting the app in PowerShell:
 
 ```powershell
-$env:NODE_USE_SYSTEM_CA = '1'
+$env:NODE_OPTIONS='--use-system-ca'
 npm run build
 npm start
 ```

@@ -21,6 +21,7 @@ import { DATA_PROVIDER_KEY, readNgaiNetworkOverride, type DataProvider } from "@
 import { THEME_KEY } from "@/lib/theme";
 import { buildReportFilename } from "@/lib/report-html";
 import { useAppRole } from "@/components/auth-context";
+import { useRefreshSchedule } from "@/components/refresh-context";
 
 const SUITE_INPUT_KEY = "nga-suite-name-input";
 const NGAI_RUN_KEY = "nga-ngai-last-run";
@@ -42,8 +43,6 @@ const RAW_STATE_COLORS: Record<string, string> = {
 };
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
-const formatCountdown = (seconds: number) =>
-  `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 
 function Card({
   label,
@@ -80,11 +79,12 @@ export default function Dashboard() {
   // sessionStorage synchronously during the initial render/state-initializers caused a hydration mismatch.
   const restoredNgaiRef = useRef<{ suiteName?: string; suiteNames?: string[]; run: RunResult } | null>(null);
   const isAdmin = useAppRole() === "admin";
+  const refreshContext = useRefreshSchedule();
+  const setSharedRefreshSchedule = refreshContext?.setSchedule;
 
   const [run, setRun] = useState<RunResult | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [nextRefreshAt, setNextRefreshAt] = useState<number | null>(null);
-  const [refreshSecondsLeft, setRefreshSecondsLeft] = useState(0);
   const [checkedDataSuites, setCheckedDataSuites] = useState<string[]>([]);
   const [abortedRows, setAbortedRows] = useState<TestRow[]>([]);
   const [runs, setRuns] = useState<string[]>([]);
@@ -285,6 +285,10 @@ export default function Dashboard() {
       })
       .catch(() => setRefreshIntervalSeconds(0));
   }, [isAdmin]);
+
+  useEffect(() => {
+    setSharedRefreshSchedule?.({ nextRefreshAt, intervalSeconds: refreshIntervalSeconds });
+  }, [setSharedRefreshSchedule, nextRefreshAt, refreshIntervalSeconds]);
 
   useEffect(() => {
     if (!latestVersion) return;
@@ -501,19 +505,6 @@ export default function Dashboard() {
     return [...filtered].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
   }, [visibleRows, testFrom, testTo]);
 
-  useEffect(() => {
-    const updateCountdown = () => {
-      if (!nextRefreshAt || refreshIntervalSeconds === 0) {
-        setRefreshSecondsLeft(0);
-        return;
-      }
-      setRefreshSecondsLeft(Math.max(0, Math.ceil((nextRefreshAt - Date.now()) / 1000)));
-    };
-    updateCountdown();
-    const timer = window.setInterval(updateCountdown, 1000);
-    return () => window.clearInterval(timer);
-  }, [nextRefreshAt, refreshIntervalSeconds]);
-
   return (
     <div className="mx-auto max-w-7xl">
       <header className="mb-6 flex flex-wrap items-end justify-between gap-4 rounded-2xl border border-[var(--border)] bg-gradient-to-r from-[var(--header-from)] via-[var(--surface)] to-[var(--surface)] p-5 shadow-sm">
@@ -531,15 +522,6 @@ export default function Dashboard() {
                 {run?.meta.filter.value ??
                   "Oak_Stream_Platform_1_DMR-Platform_Beta-PAIV-Platform-AP1_Beta_Regression_Cycle"}
               </code>
-              {run?.meta.source === "network" && (
-                <span className="ml-2 inline-flex rounded-md bg-[var(--surface-alt)] px-2 py-0.5 text-xs tabular-nums text-[var(--text-muted)]" role="timer" aria-live="off">
-                  {refreshIntervalSeconds === 0
-                    ? "Auto-refresh off"
-                    : nextRefreshAt
-                      ? `Next refresh in ${formatCountdown(refreshSecondsLeft)}`
-                      : "Waiting for refresh schedule"}
-                </span>
-              )}
             </p>
           </div>
         </div>

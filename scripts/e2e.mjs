@@ -339,10 +339,14 @@ try {
   await page.getByRole("button", { name: "Sign in" }).click();
   await page.getByText("Read-only viewer", { exact: true }).waitFor();
   await page.waitForFunction(() => document.documentElement.getAttribute("data-theme") === "blue");
-  await page.waitForFunction(() => document.querySelector('[role="timer"]')?.textContent?.startsWith("Next refresh in 00:"));
-  assert.match(await page.getByRole("timer").textContent(), /Next refresh in 00:/);
+  await page.waitForFunction(() => document.querySelector('[role="timer"]')?.getAttribute("aria-label")?.startsWith("Next refresh in 00:"));
+  assert.match(await page.getByRole("timer").getAttribute("aria-label"), /Next refresh in 00:/);
   assert.equal(await page.getByRole("button", { name: "Load NGAi data" }).count(), 0);
   assert.equal(await page.getByRole("link", { name: "Settings" }).count(), 0);
+  const viewerDownloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Download" }).click();
+  const viewerDownload = await viewerDownloadPromise;
+  assert.ok(viewerDownload.suggestedFilename().endsWith(".html"), "viewer can download the displayed report");
 
   const traversal = await fetch(
     `http://localhost:${APP_PORT}/api/runs?runId=..%2F..%2Fpackage`,

@@ -1,18 +1,48 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut } from "lucide-react";
+import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3 } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
+import { RefreshScheduleContext, type RefreshSchedule } from "./refresh-context";
 
 const NAV = [
   { href: "/", label: "Execution Report", icon: LayoutDashboard },
   { href: "/new-job", label: "NGA TestRun Data", icon: Database, adminOnly: true },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
+
+function RefreshCountdown() {
+  const refreshContext = useContext(RefreshScheduleContext);
+  const [now, setNow] = useState(Date.now());
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const schedule = refreshContext?.schedule;
+  if (!schedule) return null;
+  const remaining = schedule.nextRefreshAt
+    ? Math.max(0, Math.ceil((schedule.nextRefreshAt - now) / 1000))
+    : null;
+  const label = schedule.intervalSeconds === 0
+    ? "Off"
+    : remaining == null
+      ? "Pending"
+      : `${String(Math.floor(remaining / 60)).padStart(2, "0")}:${String(remaining % 60).padStart(2, "0")}`;
+
+  return (
+    <div role="timer" className="inline-flex items-center gap-2 rounded-md bg-[var(--surface-alt)] px-3 py-1.5 text-[var(--text)]" aria-label={remaining == null ? `Next refresh ${label.toLowerCase()}` : `Next refresh in ${label}`}>
+      <Clock3 className="h-4 w-4 shrink-0 text-[var(--accent)]" />
+      <span className="text-xs text-[var(--text-muted)]">Next refresh</span>
+      <span className="min-w-12 text-center text-lg font-bold tabular-nums">{label}</span>
+    </div>
+  );
+}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -26,6 +56,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
+  const [refreshSchedule, setRefreshSchedule] = useState<RefreshSchedule>({ nextRefreshAt: null, intervalSeconds: 0 });
+  const refreshContextValue = useMemo(
+    () => ({ schedule: refreshSchedule, setSchedule: setRefreshSchedule }),
+    [refreshSchedule],
+  );
 
   useEffect(() => {
     void fetch("/api/auth/session", { cache: "no-store" })
@@ -160,6 +195,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <AppRoleContext.Provider value={role}>
+    <RefreshScheduleContext.Provider value={refreshContextValue}>
     <div className="flex min-h-screen bg-[var(--page-bg)]">
       <aside className="flex w-64 shrink-0 flex-col bg-[var(--sidebar-bg)] text-[var(--sidebar-text)]">
         <div className="flex items-center gap-2 px-5 py-5 text-white">
@@ -199,6 +235,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 {now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
+            <RefreshCountdown />
             <span className="font-semibold text-[var(--text)]">intel</span>
             <span className="text-xs">{username}</span>
             <button type="button" onClick={() => void signOut()} title="Sign out" aria-label="Sign out" className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--surface-alt)]">
@@ -209,6 +246,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 px-6 py-6">{children}</main>
       </div>
     </div>
+    </RefreshScheduleContext.Provider>
     </AppRoleContext.Provider>
   );
 }

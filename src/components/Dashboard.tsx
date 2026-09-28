@@ -81,6 +81,7 @@ export default function Dashboard() {
   const isAdmin = useAppRole() === "admin";
   const refreshContext = useRefreshSchedule();
   const setSharedRefreshSchedule = refreshContext?.setSchedule;
+  const abortedSnapshotKey = useRef("");
 
   const [run, setRun] = useState<RunResult | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
@@ -266,15 +267,41 @@ export default function Dashboard() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ suiteNames: suites, ...readNgaiNetworkOverride() }),
       });
-      const data = (await res.json()) as { error?: string; rows?: TestRow[] };
+      const data = (await res.json()) as { error?: string; rows?: TestRow[]; suiteNames?: string[] };
       if (!res.ok) throw new Error(data.error ?? "Could not load aborted tests");
       const rows = data.rows ?? [];
       setAbortedRows(rows);
-      window.sessionStorage.setItem(NGAI_ABORTED_KEY, JSON.stringify({ suiteNames: suites, rows }));
+      window.sessionStorage.setItem(NGAI_ABORTED_KEY, JSON.stringify({ suiteNames: data.suiteNames ?? suites, rows }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
   };
+
+  useEffect(() => {
+    if (!run || run.meta.stateColumn !== "State" || autoRefreshSuites.length === 0) return;
+    const requestKey = `${run.meta.runId}:${autoRefreshSuites.join("\n")}`;
+    if (abortedSnapshotKey.current === requestKey) return;
+    abortedSnapshotKey.current = requestKey;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch("/api/aborted-tests", { cache: "no-store" });
+        if (!response.ok) return;
+        const snapshot = (await response.json()) as { rows?: TestRow[]; suiteNames?: string[]; hasSnapshot?: boolean };
+        if (cancelled) return;
+        const rows = snapshot.rows ?? [];
+        setAbortedRows(rows);
+        window.sessionStorage.setItem(NGAI_ABORTED_KEY, JSON.stringify({ suiteNames: snapshot.suiteNames ?? [], rows }));
+        const cachedSuites = new Set((snapshot.suiteNames ?? []).map((suite) => suite.toLowerCase()));
+        if (isAdmin && (!snapshot.hasSnapshot || autoRefreshSuites.some((suite) => !cachedSuites.has(suite.toLowerCase())))) {
+          await loadAbortedTests(autoRefreshSuites);
+        }
+      } catch (cause) {
+        if (!cancelled && isAdmin) setError(cause instanceof Error ? cause.message : "Could not load shared aborted tests.");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [run?.meta.runId, run?.meta.stateColumn, isAdmin, autoRefreshSuites]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -324,7 +351,7 @@ export default function Dashboard() {
   }, [latestVersion]);
 
   useEffect(() => {
-    if (!isAdmin || refreshIntervalSeconds === 0 || run?.meta.source !== "network" || autoRefreshSuites.length === 0) return;
+    if (!isAdmin || refreshIntervalSeconds === 0 || run?.meta.stateColumn !== "State" || autoRefreshSuites.length === 0) return;
     let cancelled = false;
     const refresh = async () => {
       if (autoRefreshInFlight.current || document.visibilityState === "hidden") return;
@@ -377,7 +404,7 @@ export default function Dashboard() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [isAdmin, refreshIntervalSeconds, run?.meta.source, autoRefreshSuites]);
+  }, [isAdmin, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
 
   const availableSuites = useMemo(() => run
     ? normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])

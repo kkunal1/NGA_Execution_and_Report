@@ -14,11 +14,16 @@ const records = [
   { testRunId: "run-3", udmTestId: "test-3", state: "Infra Error", testLineRevision: { testLineName: "line-b", testSuiteName: SUITE } },
   { testRunId: "run-4", udmTestId: "test-4", state: "Passed", testLineRevision: { testLineName: "line-c", testSuiteName: SECOND_SUITE } },
 ];
+const abortedRecords = [
+  { testRunId: "abort-1", state: "Aborted", testLineRevision: { testLineName: "line-a", testSuiteName: SUITE } },
+  { testRunId: "abort-2", state: "Aborted", testLineRevision: { testLineName: "line-c", testSuiteName: SECOND_SUITE } },
+];
 
 const mock = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${MOCK_PORT}`);
   const filter = url.searchParams.get("$filter") ?? "";
   const skip = Number(url.searchParams.get("$skip") ?? "0");
+  const isAbortedQuery = filter.includes("State eq 'Aborted'");
   const patPresent = req.headers["x-nga-pat"] === "test-token";
   const matchedSuite = [SUITE, SECOND_SUITE].find((suite) =>
     filter.includes(`tolower(TestLine/TestSuite/TestSuiteName) eq '${suite.toLowerCase()}'`) &&
@@ -28,13 +33,14 @@ const mock = http.createServer((req, res) => {
     patPresent &&
     !filter.includes("Beta_Cycle") &&
     !filter.includes("beta_regression_cycle") &&
-    filter.includes("nonTriageLatestRunFlag eq true") &&
+    (isAbortedQuery || filter.includes("nonTriageLatestRunFlag eq true")) &&
     matchedSuite != null &&
     url.searchParams.get("$count") === "true" &&
     url.searchParams.get("$top") === "2" &&
     url.searchParams.get("$select")?.includes("State") === true &&
     url.searchParams.get("$expand")?.includes("TestLine") === true;
-  const suiteRecords = records.filter((record) =>
+  const sourceRecords = isAbortedQuery ? abortedRecords : records;
+  const suiteRecords = sourceRecords.filter((record) =>
     record.testLineRevision.testSuiteName.toLowerCase() === matchedSuite?.toLowerCase(),
   );
   const page = valid ? suiteRecords.slice(skip, skip + 2) : [];
@@ -112,6 +118,24 @@ try {
   assert.deepEqual(result.rows.map((row) => row.suite), [SUITE, SUITE, SUITE, SECOND_SUITE]);
   assert.deepEqual(result.steps, { PreBoot: [], PostTest: [], Cleanup: [] });
 
+  const abortedResponse = await fetch(`http://localhost:${APP_PORT}/api/aborted-tests`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({ suiteNames: [SUITE, SECOND_SUITE] }),
+  });
+  const abortedResult = await abortedResponse.json();
+  assert.equal(abortedResponse.status, 200, JSON.stringify(abortedResult));
+  assert.equal(abortedResult.total, 2);
+  const viewerLogin = await fetch(`http://localhost:${APP_PORT}/api/auth/login`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username: "root", password: "root" }),
+  });
+  const viewerCookie = viewerLogin.headers.get("set-cookie")?.split(";")[0];
+  assert.ok(viewerCookie, "viewer session cookie should be issued");
+  const sharedAborted = await (await fetch(`http://localhost:${APP_PORT}/api/aborted-tests`, { headers: { cookie: viewerCookie } })).json();
+  assert.equal(sharedAborted.rows.length, 2, "viewer receives server-persisted aborted rows");
+
   const refreshSettings = await fetch(`http://localhost:${APP_PORT}/api/settings/refresh`, { headers: { cookie } });
   assert.equal((await refreshSettings.json()).intervalSeconds, 60, "default refresh interval should be 60 seconds");
   const updateRefreshSettings = await fetch(`http://localhost:${APP_PORT}/api/settings/refresh`, {
@@ -148,6 +172,11 @@ try {
   }, { timeout: 25_000 });
   const automaticRequest = await autoRefreshRequest;
   assert.deepEqual(JSON.parse(automaticRequest.postData() ?? "{}").suiteNames, [SUITE, SECOND_SUITE]);
+  await page.getByRole("button", { name: "Sign out" }).click();
+  await page.getByLabel("Username").fill("root");
+  await page.getByLabel("Password").fill("root");
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await page.getByRole("heading", { name: "Aborted tests (2)" }).waitFor();
 
   console.log("NGAi E2E OK - authenticated per-suite queries, $skip pagination, merged results, no Chrome dependency");
   await cleanup();

@@ -5,8 +5,11 @@ import { config } from "./config";
 import type { RunResult } from "./types";
 
 const LATEST = "latest.json";
+const ABORTED_LATEST = "aborted-latest.json";
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 const RUN_FILE = /^(?:\d{17}|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
+
+export type AbortedSnapshot = { suiteNames: string[]; rows: import("./types").TestRow[]; fetchedAt: string };
 
 async function ensureDirs() {
   await fs.mkdir(config.dataDir, { recursive: true });
@@ -39,6 +42,29 @@ export async function getLatestVersion(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export async function loadAbortedSnapshot(): Promise<AbortedSnapshot | null> {
+  try {
+    return JSON.parse(await fs.readFile(path.join(config.dataDir, ABORTED_LATEST), "utf8")) as AbortedSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+export async function saveAbortedSnapshot(suiteNames: string[], rows: import("./types").TestRow[]): Promise<AbortedSnapshot> {
+  await fs.mkdir(config.dataDir, { recursive: true });
+  const existing = await loadAbortedSnapshot();
+  const replacedSuites = new Set(suiteNames.map((suite) => suite.toLowerCase()));
+  const retainedRows = (existing?.rows ?? []).filter((row) => !replacedSuites.has(row.suite.toLowerCase()));
+  const retainedSuites = (existing?.suiteNames ?? []).filter((suite) => !replacedSuites.has(suite.toLowerCase()));
+  const snapshot = {
+    suiteNames: [...retainedSuites, ...suiteNames],
+    rows: [...retainedRows, ...rows],
+    fetchedAt: new Date().toISOString(),
+  };
+  await fs.writeFile(path.join(config.dataDir, ABORTED_LATEST), JSON.stringify(snapshot, null, 2), { encoding: "utf8", mode: 0o600 });
+  return snapshot;
 }
 
 export async function loadLatest(): Promise<RunResult | null> {

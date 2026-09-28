@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+:root {
+  --page-bg: #f8fafc;
+  --surface: #ffffff;
+  --surface-alt: #f8fafc;
+  --border: #e2e8f0;
+  --text: #0f172a;
+  --text-muted: #64748b;
+  --sidebar-bg: #0f172a;
+  --sidebar-text: #cbd5e1;
+  --accent: #0f172a;
+  --accent-text: #ffffff;
+  --header-from: #f0f9ff;
+
+  --card-pass-bg: #f0fdf4;
+  --card-pass-border: #bbf7d0;
+  --card-pass-label: #15803d;
+  --card-fail-bg: #fef2f2;
+  --card-fail-border: #fecaca;
+  --card-fail-label: #b91c1c;
+  --card-blocked-bg: #fffbeb;
+  --card-blocked-border: #fde68a;
+  --card-blocked-label: #b45309;
+  --card-progress-bg: #f0f9ff;
+  --card-progress-border: #bae6fd;
+  --card-progress-label: #0369a1;
+  --card-violet-bg: #f5f3ff;
+  --card-violet-border: #ddd6fe;
+  --card-violet-label: #6d28d9;
+}
+
+[data-theme="blue"] {
+  --page-bg: #eff6ff;
+  --surface: #ffffff;
+  --surface-alt: #eff6ff;
+  --border: #bfdbfe;
+  --text: #0f172a;
+  --text-muted: #475569;
+  --sidebar-bg: #1e3a8a;
+  --sidebar-text: #bfdbfe;
+  --accent: #2563eb;
+  --accent-text: #ffffff;
+  --header-from: #dbeafe;
+
+  --card-pass-bg: #ecfdf5;
+  --card-pass-border: #a7f3d0;
+  --card-pass-label: #15803d;
+  --card-fail-bg: #fef2f2;
+  --card-fail-border: #fecaca;
+  --card-fail-label: #b91c1c;
+  --card-blocked-bg: #fffbeb;
+  --card-blocked-border: #fde68a;
+  --card-blocked-label: #b45309;
+  --card-progress-bg: #eff6ff;
+  --card-progress-border: #bfdbfe;
+  --card-progress-label: #1d4ed8;
+  --card-violet-bg: #f5f3ff;
+  --card-violet-border: #ddd6fe;
+  --card-violet-label: #6d28d9;
+}
+
+[data-theme="black"] {
+  --page-bg: #0b1220;
+  --surface: #111827;
+  --surface-alt: #1e293b;
+  --border: #334155;
+  --text: #e5e7eb;
+  --text-muted: #94a3b8;
+  --sidebar-bg: #000000;
+  --sidebar-text: #94a3b8;
+  --accent: #38bdf8;
+  --accent-text: #0b1220;
+  --header-from: #1e293b;
+
+  --card-pass-bg: rgba(22, 163, 74, 0.18);
+  --card-pass-border: #166534;
+  --card-pass-label: #4ade80;
+  --card-fail-bg: rgba(220, 38, 38, 0.18);
+  --card-fail-border: #991b1b;
+  --card-fail-label: #f87171;
+  --card-blocked-bg: rgba(245, 158, 11, 0.18);
+  --card-blocked-border: #92400e;
+  --card-blocked-label: #fbbf24;
+  --card-progress-bg: rgba(14, 165, 233, 0.18);
+  --card-progress-border: #075985;
+  --card-progress-label: #38bdf8;
+  --card-violet-bg: rgba(139, 92, 246, 0.18);
+  --card-violet-border: #5b21b6;
+  --card-violet-label: #c4b5fd;
+}
+
+html,
+body {
+  background: var(--page-bg);
+  color: var(--text);
+}

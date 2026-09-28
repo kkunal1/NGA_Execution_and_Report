@@ -1,0 +1,42 @@
+{
+  "name": "nga-execution-and-report",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3000 -H 127.0.0.1",
+    "build": "next build",
+    "start": "next start -p 3000 -H 127.0.0.1",
+    "dev:lan": "next dev -p 3000 -H 0.0.0.0",
+    "lint": "next lint",
+    "auth": "node scripts/auth.mjs",
+    "doctor": "node scripts/check-browser.mjs",
+    "test": "node scripts/test.mjs",
+    "test:e2e": "node scripts/e2e.mjs",
+    "test:e2e:ngai": "node scripts/e2e-ngai.mjs",
+    "postinstall": "playwright install chromium"
+  },
+  "overrides": {
+    "postcss": "^8.5.23",
+    "sharp": "^0.35.0"
+  },
+  "dependencies": {
+    "lucide-react": "^1.47.0",
+    "next": "^15.5.23",
+    "react": "19.1.1",
+    "react-dom": "19.1.1",
+    "recharts": "2.15.4",
+    "undici": "^7.28.0",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.1.13",
+    "@types/node": "22.15.3",
+    "@types/react": "19.1.10",
+    "@types/react-dom": "19.1.7",
+    "eslint": "9.34.0",
+    "eslint-config-next": "^15.5.23",
+    "playwright": "^1.62.1",
+    "tailwindcss": "4.1.13",
+    "typescript": "5.9.2"
+  }
+}

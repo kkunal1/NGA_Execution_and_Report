@@ -25,6 +25,14 @@ type GraphMailForm = {
   lastError: string | null;
 };
 
+type DashboardSettings = {
+  executionStatusSplit: boolean;
+  rawStateValues: boolean;
+  poolSystems: boolean;
+  executionTime: boolean;
+  ngaiTestRunData: boolean;
+};
+
 export default function SettingsPage() {
   const [provider, setProvider] = useState<DataProvider>("ngai");
   const [saved, setSaved] = useState(false);
@@ -42,6 +50,15 @@ export default function SettingsPage() {
   const [refreshInterval, setRefreshInterval] = useState("60");
   const [refreshSaved, setRefreshSaved] = useState(false);
   const [refreshError, setRefreshError] = useState("");
+  const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>({
+    executionStatusSplit: true,
+    rawStateValues: true,
+    poolSystems: false,
+    executionTime: false,
+    ngaiTestRunData: false,
+  });
+  const [dashboardSettingsSaved, setDashboardSettingsSaved] = useState(false);
+  const [dashboardSettingsError, setDashboardSettingsError] = useState("");
   const [graphMail, setGraphMail] = useState<GraphMailForm>({
     enabled: false,
     tenantId: "",
@@ -91,6 +108,19 @@ export default function SettingsPage() {
         setRefreshInterval(String(data.intervalSeconds ?? 60));
       })
       .catch((error: unknown) => setRefreshError(error instanceof Error ? error.message : "Could not load refresh settings."));
+    void fetch("/api/settings/dashboard", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as DashboardSettings & { error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not load dashboard settings.");
+        setDashboardSettings({
+          executionStatusSplit: data.executionStatusSplit,
+          rawStateValues: data.rawStateValues,
+          poolSystems: data.poolSystems,
+          executionTime: data.executionTime,
+          ngaiTestRunData: data.ngaiTestRunData,
+        });
+      })
+      .catch((error: unknown) => setDashboardSettingsError(error instanceof Error ? error.message : "Could not load dashboard settings."));
     void fetch("/api/settings/mail", { cache: "no-store" })
       .then(async (response) => {
         const data = (await response.json()) as Partial<GraphMailForm> & { error?: string };
@@ -251,6 +281,25 @@ export default function SettingsPage() {
     }
   };
 
+  const saveDashboardSettings = async (next: DashboardSettings) => {
+    setDashboardSettings(next);
+    setDashboardSettingsError("");
+    try {
+      const response = await fetch("/api/settings/dashboard", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(next),
+      });
+      const data = (await response.json()) as DashboardSettings & { error?: string };
+      if (!response.ok) throw new Error(data.error || "Could not save dashboard settings.");
+      setDashboardSettings(data);
+      setDashboardSettingsSaved(true);
+      window.setTimeout(() => setDashboardSettingsSaved(false), 1800);
+    } catch (error) {
+      setDashboardSettingsError(error instanceof Error ? error.message : "Could not save dashboard settings.");
+    }
+  };
+
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-8">
@@ -362,6 +411,35 @@ export default function SettingsPage() {
           {refreshSaved ? "Refresh interval saved." : `Current interval: ${refreshInterval || "0"} seconds`}
         </p>
         {refreshError && <p className="mt-2 text-sm text-red-600" role="alert">{refreshError}</p>}
+      </section>
+
+      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="dashboard-heading">
+        <h2 id="dashboard-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Dashboard charts</h2>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">These shared toggles control what every signed-in user sees on the Execution Report dashboard.</p>
+        <div className="mt-4 space-y-3">
+          {([
+            ["executionStatusSplit", "Execution status split"],
+            ["rawStateValues", "Raw state values"],
+            ["poolSystems", "B0 Pool Systems menu"],
+            ["executionTime", "Check Execution Time menu"],
+            ["ngaiTestRunData", "NGA Test Run Data menu (admin only)"],
+          ] as const).map(([key, label]) => (
+            <label key={key} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={dashboardSettings[key]}
+                onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, [key]: event.target.checked })}
+                className="h-5 w-5 accent-[var(--accent)]"
+              />
+            </label>
+          ))}
+        </div>
+        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
+          {dashboardSettingsSaved ? "Dashboard chart settings saved." : "Changes apply to all signed-in users."}
+        </p>
+        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="mail-heading">

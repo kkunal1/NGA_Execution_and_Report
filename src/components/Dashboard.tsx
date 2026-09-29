@@ -104,6 +104,7 @@ export default function Dashboard() {
   const [testFrom, setTestFrom] = useState("");
   const [testTo, setTestTo] = useState("");
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
+  const [dashboardSettings, setDashboardSettings] = useState({ executionStatusSplit: true, rawStateValues: true });
   const autoRefreshInFlight = useRef(false);
 
   const load = useCallback(async (runId?: string) => {
@@ -176,6 +177,28 @@ export default function Dashboard() {
     };
     window.addEventListener("storage", onStorage);
     return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadDashboardSettings = async () => {
+      try {
+        const response = await fetch("/api/settings/dashboard", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = (await response.json()) as { executionStatusSplit?: boolean; rawStateValues?: boolean };
+        if (!cancelled && typeof data.executionStatusSplit === "boolean" && typeof data.rawStateValues === "boolean") {
+          setDashboardSettings({ executionStatusSplit: data.executionStatusSplit, rawStateValues: data.rawStateValues });
+        }
+      } catch {
+        // Keep the charts enabled if shared settings are temporarily unavailable.
+      }
+    };
+    void loadDashboardSettings();
+    const timer = window.setInterval(() => void loadDashboardSettings(), 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const capture = async (headless: boolean, suites?: string[]) => {
@@ -762,8 +785,9 @@ export default function Dashboard() {
             {s.other > 0 && <Card label="Other" value={s.other} tone="text-[var(--card-violet-label)]" cardTone="bg-[var(--card-violet-bg)] border-[var(--card-violet-border)]" />}
           </section>
 
+          {(dashboardSettings.executionStatusSplit || dashboardSettings.rawStateValues) && (
           <section className="mt-6 grid gap-4 lg:grid-cols-2">
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 shadow-sm">
+            {dashboardSettings.executionStatusSplit && <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Execution status split
               </h2>
@@ -804,9 +828,9 @@ export default function Dashboard() {
                   ))}
                 </ul>
               </div>
-            </div>
+            </div>}
 
-            <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 shadow-sm">
+            {dashboardSettings.rawStateValues && <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 shadow-sm">
               <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                 Raw “{run.meta.stateColumn}” values
               </h2>
@@ -828,8 +852,9 @@ export default function Dashboard() {
                   </BarChart>
                 </ResponsiveContainer>
               </div>
-            </div>
+            </div>}
           </section>
+          )}
 
           {(s.byDomain ?? []).length > 1 && (
             <section className="mt-6">

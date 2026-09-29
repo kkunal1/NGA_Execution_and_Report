@@ -3,7 +3,7 @@
 import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server } from "lucide-react";
+import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
@@ -11,10 +11,17 @@ import { RefreshScheduleContext, type RefreshSchedule } from "./refresh-context"
 
 const NAV = [
   { href: "/", label: "Execution Report", icon: LayoutDashboard },
-  { href: "/pool-systems", label: "B0 Pool Systems", icon: Server },
-  { href: "/new-job", label: "NGA TestRun Data", icon: Database, adminOnly: true },
+  { href: "/pool-systems", label: "B0 Pool Systems", icon: Server, visibilityKey: "poolSystems" as const },
+  { href: "/execution-time", label: "Check Execution Time", icon: Timer, visibilityKey: "executionTime" as const },
+  { href: "/new-job", label: "NGA TestRun Data", icon: Database, adminOnly: true, visibilityKey: "ngaiTestRunData" as const },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
+
+type MenuVisibility = {
+  poolSystems: boolean;
+  executionTime: boolean;
+  ngaiTestRunData: boolean;
+};
 
 function RefreshCountdown() {
   const refreshContext = useContext(RefreshScheduleContext);
@@ -56,6 +63,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
+  const [menuVisibility, setMenuVisibility] = useState<MenuVisibility>({ poolSystems: false, executionTime: false, ngaiTestRunData: false });
   const [now, setNow] = useState<Date | null>(null);
   const [refreshSchedule, setRefreshSchedule] = useState<RefreshSchedule>({ nextRefreshAt: null, intervalSeconds: 0 });
   const refreshContextValue = useMemo(
@@ -74,6 +82,29 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       .catch(() => setLoginError("Could not check your sign-in session."))
       .finally(() => setCheckingSession(false));
   }, []);
+
+  useEffect(() => {
+    if (!role) return;
+    let cancelled = false;
+    const loadMenuVisibility = async () => {
+      try {
+        const response = await fetch("/api/settings/dashboard", { cache: "no-store" });
+        if (!response.ok) return;
+        const data = (await response.json()) as MenuVisibility;
+        if (!cancelled && typeof data.poolSystems === "boolean" && typeof data.executionTime === "boolean" && typeof data.ngaiTestRunData === "boolean") {
+          setMenuVisibility({ poolSystems: data.poolSystems, executionTime: data.executionTime, ngaiTestRunData: data.ngaiTestRunData });
+        }
+      } catch {
+        // Keep the default viewer menu if shared settings are temporarily unavailable.
+      }
+    };
+    void loadMenuVisibility();
+    const timer = window.setInterval(() => void loadMenuVisibility(), 5_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [role]);
 
   useEffect(() => {
     if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job")) {
@@ -204,7 +235,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <span className="text-lg font-semibold tracking-tight">NGA Portal</span>
         </div>
         <nav className="mt-2 flex-1 space-y-1 px-3">
-          {NAV.filter((item) => !item.adminOnly || role === "admin").map(({ href, label, icon: Icon }) => {
+          {NAV.filter((item) => {
+            if (role === "admin") return true;
+            if (item.adminOnly) return false;
+            return !item.visibilityKey || menuVisibility[item.visibilityKey];
+          }).map(({ href, label, icon: Icon }) => {
             const active = pathname === href;
             return (
               <Link

@@ -3,7 +3,7 @@
 import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3 } from "lucide-react";
+import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
@@ -11,6 +11,7 @@ import { RefreshScheduleContext, type RefreshSchedule } from "./refresh-context"
 
 const NAV = [
   { href: "/", label: "Execution Report", icon: LayoutDashboard },
+  { href: "/pool-systems", label: "B0 Pool Systems", icon: Server },
   { href: "/new-job", label: "NGA TestRun Data", icon: Database, adminOnly: true },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];

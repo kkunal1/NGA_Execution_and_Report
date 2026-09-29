@@ -52,7 +52,7 @@ export async function sendLatestGraphReport(
   const filename = buildReportFilename(run.meta.filter.value);
   const sentAt = new Date().toLocaleString("en-US", { timeZone: settings.timeZone, dateStyle: "medium", timeStyle: "short" });
   const suiteList = normalizeSuiteNames(run.meta.filter.value).map(escapeHtml).join(", ");
-  const messageHtml = `<p>${testMessage ? "This is a test email from NGA Portal." : "Your scheduled NGA execution report is attached."}</p><p><b>Suites:</b> ${suiteList}</p><p><b>Tests:</b> ${run.summary.tests} &nbsp; <b>Passed:</b> ${run.summary.passed} &nbsp; <b>Failed:</b> ${run.summary.failed} &nbsp; <b>Blocked:</b> ${run.summary.blocked}</p><p><b>Snapshot captured:</b> ${escapeHtml(sentAt)}</p>`;
+  const messageHtml = `<p>${testMessage ? "This is a test email from NGA Execution Tracker." : "Your scheduled NGA execution report is attached."}</p><p><b>Suites:</b> ${suiteList}</p><p><b>Tests:</b> ${run.summary.tests} &nbsp; <b>Passed:</b> ${run.summary.passed} &nbsp; <b>Failed:</b> ${run.summary.failed} &nbsp; <b>Blocked:</b> ${run.summary.blocked}</p><p><b>Snapshot captured:</b> ${escapeHtml(sentAt)}</p>`;
   const accessToken = await getAccessToken(settings);
   const graphBase = process.env.GRAPH_API_BASE_URL?.replace(/\/$/, "") ?? "https://graph.microsoft.com/v1.0";
   const url = `${graphBase}/users/${encodeURIComponent(settings.senderEmail)}/sendMail`;

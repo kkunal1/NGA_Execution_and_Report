@@ -196,7 +196,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <section className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6 shadow-lg">
           <div className="mb-6 flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-sky-100 text-sky-600"><Boxes className="h-5 w-5" /></div>
-            <div><h1 className="text-lg font-semibold text-[var(--text)]">NGA Portal</h1><p className="text-sm text-[var(--text-muted)]">Sign in to continue</p></div>
+            <div><h1 className="text-lg font-semibold text-[var(--text)]">NGA Execution Tracker</h1><p className="text-sm text-[var(--text-muted)]">Sign in to continue</p></div>
           </div>
           <form onSubmit={signIn} className="space-y-4">
             <label className="block text-sm font-medium text-[var(--text)]">
@@ -232,7 +232,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <aside className="flex w-64 shrink-0 flex-col bg-[var(--sidebar-bg)] text-[var(--sidebar-text)]">
         <div className="flex items-center gap-2 px-5 py-5 text-white">
           <Boxes className="h-6 w-6 text-sky-400" />
-          <span className="text-lg font-semibold tracking-tight">NGA Portal</span>
+          <span className="text-lg font-semibold tracking-tight">NGA Execution Tracker</span>
         </div>
         <nav className="mt-2 flex-1 space-y-1 px-3">
           {NAV.filter((item) => {

@@ -353,13 +353,17 @@ export default function Dashboard() {
   useEffect(() => {
     if (!isAdmin || refreshIntervalSeconds === 0 || run?.meta.stateColumn !== "State" || autoRefreshSuites.length === 0) return;
     let cancelled = false;
+    let timer: number | undefined;
     const refresh = async () => {
       if (autoRefreshInFlight.current || document.visibilityState === "hidden") return;
       autoRefreshInFlight.current = true;
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 120_000);
       try {
         const response = await fetch("/api/test-run-data", {
           method: "POST",
           headers: { "content-type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             suiteNames: autoRefreshSuites,
             persist: true,
@@ -396,13 +400,29 @@ export default function Dashboard() {
       } catch (error) {
         if (!cancelled) setError(error instanceof Error ? error.message : "Automatic NGAi refresh failed.");
       } finally {
+        window.clearTimeout(timeout);
         autoRefreshInFlight.current = false;
       }
     };
-    const timer = window.setInterval(() => void refresh(), refreshIntervalSeconds * 1000);
+    const schedule = () => {
+      if (cancelled) return;
+      if (timer !== undefined) window.clearTimeout(timer);
+      timer = window.setTimeout(async () => {
+        await refresh();
+        schedule();
+      }, refreshIntervalSeconds * 1000);
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      void refresh();
+      schedule();
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    schedule();
     return () => {
       cancelled = true;
-      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (timer !== undefined) window.clearTimeout(timer);
     };
   }, [isAdmin, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
 

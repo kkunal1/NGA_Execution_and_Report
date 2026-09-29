@@ -16,7 +16,7 @@ function parseEncryptionKey(value: string): Buffer {
   return Buffer.from(normalized, "hex");
 }
 
-async function encryptionKey(): Promise<Buffer> {
+export async function getAppEncryptionKey(): Promise<Buffer> {
   const value = process.env.NGAI_TOKEN_ENCRYPTION_KEY?.trim();
   if (value) return parseEncryptionKey(value);
 
@@ -52,12 +52,12 @@ async function readStoredToken(): Promise<EncryptedToken | null> {
 
 export async function getNgaiApiToken(): Promise<string> {
   const encrypted = await readStoredToken();
-  if (encrypted) return decryptNgaiToken(encrypted, await encryptionKey());
+  if (encrypted) return decryptNgaiToken(encrypted, await getAppEncryptionKey());
   return config.ngaiApiToken;
 }
 
 export async function saveNgaiApiToken(token: string): Promise<void> {
-  const encrypted = encryptNgaiToken(token, await encryptionKey());
+  const encrypted = encryptNgaiToken(token, await getAppEncryptionKey());
   await mkdir(config.dataDir, { recursive: true });
   await writeFile(tokenPath, JSON.stringify(encrypted), { encoding: "utf8", mode: 0o600 });
 }
@@ -72,7 +72,7 @@ export async function removeNgaiApiToken(): Promise<void> {
 
 export async function getNgaiTokenStatus() {
   const encrypted = await readStoredToken();
-  await encryptionKey();
+  await getAppEncryptionKey();
   const source = encrypted ? "settings" : config.ngaiApiToken ? "environment" : "none";
   return {
     encryptionConfigured: true,

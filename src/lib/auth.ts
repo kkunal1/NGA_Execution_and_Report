@@ -8,7 +8,8 @@ export type AppRole = "admin" | "viewer";
 export type AppSession = { role: AppRole; username: string; expiresAt: number };
 
 export const AUTH_COOKIE = "nga-portal-session";
-const SESSION_TTL_SECONDS = 12 * 60 * 60;
+const VIEWER_SESSION_TTL_SECONDS = 12 * 60 * 60;
+const ADMIN_SESSION_TTL_SECONDS = 30 * 24 * 60 * 60;
 const sessionKeyPath = path.join(homedir(), ".nga-execution-and-report", "session.key");
 
 function safeEqual(left: string, right: string) {
@@ -57,11 +58,15 @@ export function authenticate(username: string, password: string): AppRole | null
   return null;
 }
 
+function sessionTtlSeconds(role: AppRole) {
+  return role === "admin" ? ADMIN_SESSION_TTL_SECONDS : VIEWER_SESSION_TTL_SECONDS;
+}
+
 export async function createSessionToken(role: AppRole, username: string) {
   const payload = Buffer.from(JSON.stringify({
     role,
     username,
-    expiresAt: Date.now() + SESSION_TTL_SECONDS * 1000,
+    expiresAt: Date.now() + sessionTtlSeconds(role) * 1000,
   } satisfies AppSession)).toString("base64url");
   const signature = createHmac("sha256", await signingKey()).update(payload).digest("base64url");
   return `${payload}.${signature}`;
@@ -105,13 +110,13 @@ export async function authorizeRequest(req: Request, adminOnly = false): Promise
   return null;
 }
 
-export function sessionCookieOptions(req: Request) {
+export function sessionCookieOptions(req: Request, role: AppRole = "viewer") {
   const secure = new URL(req.url).protocol === "https:" || req.headers.get("x-forwarded-proto") === "https";
   return {
     httpOnly: true,
     sameSite: "strict" as const,
     secure,
     path: "/",
-    maxAge: SESSION_TTL_SECONDS,
+    maxAge: sessionTtlSeconds(role),
   };
 }

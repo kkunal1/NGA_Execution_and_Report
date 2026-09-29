@@ -12,6 +12,19 @@ type NgaiTokenStatus = {
   source: "settings" | "environment" | "none";
 };
 
+type GraphMailForm = {
+  enabled: boolean;
+  tenantId: string;
+  clientId: string;
+  senderEmail: string;
+  recipientEmail: string;
+  sendAt: string;
+  timeZone: string;
+  clientSecretConfigured: boolean;
+  lastSentAt: string | null;
+  lastError: string | null;
+};
+
 export default function SettingsPage() {
   const [provider, setProvider] = useState<DataProvider>("ngai");
   const [saved, setSaved] = useState(false);
@@ -29,6 +42,22 @@ export default function SettingsPage() {
   const [refreshInterval, setRefreshInterval] = useState("60");
   const [refreshSaved, setRefreshSaved] = useState(false);
   const [refreshError, setRefreshError] = useState("");
+  const [graphMail, setGraphMail] = useState<GraphMailForm>({
+    enabled: false,
+    tenantId: "",
+    clientId: "",
+    senderEmail: "",
+    recipientEmail: "",
+    sendAt: "09:00",
+    timeZone: "UTC",
+    clientSecretConfigured: false,
+    lastSentAt: null,
+    lastError: null,
+  });
+  const [clientSecret, setClientSecret] = useState("");
+  const [mailBusy, setMailBusy] = useState(false);
+  const [mailMessage, setMailMessage] = useState("");
+  const [mailError, setMailError] = useState("");
 
   useEffect(() => {
     const stored = window.localStorage.getItem(DATA_PROVIDER_KEY);
@@ -62,6 +91,17 @@ export default function SettingsPage() {
         setRefreshInterval(String(data.intervalSeconds ?? 60));
       })
       .catch((error: unknown) => setRefreshError(error instanceof Error ? error.message : "Could not load refresh settings."));
+    void fetch("/api/settings/mail", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as Partial<GraphMailForm> & { error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not load Graph mail settings.");
+        setGraphMail((current) => ({
+          ...current,
+          ...data,
+          timeZone: data.timeZone || Intl.DateTimeFormat().resolvedOptions().timeZone || current.timeZone,
+        }));
+      })
+      .catch((error: unknown) => setMailError(error instanceof Error ? error.message : "Could not load Graph mail settings."));
   }, []);
 
   const save = (value: DataProvider) => {
@@ -137,6 +177,57 @@ export default function SettingsPage() {
       window.setTimeout(() => setRefreshSaved(false), 2500);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "Could not save refresh settings.");
+    }
+  };
+
+  const updateGraphMail = <Key extends keyof GraphMailForm>(key: Key, value: GraphMailForm[Key]) => {
+    setGraphMail((current) => ({ ...current, [key]: value }));
+  };
+
+  const saveGraphMailSettings = async () => {
+    setMailBusy(true);
+    setMailError("");
+    setMailMessage("");
+    try {
+      const response = await fetch("/api/settings/mail", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: graphMail.enabled,
+          tenantId: graphMail.tenantId,
+          clientId: graphMail.clientId,
+          senderEmail: graphMail.senderEmail,
+          recipientEmail: graphMail.recipientEmail,
+          sendAt: graphMail.sendAt,
+          timeZone: graphMail.timeZone,
+          clientSecret,
+        }),
+      });
+      const data = (await response.json()) as GraphMailForm & { error?: string };
+      if (!response.ok) throw new Error(data.error || "Could not save Graph mail settings.");
+      setGraphMail(data);
+      setClientSecret("");
+      setMailMessage("Graph mail settings saved. Client secret is encrypted on this server.");
+    } catch (error) {
+      setMailError(error instanceof Error ? error.message : "Could not save Graph mail settings.");
+    } finally {
+      setMailBusy(false);
+    }
+  };
+
+  const sendTestMail = async () => {
+    setMailBusy(true);
+    setMailError("");
+    setMailMessage("");
+    try {
+      const response = await fetch("/api/settings/mail/test", { method: "POST" });
+      const data = (await response.json()) as { error?: string; sentTo?: string; filename?: string };
+      if (!response.ok) throw new Error(data.error || "Test email failed.");
+      setMailMessage(`Test report sent to ${data.sentTo}. Attachment: ${data.filename}`);
+    } catch (error) {
+      setMailError(error instanceof Error ? error.message : "Test email failed.");
+    } finally {
+      setMailBusy(false);
     }
   };
 
@@ -271,6 +362,60 @@ export default function SettingsPage() {
           {refreshSaved ? "Refresh interval saved." : `Current interval: ${refreshInterval || "0"} seconds`}
         </p>
         {refreshError && <p className="mt-2 text-sm text-red-600" role="alert">{refreshError}</p>}
+      </section>
+
+      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="mail-heading">
+        <h2 id="mail-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Scheduled Graph email</h2>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">
+          Sends all configured suites as an HTML attachment daily at the selected local time. Requires an IT-approved Entra app with Microsoft Graph Mail.Send application permission and admin consent.
+        </p>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-[var(--text)]">
+            Tenant ID
+            <input value={graphMail.tenantId} onChange={(event) => updateGraphMail("tenantId", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)]">
+            App registration Client ID
+            <input value={graphMail.clientId} onChange={(event) => updateGraphMail("clientId", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)]">
+            Sender mailbox
+            <input type="email" value={graphMail.senderEmail} onChange={(event) => updateGraphMail("senderEmail", event.target.value)} placeholder="nga-reports@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)]">
+            Recipient
+            <input type="email" value={graphMail.recipientEmail} onChange={(event) => updateGraphMail("recipientEmail", event.target.value)} placeholder="abcd@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)]">
+            Daily send time
+            <input type="time" value={graphMail.sendAt} onChange={(event) => updateGraphMail("sendAt", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)]">
+            Timezone (IANA)
+            <input value={graphMail.timeZone} onChange={(event) => updateGraphMail("timeZone", event.target.value)} placeholder="Asia/Kolkata" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)] sm:col-span-2">
+            Microsoft Graph client secret
+            <input type="password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} placeholder={graphMail.clientSecretConfigured ? "Saved encrypted; leave blank to keep current secret" : "Enter client secret"} autoComplete="new-password" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+          </label>
+        </div>
+        <label className="mt-4 inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--text)]">
+          <input type="checkbox" checked={graphMail.enabled} onChange={(event) => updateGraphMail("enabled", event.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
+          Enable daily scheduled email
+        </label>
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" onClick={() => void saveGraphMailSettings()} disabled={mailBusy} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)] disabled:opacity-50">
+            Save mail settings
+          </button>
+          <button type="button" onClick={() => void sendTestMail()} disabled={mailBusy || !graphMail.clientSecretConfigured} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text)] disabled:opacity-50">
+            Send test email
+          </button>
+        </div>
+        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
+          {mailMessage || (graphMail.enabled ? `Enabled · daily at ${graphMail.sendAt} (${graphMail.timeZone})` : "Scheduled email is disabled.")}
+          {graphMail.lastSentAt && ` · Last sent ${new Date(graphMail.lastSentAt).toLocaleString()}`}
+        </p>
+        {(mailError || graphMail.lastError) && <p className="mt-2 text-sm text-red-600" role="alert">{mailError || graphMail.lastError}</p>}
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="network-heading">

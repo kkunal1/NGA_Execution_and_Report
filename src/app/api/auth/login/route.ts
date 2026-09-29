@@ -39,6 +39,6 @@ export async function POST(req: Request) {
 
   attempts.delete(address);
   const response = NextResponse.json({ role, username });
-  response.cookies.set("nga-portal-session", await createSessionToken(role, username), sessionCookieOptions(req));
+  response.cookies.set("nga-portal-session", await createSessionToken(role, username), sessionCookieOptions(req, role));
   return response;
 }

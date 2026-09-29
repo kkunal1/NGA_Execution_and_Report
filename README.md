@@ -117,6 +117,24 @@ certificate file may still produce `UNABLE_TO_VERIFY_LEAF_SIGNATURE`.
 
 Do not disable TLS verification with `NODE_TLS_REJECT_UNAUTHORIZED=0`.
 
+## Scheduled Graph Email
+
+An admin can configure a daily Microsoft Graph email in Settings. The report includes
+all suites in the latest shared NGAi snapshot and is attached as an HTML file. Set the
+sender mailbox, recipient, daily time, and IANA timezone; save the Entra app client
+secret in Settings. Its secret is encrypted at rest with the app's per-machine key and
+is never returned to the browser.
+
+IT must provision an Entra app registration with Microsoft Graph `Mail.Send`
+**application** permission and admin consent, and authorize the app to send as the
+configured mailbox. Ask IT to restrict the app to that mailbox using the organization's
+Exchange application access controls. The host must have outbound HTTPS access to
+`login.microsoftonline.com` and `graph.microsoft.com`.
+
+The scheduler runs in the Node app process, so the production server must stay running
+for scheduled delivery. Failed sends are retried up to three times, five minutes apart;
+the last error and last successful send appear in Settings.
+
 To store an NGAi PAT, enter it in `/settings`; no token or encryption-key setup in
 `.env.local` is required. The app creates an AES-256-GCM key in the current OS user's
 `~/.nga-execution-and-report/` profile and stores the encrypted token in the ignored

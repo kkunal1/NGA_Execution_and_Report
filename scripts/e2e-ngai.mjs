@@ -18,9 +18,45 @@ const abortedRecords = [
   { testRunId: "abort-1", state: "Aborted", testLineRevision: { testLineName: "line-a", testSuiteName: SUITE } },
   { testRunId: "abort-2", state: "Aborted", testLineRevision: { testLineName: "line-c", testSuiteName: SECOND_SUITE } },
 ];
+let sentGraphMessage;
+let graphMailSendCount = 0;
 
 const mock = http.createServer((req, res) => {
   const url = new URL(req.url, `http://localhost:${MOCK_PORT}`);
+  if (url.pathname.endsWith("/oauth2/v2.0/token")) {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      const form = new URLSearchParams(body);
+      const valid = form.get("client_id") === "graph-client-id" && form.get("client_secret") === "graph-client-secret";
+      res.writeHead(valid ? 200 : 401, { "content-type": "application/json" });
+      res.end(JSON.stringify(valid ? { access_token: "mock-graph-access-token" } : { error_description: "invalid client" }));
+    });
+    return;
+  }
+  if (url.pathname.endsWith("/sendMail")) {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => (body += chunk));
+    req.on("end", () => {
+      const payload = JSON.parse(body);
+      const attachment = payload.message?.attachments?.[0];
+      const valid = req.headers.authorization === "Bearer mock-graph-access-token" &&
+        url.pathname.includes("reports%40intel.com") &&
+        payload.message?.toRecipients?.[0]?.emailAddress?.address === "abcd@intel.com" &&
+        attachment?.name?.endsWith(".html") &&
+        attachment?.contentType === "text/html" &&
+        Buffer.from(attachment?.contentBytes ?? "", "base64").toString("utf8").startsWith("<!doctype html>");
+      if (valid) {
+        sentGraphMessage = payload.message;
+        graphMailSendCount += 1;
+      }
+      res.writeHead(valid ? 202 : 400, { "content-type": "application/json" });
+      res.end(valid ? "" : JSON.stringify({ error: "Graph sendMail payload invalid" }));
+    });
+    return;
+  }
   const filter = url.searchParams.get("$filter") ?? "";
   const skip = Number(url.searchParams.get("$skip") ?? "0");
   const isAbortedQuery = filter.includes("State eq 'Aborted'");
@@ -55,6 +91,9 @@ const app = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start",
     APP_ADMIN_PASSWORD: "e2e-admin-password",
     NGAI_API_URL: `http://localhost:${MOCK_PORT}/Search/dmr_pv/odata/v1/TestRunComposite`,
     NGAI_API_TOKEN: "test-token",
+    GRAPH_AUTHORITY_URL: `http://localhost:${MOCK_PORT}`,
+    GRAPH_API_BASE_URL: `http://localhost:${MOCK_PORT}/v1.0`,
+    GRAPH_MAIL_POLL_MS: "1000",
     NGAI_PAGE_SIZE: "2",
     NGA_DATA_DIR: ".e2e-ngai-data",
     NGA_BROWSER_CHANNEL: "channel-that-must-not-be-launched",
@@ -155,6 +194,54 @@ try {
   assert.equal(unchangedRefresh.changed, false, "unchanged rows should not rewrite the shared snapshot");
   const latest = await (await fetch(`http://localhost:${APP_PORT}/api/runs?latestOnly=1`, { headers: { cookie } })).json();
   assert.equal(latest.run.summary.tests, 4, "viewers can load the persisted shared snapshot");
+
+  const mailConfig = await fetch(`http://localhost:${APP_PORT}/api/settings/mail`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({
+      enabled: false,
+      tenantId: "mock-tenant-id",
+      clientId: "graph-client-id",
+      senderEmail: "reports@intel.com",
+      recipientEmail: "abcd@intel.com",
+      sendAt: "09:00",
+      timeZone: "UTC",
+      clientSecret: "graph-client-secret",
+    }),
+  });
+  assert.equal(mailConfig.status, 200, "admin can store encrypted Graph settings");
+  const storedMailSettings = await fs.readFile(".e2e-ngai-data/graph-mail-settings.json", "utf8");
+  assert.ok(!storedMailSettings.includes("graph-client-secret"), "client secret must be encrypted at rest");
+  const mailTest = await fetch(`http://localhost:${APP_PORT}/api/settings/mail/test`, {
+    method: "POST",
+    headers: { "content-type": "application/json", cookie },
+  });
+  assert.equal(mailTest.status, 200, await mailTest.text());
+  assert.equal(sentGraphMessage?.toRecipients[0].emailAddress.address, "abcd@intel.com");
+  assert.ok(sentGraphMessage?.attachments[0].name.endsWith(".html"), "Graph mail must attach the HTML report");
+  const scheduledConfig = await fetch(`http://localhost:${APP_PORT}/api/settings/mail`, {
+    method: "PUT",
+    headers: { "content-type": "application/json", cookie },
+    body: JSON.stringify({
+      enabled: true,
+      tenantId: "mock-tenant-id",
+      clientId: "graph-client-id",
+      senderEmail: "reports@intel.com",
+      recipientEmail: "abcd@intel.com",
+      sendAt: "00:00",
+      timeZone: "UTC",
+      clientSecret: "",
+    }),
+  });
+  assert.equal(scheduledConfig.status, 200, "saved encrypted secret should be reused when enabling the schedule");
+  const scheduleDeadline = Date.now() + 15_000;
+  let mailStatus = { lastSentAt: null };
+  while (Date.now() < scheduleDeadline && !mailStatus.lastSentAt) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    mailStatus = await (await fetch(`http://localhost:${APP_PORT}/api/settings/mail`, { headers: { cookie } })).json();
+  }
+  assert.ok(mailStatus.lastSentAt, "background scheduler should send when its daily time is due");
+  assert.ok(graphMailSendCount >= 2, "mock Graph should receive test and scheduled emails");
 
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();

@@ -47,6 +47,7 @@ const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part / w
 function Card({
   label,
   value,
+  detail,
   tone = "text-[var(--text)]",
   iconTone = "bg-slate-100 text-slate-500",
   cardTone = "bg-[var(--surface)] border-[var(--border)]",
@@ -54,6 +55,7 @@ function Card({
 }: {
   label: string;
   value: string | number;
+  detail?: string;
   tone?: string;
   iconTone?: string;
   cardTone?: string;
@@ -69,6 +71,7 @@ function Card({
       <div>
         <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">{label}</div>
         <div className={`mt-0.5 text-2xl font-bold tabular-nums ${tone}`}>{value}</div>
+        {detail && <div className={`mt-0.5 text-xs font-semibold tabular-nums ${tone}`}>{detail}</div>}
       </div>
     </div>
   );
@@ -751,62 +754,12 @@ export default function Dashboard() {
 
           <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
             <Card label="Total tests" value={s.tests} icon={ListChecks} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" />
-            <Card label="Passed" value={s.passed} tone="text-[var(--card-pass-label)]" icon={CheckCircle2} iconTone="bg-green-100 text-green-600" cardTone="bg-[var(--card-pass-bg)] border-[var(--card-pass-border)]" />
-            <Card label="Failed" value={s.failed} tone="text-[var(--card-fail-label)]" icon={XCircle} iconTone="bg-red-100 text-red-600" cardTone="bg-[var(--card-fail-bg)] border-[var(--card-fail-border)]" />
-            <Card label="Blocked" value={s.blocked} tone="text-[var(--card-blocked-label)]" icon={ShieldBan} iconTone="bg-amber-100 text-amber-600" cardTone="bg-[var(--card-blocked-bg)] border-[var(--card-blocked-border)]" />
+            <Card label="Passed" value={s.passed} detail={`${s.passRatePct}%`} tone="text-[var(--card-pass-label)]" icon={CheckCircle2} iconTone="bg-green-100 text-green-600" cardTone="bg-[var(--card-pass-bg)] border-[var(--card-pass-border)]" />
+            <Card label="Failed" value={s.failed} detail={`${failRatePct}%`} tone="text-[var(--card-fail-label)]" icon={XCircle} iconTone="bg-red-100 text-red-600" cardTone="bg-[var(--card-fail-bg)] border-[var(--card-fail-border)]" />
+            <Card label="Blocked" value={s.blocked} detail={`${blockedRatePct}%`} tone="text-[var(--card-blocked-label)]" icon={ShieldBan} iconTone="bg-amber-100 text-amber-600" cardTone="bg-[var(--card-blocked-bg)] border-[var(--card-blocked-border)]" />
             <Card label="In progress" value={s.inProgress} tone="text-[var(--card-progress-label)]" icon={Clock} iconTone="bg-sky-100 text-sky-600" cardTone="bg-[var(--card-progress-bg)] border-[var(--card-progress-border)]" />
             <Card label="Not run" value={s.notRun} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" />
             {s.other > 0 && <Card label="Other" value={s.other} tone="text-[var(--card-violet-label)]" cardTone="bg-[var(--card-violet-bg)] border-[var(--card-violet-border)]" />}
-          </section>
-
-          <section className="mt-4 grid gap-3 lg:grid-cols-3">
-            <div className="rounded-2xl border border-[var(--card-pass-border)] bg-[var(--card-pass-bg)] p-4 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-100 text-green-600">
-                  <BarChart3 className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Pass rate</div>
-                  <div className="mt-0.5 text-xl font-bold tabular-nums text-[var(--card-pass-label)]">{s.passRatePct}%</div>
-                </div>
-              </div>
-              <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-black/10">
-                <div className="h-full rounded-full bg-green-500 transition-all" style={{ width: `${Math.min(100, s.passRatePct)}%` }} />
-              </div>
-              <div className="mt-1.5 text-xs text-[var(--text-muted)] tabular-nums">{s.passed} / {s.tests} tests passed</div>
-            </div>
-
-            <div className="rounded-2xl border border-[var(--card-fail-border)] bg-[var(--card-fail-bg)] p-4 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-600">
-                  <XCircle className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Fail rate</div>
-                  <div className="mt-0.5 text-xl font-bold tabular-nums text-[var(--card-fail-label)]">{failRatePct}%</div>
-                </div>
-              </div>
-              <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-black/10">
-                <div className="h-full rounded-full bg-red-500 transition-all" style={{ width: `${Math.min(100, failRatePct)}%` }} />
-              </div>
-              <div className="mt-1.5 text-xs text-[var(--text-muted)] tabular-nums">{s.failed} / {s.tests} tests failed</div>
-            </div>
-
-            <div className="rounded-2xl border border-[var(--card-blocked-border)] bg-[var(--card-blocked-bg)] p-4 shadow-sm">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
-                  <ShieldBan className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs font-semibold uppercase tracking-wider text-[var(--text-muted)]">Blocked rate</div>
-                  <div className="mt-0.5 text-xl font-bold tabular-nums text-[var(--card-blocked-label)]">{blockedRatePct}%</div>
-                </div>
-              </div>
-              <div className="mt-3 h-2.5 w-full overflow-hidden rounded-full bg-black/10">
-                <div className="h-full rounded-full bg-amber-500 transition-all" style={{ width: `${Math.min(100, blockedRatePct)}%` }} />
-              </div>
-              <div className="mt-1.5 text-xs text-[var(--text-muted)] tabular-nums">{s.blocked} / {s.tests} tests blocked</div>
-            </div>
           </section>
 
           <section className="mt-6 grid gap-4 lg:grid-cols-2">

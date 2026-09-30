@@ -122,11 +122,12 @@ export default function ExecutionTimeChecker() {
       <div className="border-b border-[var(--border)] px-5 py-4">
         <h1 className="text-lg font-semibold text-[var(--text)]">Check Execution Time</h1>
         <p className="mt-1 text-sm text-[var(--text-muted)]">Calculate total test execution time by subsystem.</p>
+        <p className="mt-1 text-sm text-[var(--text-muted)]">Please enter NGA test suite name in the text box without any extra space.</p>
         <form onSubmit={submit} className="mt-4 flex flex-wrap gap-2">
           <input
             value={suiteName}
             onChange={(event) => setSuiteName(event.target.value)}
-            placeholder="Enter suite name"
+            placeholder="Oak_Stream_Platform_1_DMR-Platform_Beta-PAIV-Platform-AP1_Beta_Cycle"
             aria-label="Suite name"
             className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] outline-none focus:border-[var(--accent)] focus:ring-2 focus:ring-sky-100"
           />

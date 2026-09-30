@@ -33,6 +33,15 @@ type DashboardSettings = {
   ngaiTestRunData: boolean;
 };
 
+type LoginAuditEntry = {
+  username: string;
+  role: "admin" | "viewer";
+  loggedInAt: string;
+  ipAddress: string;
+  systemName: string;
+  userAgent: string;
+};
+
 export default function SettingsPage() {
   const [provider, setProvider] = useState<DataProvider>("ngai");
   const [saved, setSaved] = useState(false);
@@ -59,6 +68,8 @@ export default function SettingsPage() {
   });
   const [dashboardSettingsSaved, setDashboardSettingsSaved] = useState(false);
   const [dashboardSettingsError, setDashboardSettingsError] = useState("");
+  const [loginAudit, setLoginAudit] = useState<LoginAuditEntry[]>([]);
+  const [loginAuditError, setLoginAuditError] = useState("");
   const [graphMail, setGraphMail] = useState<GraphMailForm>({
     enabled: false,
     tenantId: "",
@@ -121,6 +132,13 @@ export default function SettingsPage() {
         });
       })
       .catch((error: unknown) => setDashboardSettingsError(error instanceof Error ? error.message : "Could not load dashboard settings."));
+    void fetch("/api/settings/login-audit", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { entries?: LoginAuditEntry[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not load login audit.");
+        setLoginAudit(data.entries ?? []);
+      })
+      .catch((error: unknown) => setLoginAuditError(error instanceof Error ? error.message : "Could not load login audit."));
     void fetch("/api/settings/mail", { cache: "no-store" })
       .then(async (response) => {
         const data = (await response.json()) as Partial<GraphMailForm> & { error?: string };
@@ -440,6 +458,39 @@ export default function SettingsPage() {
           {dashboardSettingsSaved ? "Dashboard chart settings saved." : "Changes apply to all signed-in users."}
         </p>
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
+      </section>
+
+      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="login-audit-heading">
+        <h2 id="login-audit-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">User login audit</h2>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Successful logins captured by this server. System name uses reverse DNS when available.</p>
+        {loginAuditError && <p className="mt-3 text-sm text-red-600" role="alert">{loginAuditError}</p>}
+        {!loginAuditError && loginAudit.length === 0 && <p className="mt-4 text-sm text-[var(--text-muted)]">No successful logins recorded yet.</p>}
+        {loginAudit.length > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-[var(--surface-alt)] text-xs uppercase tracking-wide text-[var(--text-muted)]">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Time</th>
+                  <th className="px-3 py-2 font-semibold">User / role</th>
+                  <th className="px-3 py-2 font-semibold">System name</th>
+                  <th className="px-3 py-2 font-semibold">IP address</th>
+                  <th className="px-3 py-2 font-semibold">Client</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {loginAudit.map((entry, index) => (
+                  <tr key={`${entry.loggedInAt}-${entry.username}-${index}`}>
+                    <td className="whitespace-nowrap px-3 py-2 text-[var(--text-muted)]">{new Date(entry.loggedInAt).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-[var(--text)]">{entry.username} <span className="text-xs text-[var(--text-muted)]">({entry.role})</span></td>
+                    <td className="px-3 py-2 text-[var(--text)]">{entry.systemName}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-muted)]">{entry.ipAddress}</td>
+                    <td className="max-w-xs truncate px-3 py-2 text-xs text-[var(--text-muted)]" title={entry.userAgent}>{entry.userAgent}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="mail-heading">

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { authenticate, createSessionToken, isAdminConfigured, sessionCookieOptions } from "@/lib/auth";
+import { recordSuccessfulLogin } from "@/lib/login-audit";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export async function POST(req: Request) {
   }
 
   attempts.delete(address);
+  await recordSuccessfulLogin(req, username, role);
   const response = NextResponse.json({ role, username });
   response.cookies.set("nga-portal-session", await createSessionToken(role, username), sessionCookieOptions(req, role));
   return response;

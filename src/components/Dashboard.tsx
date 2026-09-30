@@ -465,11 +465,15 @@ export default function Dashboard() {
     [checkedDataSuites],
   );
 
+  // Older saved runs have no suite name; their numbers aren't tied to any suite, so show zeros instead.
+  const runHasSuite = normalizeSuiteNames(run?.meta.filter.value).length > 0;
+
   const visibleRows = useMemo(() => {
+    if (!runHasSuite) return [];
     const rows = run?.rows ?? [];
     if (availableSuites.length < 2 || checkedDataSuites.length === availableSuites.length) return rows;
     return rows.filter((row) => checkedSuiteKeys.has(row.suite.trim().toLowerCase()));
-  }, [run, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
+  }, [run, runHasSuite, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
 
   const visibleSummary = useMemo(
     () => run ? summarize(visibleRows) : undefined,
@@ -535,6 +539,7 @@ export default function Dashboard() {
   };
 
   const filteredAbortedRows = useMemo(() => {
+    if (!runHasSuite) return [];
     const fromMs = abortFrom ? new Date(abortFrom).getTime() : null;
     const toMs = abortTo ? new Date(abortTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
     return abortedRows.filter((r) => {
@@ -548,7 +553,7 @@ export default function Dashboard() {
       if (toMs != null && ms > toMs) return false;
       return true;
     });
-  }, [abortedRows, abortFrom, abortTo, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
+  }, [runHasSuite, abortedRows, abortFrom, abortTo, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
 
   const abortedByStep = useMemo(() => {
     const byStep = new Map<string, number>();

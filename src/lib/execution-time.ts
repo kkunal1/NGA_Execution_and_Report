@@ -18,18 +18,39 @@ export type ExecutionTimeConfiguration = {
   includedTestCount: number;
   excludedTestCount: number;
   totalSeconds: number;
+  tests: ExecutionTimeTest[];
+};
+
+export type ExecutionTimeTest = {
+  testName: string;
+  state: string;
+  seconds: number | null;
 };
 
 type ExecutionRecord = {
+  state?: unknown;
   testStartDateTime?: unknown;
   testEndDateTime?: unknown;
   validationGroupId?: unknown;
   validationGroup?: { testGroupName?: unknown };
-  station?: { config?: { configName?: unknown } };
+  testLine?: { testLineName?: unknown; config?: { configName?: unknown } };
 };
 
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 50;
+
+// Variants like "...-PD013-1112_Windows" or "...-PD013-1112_MIV_ASD" share the base "...-PD013-1112" config.
+function baseConfigName(configName: string) {
+  return configName.match(/^(.*?-PD\d+-\d+)(?:_.*)?$/i)?.[1] ?? configName;
+}
+
+// TestLineName is "<testLineNo>-<testNo>-<test>_<platform>-PDxxx-NNNN_<os>"; NGA's "Test Steps" column shows "<testNo>-<test>".
+function testNameFromTestLine(testLineName: string, configName: string | null) {
+  const withoutTestLineNo = testLineName.replace(/^\d+-(?=\d+-)/, "");
+  const platform = configName ? baseConfigName(configName).replace(/^\d+-/, "").replace(/-PD\d+-\d+$/i, "") : "";
+  const cut = platform ? withoutTestLineNo.lastIndexOf(`_${platform}`) : -1;
+  return cut > 0 ? withoutTestLineNo.slice(0, cut) : withoutTestLineNo;
+}
 
 function escapeOData(value: string) {
   return value.replace(/'/g, "''");
@@ -49,8 +70,8 @@ function buildUrl(suiteName: string, skip: number) {
   url.searchParams.set("$count", "true");
   url.searchParams.set("$top", String(PAGE_SIZE));
   if (skip > 0) url.searchParams.set("$skip", String(skip));
-  url.searchParams.set("$select", "TestStartDateTime,TestEndDateTime,ValidationGroupId");
-  url.searchParams.set("$expand", "ValidationGroup($select=TestGroupName),Station($expand=Config($select=ConfigName))");
+  url.searchParams.set("$select", "State,TestStartDateTime,TestEndDateTime,ValidationGroupId");
+  url.searchParams.set("$expand", "ValidationGroup($select=TestGroupName),TestLine($select=TestLineId,TestLineName;$expand=Config($select=ConfigName))");
   return url;
 }
 
@@ -92,15 +113,17 @@ export async function summarizeExecutionTime(suiteName: string): Promise<Executi
   }
 
   type Metrics = Omit<ExecutionTimeConfiguration, "configurationName">;
-  type GroupedMetrics = Metrics & { configurations: Map<string, Metrics> };
+  type GroupedMetrics = Omit<Metrics, "tests"> & { configurations: Map<string, Metrics> };
   const grouped = new Map<string, GroupedMetrics>();
   for (const record of records) {
     const subsystemName = typeof record.validationGroup?.testGroupName === "string"
       ? record.validationGroup.testGroupName
       : typeof record.validationGroupId === "string" ? record.validationGroupId : "Unknown";
-    const configurationName = typeof record.station?.config?.configName === "string"
-      ? record.station.config.configName
-      : "Unknown configuration";
+    const rawConfigName = typeof record.testLine?.config?.configName === "string" ? record.testLine.config.configName : null;
+    const configurationName = rawConfigName ? baseConfigName(rawConfigName) : "Unknown configuration";
+    const testName = typeof record.testLine?.testLineName === "string"
+      ? testNameFromTestLine(record.testLine.testLineName, rawConfigName)
+      : "Unknown test";
     const current = grouped.get(subsystemName) ?? {
       totalTestCount: 0,
       includedTestCount: 0,
@@ -113,19 +136,23 @@ export async function summarizeExecutionTime(suiteName: string): Promise<Executi
       includedTestCount: 0,
       excludedTestCount: 0,
       totalSeconds: 0,
+      tests: [],
     };
     current.totalTestCount += 1;
     configuration.totalTestCount += 1;
     const start = typeof record.testStartDateTime === "string" ? Date.parse(record.testStartDateTime) : Number.NaN;
     const end = typeof record.testEndDateTime === "string" ? Date.parse(record.testEndDateTime) : Number.NaN;
+    const state = typeof record.state === "string" ? record.state : "Unknown";
     if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
       current.excludedTestCount += 1;
       configuration.excludedTestCount += 1;
+      configuration.tests.push({ testName, state, seconds: null });
     } else {
       current.includedTestCount += 1;
       configuration.includedTestCount += 1;
       current.totalSeconds += (end - start) / 1000;
       configuration.totalSeconds += (end - start) / 1000;
+      configuration.tests.push({ testName, state, seconds: (end - start) / 1000 });
     }
     current.configurations.set(configurationName, configuration);
     grouped.set(subsystemName, current);
@@ -139,7 +166,11 @@ export async function summarizeExecutionTime(suiteName: string): Promise<Executi
       excludedTestCount: summary.excludedTestCount,
       totalSeconds: summary.totalSeconds,
       configurations: [...summary.configurations.entries()]
-        .map(([configurationName, metrics]) => ({ configurationName, ...metrics }))
+        .map(([configurationName, metrics]) => ({
+          configurationName,
+          ...metrics,
+          tests: [...metrics.tests].sort((left, right) => left.testName.localeCompare(right.testName)),
+        }))
         .sort((left, right) => left.configurationName.localeCompare(right.configurationName)),
     }))
     .sort((left, right) => left.subsystemName.localeCompare(right.subsystemName));

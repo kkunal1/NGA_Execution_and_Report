@@ -185,8 +185,8 @@ async function fetchAbortedTestsSingle(suiteName: string, dispatcher: ReturnType
     url.searchParams.set("$count", "true");
     url.searchParams.set("$top", String(config.ngaiPageSize));
     if (skip > 0) url.searchParams.set("$skip", String(skip));
-    url.searchParams.set("$select", "State,TestEndDateTime,TestLineId,TestRunId,TestStartDateTime,AutoDisablingTestStepId");
-    url.searchParams.set("$expand", "TestLine($select=TestLineName),AutoDisablingTestStep($select=TestStepName)");
+    url.searchParams.set("$select", "State,TestEndDateTime,TestLineId,TestRunId,TestStartDateTime,ValidationGroupId,AutoDisablingTestStepId");
+    url.searchParams.set("$expand", "TestLine($select=TestLineName),ValidationGroup($select=testGroupName),AutoDisablingTestStep($select=TestStepName)");
     return url;
   };
 

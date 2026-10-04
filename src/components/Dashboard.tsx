@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { BarChart3, CheckCircle2, Clock, Download as DownloadIcon, ListChecks, PlayCircle, Plus, ShieldBan, Trash2, X, XCircle } from "lucide-react";
+import { BarChart3, CheckCircle2, ChevronDown, ChevronRight, Clock, Download as DownloadIcon, ListChecks, PlayCircle, Plus, ShieldBan, Trash2, X, XCircle } from "lucide-react";
 import type { RunResult, Summary, TestRow } from "@/lib/types";
 import { normalizeSuiteNames } from "@/lib/normalize";
 import { summarize } from "@/lib/summarize";
@@ -557,16 +557,40 @@ export default function Dashboard() {
   }, [runHasSuite, abortedRows, abortFrom, abortTo, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
 
   const abortedByStep = useMemo(() => {
-    const byStep = new Map<string, number>();
-    for (const r of filteredAbortedRows) {
+    // Cached aborted rows may predate the ValidationGroup expand, so fall back to the main run's domain.
+    const domainByTestline = new Map<string, string>();
+    for (const r of run?.rows ?? []) {
+      if (r.domain && r.testline) domainByTestline.set(r.testline, r.domain);
+    }
+    const byStep = new Map<string, TestRow[]>();
+    for (const raw of filteredAbortedRows) {
+      const r = raw.domain ? raw : { ...raw, domain: domainByTestline.get(raw.testline) ?? "" };
       const key = r.abortStep || "Aborted Manually";
-      byStep.set(key, (byStep.get(key) ?? 0) + 1);
+      const list = byStep.get(key);
+      if (list) list.push(r);
+      else byStep.set(key, [r]);
     }
     return {
       total: filteredAbortedRows.length,
-      steps: [...byStep.entries()].map(([step, count]) => ({ step, count })).sort((a, b) => b.count - a.count),
+      steps: [...byStep.entries()]
+        .map(([step, rows]) => ({
+          step,
+          count: rows.length,
+          rows: [...rows].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime()),
+        }))
+        .sort((a, b) => b.count - a.count),
     };
-  }, [filteredAbortedRows]);
+  }, [filteredAbortedRows, run]);
+
+  const [expandedAbortSteps, setExpandedAbortSteps] = useState<Set<string>>(() => new Set());
+  const toggleAbortStep = (step: string) => {
+    setExpandedAbortSteps((prev) => {
+      const next = new Set(prev);
+      if (next.has(step)) next.delete(step);
+      else next.add(step);
+      return next;
+    });
+  };
 
   const latestExecutedRows = useMemo(() => {
     const fromMs = testFrom ? new Date(testFrom).getTime() : null;
@@ -981,13 +1005,73 @@ export default function Dashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {abortedByStep.steps.map((row, i) => (
-                      <tr key={row.step} className="border-t border-[var(--border)] transition even:bg-[var(--surface-alt)] hover:bg-red-50/40">
-                        <td className="px-3 py-2 text-[var(--text-muted)]">{i + 1}</td>
-                        <td className="px-3 py-2 font-medium text-[var(--text)]">{row.step}</td>
-                        <td className="px-3 py-2 tabular-nums text-red-600">{row.count}</td>
-                      </tr>
-                    ))}
+                    {abortedByStep.steps.map((row, i) => {
+                      const expanded = expandedAbortSteps.has(row.step);
+                      return (
+                        <Fragment key={row.step}>
+                          <tr
+                            onClick={() => toggleAbortStep(row.step)}
+                            className="cursor-pointer border-t border-[var(--border)] transition even:bg-[var(--surface-alt)] hover:bg-red-50/40"
+                          >
+                            <td className="px-3 py-2 text-[var(--text-muted)]">{i + 1}</td>
+                            <td className="px-3 py-2 font-medium text-[var(--text)]">
+                              <button
+                                type="button"
+                                aria-expanded={expanded}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleAbortStep(row.step);
+                                }}
+                                className="inline-flex items-center gap-2 text-left"
+                              >
+                                {expanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}
+                                {row.step}
+                              </button>
+                            </td>
+                            <td className="px-3 py-2 tabular-nums text-red-600">{row.count}</td>
+                          </tr>
+                          {expanded && (
+                            <tr className="border-t border-[var(--border)]">
+                              <td colSpan={3} className="bg-[var(--surface-alt)] px-3 py-3">
+                                <div className="max-h-96 overflow-auto rounded-lg border border-[var(--border)]">
+                                  <table className="w-full table-fixed text-xs">
+                                    <colgroup>
+                                      <col className="w-10" />
+                                      <col className="w-44" />
+                                      <col />
+                                      <col className="w-44" />
+                                    </colgroup>
+                                    <thead className="sticky top-0 bg-[var(--surface)] text-[var(--text)]">
+                                      <tr>
+                                        {["#", "Domain", "Testline", "Date"].map((h) => (
+                                          <th key={h} className="px-3 py-2 text-left font-medium">
+                                            {h}
+                                          </th>
+                                        ))}
+                                      </tr>
+                                    </thead>
+                                    <tbody>
+                                      {row.rows.map((t, j) => (
+                                        <tr key={t.id} className="border-t border-[var(--border)]">
+                                          <td className="px-3 py-1.5 text-[var(--text-muted)]">{j + 1}</td>
+                                          <td className="truncate px-3 py-1.5 font-medium text-[var(--text)]" title={t.domain || undefined}>{t.domain || "-"}</td>
+                                          <td className="break-all px-3 py-1.5 text-[var(--text-muted)]" title={t.testline}>{t.testline || t.name}</td>
+                                          <td className="whitespace-nowrap px-3 py-1.5 tabular-nums text-[var(--text-muted)]">
+                                            {t.date
+                                              ? new Date(t.date).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                                              : "-"}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              </td>
+                            </tr>
+                          )}
+                        </Fragment>
+                      );
+                    })}
                     {!abortedByStep.steps.length && (
                       <tr>
                         <td colSpan={3} className="px-3 py-8 text-center text-[var(--text-muted)]">

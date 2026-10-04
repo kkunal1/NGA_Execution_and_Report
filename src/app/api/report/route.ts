@@ -48,6 +48,7 @@ export async function POST(req: Request) {
   let theme: string | null = null;
   let latestExecutedRows: TestRow[] = [];
   let testRangeLabel = "";
+  let latestExecutedTotal: number | undefined;
   try {
     const body = (await req.json()) as {
       run?: RunResult;
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
       theme?: string;
       latestExecutedRows?: TestRow[];
       testRangeLabel?: string;
+      latestExecutedTotal?: number;
     };
     run = body?.run;
     abortedRows = body?.abortedRows ?? [];
@@ -63,6 +65,7 @@ export async function POST(req: Request) {
     theme = body?.theme ?? null;
     latestExecutedRows = body?.latestExecutedRows ?? [];
     testRangeLabel = body?.testRangeLabel ?? "";
+    latestExecutedTotal = typeof body?.latestExecutedTotal === "number" ? body.latestExecutedTotal : undefined;
   } catch {
     /* no body */
   }
@@ -70,7 +73,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No run data provided." }, { status: 400 });
   }
 
-  const html = renderReportHtml(run, abortedRows, abortRangeLabel, isThemeId(theme) ? theme : undefined, latestExecutedRows, testRangeLabel);
+  const html = renderReportHtml(run, abortedRows, abortRangeLabel, isThemeId(theme) ? theme : undefined, latestExecutedRows, testRangeLabel, latestExecutedTotal);
   return new NextResponse(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",

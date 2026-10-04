@@ -94,6 +94,7 @@ export function renderReportHtml(
   theme: ThemeId = "professional",
   latestExecutedRows: TestRow[] = [],
   testRangeLabel = "",
+  latestExecutedTotal?: number,
 ): string {
   const t = THEMES[theme] ?? THEMES.professional;
   const { meta, summary } = run;
@@ -218,7 +219,7 @@ ${verification}
 <h2>Aborted tests (${abortedRows.length})${abortRangeLabel ? ` &mdash; filtered range: ${esc(abortRangeLabel)}` : ""}</h2>
 ${abortTable(abortedRows)}
 
-<h2>Latest executed tests (${latestExecutedRows.length})${testRangeLabel ? ` &mdash; filtered range: ${esc(testRangeLabel)}` : ""}</h2>
+<h2>Latest executed tests (${latestExecutedTotal && latestExecutedTotal > latestExecutedRows.length ? `showing ${latestExecutedRows.length} of ${latestExecutedTotal}` : latestExecutedRows.length})${testRangeLabel ? ` &mdash; filtered range: ${esc(testRangeLabel)}` : ""}</h2>
 ${testsTable(latestExecutedRows)}
 
 ${warnings}

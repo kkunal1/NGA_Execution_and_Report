@@ -3,7 +3,7 @@
 import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer } from "lucide-react";
+import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
@@ -16,6 +16,8 @@ const NAV = [
   { href: "/new-job", label: "NGA TestRun Data", icon: Database, adminOnly: true, visibilityKey: "ngaiTestRunData" as const },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
+
+const SIDEBAR_COLLAPSED_KEY = "nga-sidebar-collapsed";
 
 type MenuVisibility = {
   poolSystems: boolean;
@@ -65,6 +67,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [loginBusy, setLoginBusy] = useState(false);
   const [menuVisibility, setMenuVisibility] = useState<MenuVisibility>({ poolSystems: false, executionTime: false, ngaiTestRunData: false });
   const [now, setNow] = useState<Date | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [refreshSchedule, setRefreshSchedule] = useState<RefreshSchedule>({ nextRefreshAt: null, intervalSeconds: 0 });
   const refreshContextValue = useMemo(
     () => ({ schedule: refreshSchedule, setSchedule: setRefreshSchedule }),
@@ -139,6 +142,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     setRole(null);
     setUsername("");
     setLoginPassword("");
+  };
+
+  useEffect(() => {
+    setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+  }, []);
+
+  const toggleSidebar = () => {
+    setSidebarCollapsed((prev) => {
+      window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, prev ? "0" : "1");
+      return !prev;
+    });
   };
 
   useEffect(() => {
@@ -229,12 +243,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <AppRoleContext.Provider value={role}>
     <RefreshScheduleContext.Provider value={refreshContextValue}>
     <div className="flex min-h-screen bg-[var(--page-bg)]">
-      <aside className="flex w-64 shrink-0 flex-col bg-[var(--sidebar-bg)] text-[var(--sidebar-text)]">
-        <div className="flex items-center gap-2 px-5 py-5 text-white">
-          <Boxes className="h-6 w-6 text-sky-400" />
-          <span className="text-lg font-semibold tracking-tight">NGA Execution Tracker</span>
+      <aside
+        className={`sticky top-0 flex h-screen shrink-0 flex-col bg-[var(--sidebar-bg)] text-[var(--sidebar-text)] transition-[width] duration-200 ${
+          sidebarCollapsed ? "w-16" : "w-64"
+        }`}
+      >
+        <div className={`flex items-center gap-2 py-5 text-white ${sidebarCollapsed ? "justify-center px-2" : "px-5"}`}>
+          <Boxes className="h-6 w-6 shrink-0 text-sky-400" />
+          {!sidebarCollapsed && <span className="truncate text-lg font-semibold tracking-tight">NGA Execution Tracker</span>}
         </div>
-        <nav className="mt-2 flex-1 space-y-1 px-3">
+        <nav className={`mt-2 flex-1 space-y-1 ${sidebarCollapsed ? "px-2" : "px-3"}`}>
           {NAV.filter((item) => {
             if (role === "admin") return true;
             if (item.adminOnly) return false;
@@ -245,24 +263,42 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <Link
                 key={href}
                 href={href}
-                className={`flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition ${
+                title={sidebarCollapsed ? label : undefined}
+                aria-label={label}
+                className={`flex items-center gap-3 rounded-lg py-2.5 text-sm font-medium transition ${
+                  sidebarCollapsed ? "justify-center px-2" : "px-3"
+                } ${
                   active ? "bg-[var(--accent)] text-[var(--accent-text)] shadow-sm" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"
                 }`}
               >
-                <Icon className="h-4 w-4" />
-                {label}
+                <Icon className="h-4 w-4 shrink-0" />
+                {!sidebarCollapsed && <span className="truncate">{label}</span>}
               </Link>
             );
           })}
         </nav>
-        <div className="border-t border-white/10 px-5 py-4 text-xs opacity-70">
-          {role === "admin" ? "Administrator" : "Read-only viewer"}
-        </div>
+        {!sidebarCollapsed && (
+          <div className="border-t border-white/10 px-5 py-4 text-xs opacity-70">
+            {role === "admin" ? "Administrator" : "Read-only viewer"}
+          </div>
+        )}
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-6 py-3">
-          <div className="text-sm font-medium text-[var(--text-muted)]">NGA Execution &amp; Report</div>
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-expanded={!sidebarCollapsed}
+              className="flex h-8 w-8 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--surface-alt)]"
+            >
+              {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
+            </button>
+            <div className="text-sm font-medium text-[var(--text-muted)]">NGA Execution &amp; Report</div>
+          </div>
           <div className="flex items-center gap-4 text-sm text-[var(--text-muted)]">
             {now && (
               <span>

@@ -26,6 +26,7 @@ import { useRefreshSchedule } from "@/components/refresh-context";
 const SUITE_INPUT_KEY = "nga-suite-name-input";
 const NGAI_RUN_KEY = "nga-ngai-last-run";
 const NGAI_ABORTED_KEY = "nga-ngai-aborted-cache";
+const LATEST_EXECUTED_DISPLAY_LIMIT = 100;
 
 const COLORS: Record<string, string> = {
   Passed: "#16a34a",
@@ -502,7 +503,7 @@ export default function Dashboard() {
       const res = await fetch("/api/report", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ run: displayedRun, abortedRows: filteredAbortedRows, abortRangeLabel, theme, latestExecutedRows, testRangeLabel }),
+        body: JSON.stringify({ run: displayedRun, abortedRows: filteredAbortedRows, abortRangeLabel, theme, latestExecutedRows: displayedExecutedRows, latestExecutedTotal: latestExecutedRows.length, testRangeLabel }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -582,6 +583,8 @@ export default function Dashboard() {
     });
     return [...filtered].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
   }, [visibleRows, testFrom, testTo]);
+
+  const displayedExecutedRows = useMemo(() => latestExecutedRows.slice(0, LATEST_EXECUTED_DISPLAY_LIMIT), [latestExecutedRows]);
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -1002,7 +1005,11 @@ export default function Dashboard() {
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                  Latest executed tests {latestExecutedRows.length > 0 && `(${latestExecutedRows.length})`}
+                  Latest executed tests{" "}
+                  {latestExecutedRows.length > 0 &&
+                    (latestExecutedRows.length > displayedExecutedRows.length
+                      ? `(showing ${displayedExecutedRows.length} of ${latestExecutedRows.length})`
+                      : `(${latestExecutedRows.length})`)}
                 </h2>
                 {(testFrom || testTo) && (
                   <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -1046,23 +1053,30 @@ export default function Dashboard() {
               </div>
             </div>
             <div className="overflow-x-auto rounded-2xl border border-[var(--border)] bg-[var(--surface)] shadow-sm">
-              <table className="w-full text-sm">
+              <table className="w-full table-fixed text-sm">
+                <colgroup>
+                  <col className="w-12" />
+                  <col className="w-44" />
+                  <col />
+                  <col className="w-24" />
+                  <col className="w-48" />
+                </colgroup>
                 <thead className="bg-[var(--surface-alt)] text-[var(--text)]">
                   <tr>
                     {["#", "Domain", "Testline", "Status", "Date"].map((h) => (
-                      <th key={h} className="px-3 py-2 text-left font-medium">
+                      <th key={h} className={`px-3 py-2 font-medium ${h === "Status" ? "text-center" : "text-left"}`}>
                         {h}
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {latestExecutedRows.map((row, i) => (
-                    <tr key={row.id} className="border-t border-[var(--border)] transition even:bg-[var(--surface-alt)] hover:bg-slate-50/40">
+                  {displayedExecutedRows.map((row, i) => (
+                    <tr key={row.id} className="border-t border-[var(--border)] align-middle transition even:bg-[var(--surface-alt)] hover:bg-slate-50/40">
                       <td className="px-3 py-2 text-[var(--text-muted)]">{i + 1}</td>
-                      <td className="px-3 py-2 font-medium text-[var(--text)]">{row.domain || "-"}</td>
-                      <td className="px-3 py-2 text-[var(--text-muted)]">{row.testline}</td>
-                      <td className="px-3 py-2">
+                      <td className="truncate px-3 py-2 font-medium text-[var(--text)]" title={row.domain || undefined}>{row.domain || "-"}</td>
+                      <td className="px-3 py-2 text-xs break-all text-[var(--text-muted)]" title={row.testline}>{row.testline}</td>
+                      <td className="px-3 py-2 text-center">
                         <span
                           className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold ${
                             row.bucket === "Passed" ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"
@@ -1071,8 +1085,10 @@ export default function Dashboard() {
                           {row.bucket === "Passed" ? "Pass" : "Fail"}
                         </span>
                       </td>
-                      <td className="px-3 py-2 tabular-nums text-[var(--text-muted)]">
-                        {row.date ? new Date(row.date).toLocaleString() : "-"}
+                      <td className="whitespace-nowrap px-3 py-2 tabular-nums text-[var(--text-muted)]">
+                        {row.date
+                          ? new Date(row.date).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                          : "-"}
                       </td>
                     </tr>
                   ))}

@@ -59,6 +59,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [role, setRole] = useState<AppRole | null>(null);
   const [username, setUsername] = useState("");
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<number | null>(null);
+  const [sessionNow, setSessionNow] = useState(Date.now());
   const [checkingSession, setCheckingSession] = useState(true);
   const [adminConfigured, setAdminConfigured] = useState(false);
   const [loginUsername, setLoginUsername] = useState("");
@@ -77,14 +79,59 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void fetch("/api/auth/session", { cache: "no-store" })
       .then(async (response) => {
-        const session = (await response.json()) as { role: AppRole | null; username: string | null; adminConfigured: boolean };
+        const session = (await response.json()) as { role: AppRole | null; username: string | null; expiresAt: number | null; adminConfigured: boolean };
         setAdminConfigured(session.adminConfigured);
         setRole(session.role);
         setUsername(session.username ?? "");
+        setSessionExpiresAt(session.expiresAt);
       })
       .catch(() => setLoginError("Could not check your sign-in session."))
       .finally(() => setCheckingSession(false));
   }, []);
+
+  useEffect(() => {
+    if (!role || sessionExpiresAt == null) return;
+    let checking = false;
+    const recheckSession = async () => {
+      if (checking) return;
+      checking = true;
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        if (!response.ok) return;
+        const session = (await response.json()) as { role: AppRole | null; username: string | null; expiresAt: number | null };
+        if (!session.role || session.expiresAt == null || session.expiresAt <= Date.now()) {
+          setRole(null);
+          setUsername("");
+          setSessionExpiresAt(null);
+          return;
+        }
+        setRole(session.role);
+        setUsername(session.username ?? "");
+        setSessionExpiresAt(session.expiresAt);
+      } catch {
+        // Keep the current session state when the network is temporarily unavailable.
+      } finally {
+        checking = false;
+      }
+    };
+    const checkExpiry = () => {
+      const currentTime = Date.now();
+      setSessionNow(currentTime);
+      if (currentTime >= sessionExpiresAt) void recheckSession();
+    };
+    const timer = window.setInterval(checkExpiry, 1000);
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void recheckSession();
+    };
+    window.addEventListener("focus", recheckSession);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    checkExpiry();
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", recheckSession);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, [role, sessionExpiresAt]);
 
   useEffect(() => {
     if (!role) return;
@@ -125,10 +172,11 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: loginUsername, password: loginPassword }),
       });
-      const result = (await response.json()) as { role?: AppRole; username?: string; error?: string };
+      const result = (await response.json()) as { role?: AppRole; username?: string; expiresAt?: number; error?: string };
       if (!response.ok || !result.role) throw new Error(result.error || "Sign-in failed.");
       setRole(result.role);
       setUsername(result.username ?? loginUsername);
+      setSessionExpiresAt(result.expiresAt ?? null);
       setLoginPassword("");
     } catch (error) {
       setLoginError(error instanceof Error ? error.message : "Sign-in failed.");
@@ -141,6 +189,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     await fetch("/api/auth/logout", { method: "POST" }).catch(() => undefined);
     setRole(null);
     setUsername("");
+    setSessionExpiresAt(null);
     setLoginPassword("");
   };
 
@@ -298,6 +347,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </button>
             <div className="text-sm font-medium text-[var(--text-muted)]">NGA Execution &amp; Report</div>
+            {role && sessionExpiresAt != null && (
+              <span className="whitespace-nowrap rounded-md bg-[var(--surface-alt)] px-2.5 py-1 text-xs tabular-nums text-[var(--text-muted)]">
+                Session expires in {Math.floor(Math.max(0, sessionExpiresAt - sessionNow) / 3_600_000)}h{" "}
+                {String(Math.floor((Math.max(0, sessionExpiresAt - sessionNow) % 3_600_000) / 60_000)).padStart(2, "0")}m{" "}
+                {String(Math.floor((Math.max(0, sessionExpiresAt - sessionNow) % 60_000) / 1000)).padStart(2, "0")}s
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-4 text-sm text-[var(--text-muted)]">
             {now && (

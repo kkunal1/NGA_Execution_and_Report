@@ -9,6 +9,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     role: session?.role ?? null,
     username: session?.username ?? null,
+    expiresAt: session?.expiresAt ?? null,
     adminConfigured: isAdminConfigured(),
   });
 }

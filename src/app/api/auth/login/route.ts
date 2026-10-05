@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { authenticate, createSessionToken, isAdminConfigured, sessionCookieOptions } from "@/lib/auth";
+import { authenticate, createSessionToken, getSessionExpiresAt, isAdminConfigured, sessionCookieOptions } from "@/lib/auth";
 import { recordSuccessfulLogin } from "@/lib/login-audit";
 
 export const runtime = "nodejs";
@@ -40,7 +40,8 @@ export async function POST(req: Request) {
 
   attempts.delete(address);
   await recordSuccessfulLogin(req, username, role);
-  const response = NextResponse.json({ role, username });
-  response.cookies.set("nga-portal-session", await createSessionToken(role, username), sessionCookieOptions(req, role));
+  const expiresAt = getSessionExpiresAt(role);
+  const response = NextResponse.json({ role, username, expiresAt });
+  response.cookies.set("nga-portal-session", await createSessionToken(role, username, expiresAt), sessionCookieOptions(req, role));
   return response;
 }

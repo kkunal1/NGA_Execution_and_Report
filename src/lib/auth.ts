@@ -58,15 +58,19 @@ export function authenticate(username: string, password: string): AppRole | null
   return null;
 }
 
-function sessionTtlSeconds(role: AppRole) {
+export function sessionTtlSeconds(role: AppRole) {
   return role === "admin" ? ADMIN_SESSION_TTL_SECONDS : VIEWER_SESSION_TTL_SECONDS;
 }
 
-export async function createSessionToken(role: AppRole, username: string) {
+export function getSessionExpiresAt(role: AppRole, now = Date.now()) {
+  return now + sessionTtlSeconds(role) * 1000;
+}
+
+export async function createSessionToken(role: AppRole, username: string, expiresAt = getSessionExpiresAt(role)) {
   const payload = Buffer.from(JSON.stringify({
     role,
     username,
-    expiresAt: Date.now() + sessionTtlSeconds(role) * 1000,
+    expiresAt,
   } satisfies AppSession)).toString("base64url");
   const signature = createHmac("sha256", await signingKey()).update(payload).digest("base64url");
   return `${payload}.${signature}`;

@@ -1040,10 +1040,11 @@ export default function Dashboard() {
                                       <col className="w-44" />
                                       <col />
                                       <col className="w-44" />
+                                      <col className="w-24" />
                                     </colgroup>
                                     <thead className="sticky top-0 bg-[var(--surface)] text-[var(--text)]">
                                       <tr>
-                                        {["#", "Domain", "Testline", "Date"].map((h) => (
+                                        {["#", "Domain", "Testline", "Date", "More Info"].map((h) => (
                                           <th key={h} className="px-3 py-2 text-left font-medium">
                                             {h}
                                           </th>
@@ -1060,6 +1061,16 @@ export default function Dashboard() {
                                             {t.date
                                               ? new Date(t.date).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
                                               : "-"}
+                                          </td>
+                                          <td className="whitespace-nowrap px-3 py-1.5">
+                                            <a
+                                              href={`https://nga.laas.intel.com/#/dmr_pv/planning/testResult/${encodeURIComponent(t.id)}`}
+                                              target="_blank"
+                                              rel="noopener noreferrer"
+                                              className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                                            >
+                                              More Info
+                                            </a>
                                           </td>
                                         </tr>
                                       ))}

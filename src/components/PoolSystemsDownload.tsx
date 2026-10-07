@@ -4,7 +4,6 @@ import { useState } from "react";
 import { Download as DownloadIcon } from "lucide-react";
 import type { PoolSystem, UncoveredConfig } from "@/lib/pool-systems";
 import { isRunning, splitConfig } from "./PoolSystemsTable";
-import { shortConfig } from "./UncoveredConfigsTable";
 
 const esc = (value: string | number) =>
   String(value).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
@@ -42,7 +41,7 @@ function buildHtml(systems: PoolSystem[], configs: UncoveredConfig[]) {
   const configRows = configs
     .map(
       (r) => `<tr>
-        <td title="${esc(r.config)}"><b>${esc(shortConfig(r.config))}</b></td>
+        <td><b>${esc(r.config)}</b></td>
         <td>${r.domains.map((d) => `${esc(d.domain)}${r.domains.length > 1 ? ` <span class="muted">(${d.testLines})</span>` : ""}`).join("<br>")}</td>
         <td>${r.testLines}</td><td>${r.p1}</td><td>${r.p2}</td>
         <td><span class="badge none">No System Assigned</span></td>

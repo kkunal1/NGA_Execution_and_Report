@@ -3,9 +3,6 @@
 import { useEffect, useState } from "react";
 import type { UncoveredConfig } from "@/lib/pool-systems";
 
-// "16026244698-Oak_Stream_Platform_1_DMR-PD013-408" -> "PD013-408"
-export const shortConfig = (name: string) => name.replace(/^.*?(DMR-)/, "$1").replace(/^DMR-(?=PD\d)/, "");
-
 export default function UncoveredConfigsTable() {
   const [configs, setConfigs] = useState<UncoveredConfig[]>([]);
   const [loading, setLoading] = useState(true);
@@ -77,7 +74,7 @@ export default function UncoveredConfigsTable() {
             <tbody>
               {configs.map((row) => (
                 <tr key={row.config} className="border-t border-[var(--border)] hover:bg-[var(--surface)]">
-                  <td className="px-5 py-2 font-medium text-[var(--text)]" title={row.config}>{shortConfig(row.config)}</td>
+                  <td className="px-5 py-2 font-medium text-[var(--text)]">{row.config}</td>
                   <td className="px-5 py-2">
                     <div className="flex flex-col gap-0.5">
                       {(row.domains ?? []).map((d) => (

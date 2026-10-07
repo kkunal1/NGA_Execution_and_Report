@@ -110,6 +110,7 @@ export function renderReportHtml(
         <td class="num pass">${d.passed}</td>
         <td class="num">${d.passRatePct}%</td>
         <td class="num fail">${d.failed}</td>
+        <td class="num">${d.bucketized ?? 0}</td>
         <td class="num block">${d.blocked}</td>
         <td class="num">${d.notRun}</td>
       </tr>`,
@@ -212,8 +213,8 @@ ${verification}
 
 <h2>Domain-wise data</h2>
 <table class="grid">
-  <thead><tr><th>#</th><th>Domain (Owner Team)</th><th>Total</th><th>Pass</th><th>Pass %</th><th>Fail</th><th>Blocked</th><th>Not run</th></tr></thead>
-  <tbody>${domainRows || '<tr><td colspan="8" class="empty">No domain data.</td></tr>'}</tbody>
+  <thead><tr><th>#</th><th>Domain (Owner Team)</th><th>Total</th><th>Pass</th><th>Pass %</th><th>Fail</th><th>Bucketized</th><th>Blocked</th><th>Not run</th></tr></thead>
+  <tbody>${domainRows || '<tr><td colspan="9" class="empty">No domain data.</td></tr>'}</tbody>
 </table>
 
 <h2>Aborted tests (${abortedRows.length})${abortRangeLabel ? ` &mdash; filtered range: ${esc(abortRangeLabel)}` : ""}</h2>

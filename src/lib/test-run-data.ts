@@ -14,6 +14,13 @@ export function normalizeRunRecord(record: Record<string, unknown>, index: numbe
   const testline = toText(revision?.testLineName ?? revision?.TestLineName ?? testLine?.testLineName ?? testLine?.Name);
   const testSuite = (revision?.testSuite ?? revision?.TestSuite) as Record<string, unknown> | null;
   const suite = toText(revision?.testSuiteName ?? revision?.TestSuiteName ?? testSuite?.testSuiteName ?? testSuite?.TestSuiteName ?? record.requestedSuiteName);
+  const failures = (record.failure ?? record.Failure) as Record<string, unknown>[] | null;
+  const bucketNames = [...new Set((Array.isArray(failures) ? failures : [])
+    .map((f) => {
+      const b = (f?.bucket ?? f?.Bucket) as Record<string, unknown> | null;
+      return toText(b?.bucketName ?? b?.BucketName);
+    })
+    .filter(Boolean))];
   return {
     id: toText(record.testRunId ?? record.id ?? record.Id) || `${index}`,
     name: toText(record.udmTestId ?? record.testRunId ?? record.Name) || `run-${index + 1}`,
@@ -26,6 +33,7 @@ export function normalizeRunRecord(record: Record<string, unknown>, index: numbe
     domain: toText(validationGroup?.testGroupName ?? validationGroup?.TestGroupName),
     date: toText(record.testEndDateTime ?? record.TestEndDateTime ?? record.testStartDateTime ?? record.TestStartDateTime),
     abortStep: toText(autoDisablingTestStep?.testStepName ?? autoDisablingTestStep?.TestStepName),
+    bucketName: bucketNames.join("; "),
     raw: record,
   };
 }

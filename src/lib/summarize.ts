@@ -46,6 +46,9 @@ function countBuckets(rows: TestRow[]) {
   return c;
 }
 
+const countBucketized = (rows: TestRow[]) =>
+  rows.filter((r) => r.bucket === "Failed" && r.bucketName).length;
+
 export function summarize(rows: TestRow[]): Summary {
   const c = countBuckets(rows);
   const executed = c.Passed + c.Failed + c.Blocked;
@@ -96,6 +99,7 @@ export function summarize(rows: TestRow[]): Summary {
         tests: list.length,
         passed: t.Passed,
         failed: t.Failed,
+        bucketized: countBucketized(list),
         blocked: t.Blocked,
         inProgress: t["In Progress"],
         notRun: t["Not Run"],
@@ -108,6 +112,7 @@ export function summarize(rows: TestRow[]): Summary {
     tests: rows.length,
     passed: c.Passed,
     failed: c.Failed,
+    bucketized: countBucketized(rows),
     blocked: c.Blocked,
     inProgress: c["In Progress"],
     notRun: c["Not Run"],

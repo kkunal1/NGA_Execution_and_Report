@@ -907,7 +907,7 @@ export default function Dashboard() {
                 <table className="w-full text-sm">
                   <thead className="bg-indigo-50 text-indigo-900">
                     <tr>
-                      {["#", "Domain (Owner Team)", "Total", "Pass", "Pass %", "Fail", "Blocked", "Not run"].map(
+                      {["#", "Domain (Owner Team)", "Total", "Pass", "Pass %", "Fail", "Bucketized", "Blocked", "Not run"].map(
                         (h) => (
                           <th key={h} className="px-3 py-2 text-left font-medium">
                             {h}
@@ -925,6 +925,7 @@ export default function Dashboard() {
                         <td className="px-3 py-2 tabular-nums text-green-600">{d.passed}</td>
                         <td className="px-3 py-2 tabular-nums">{d.passRatePct}%</td>
                         <td className="px-3 py-2 tabular-nums text-red-600">{d.failed}</td>
+                        <td className="px-3 py-2 tabular-nums">{d.bucketized ?? 0}</td>
                         <td className="px-3 py-2 tabular-nums text-amber-600">{d.blocked}</td>
                         <td className="px-3 py-2 tabular-nums text-[var(--text-muted)]">{d.notRun}</td>
                       </tr>
@@ -936,6 +937,7 @@ export default function Dashboard() {
                       <td className="px-3 py-2 tabular-nums text-green-600">{s.passed}</td>
                       <td className="px-3 py-2 tabular-nums">{s.passRatePct}%</td>
                       <td className="px-3 py-2 tabular-nums text-red-600">{s.failed}</td>
+                      <td className="px-3 py-2 tabular-nums">{s.bucketized ?? 0}</td>
                       <td className="px-3 py-2 tabular-nums text-amber-600">{s.blocked}</td>
                       <td className="px-3 py-2 tabular-nums text-[var(--text-muted)]">{s.notRun}</td>
                     </tr>

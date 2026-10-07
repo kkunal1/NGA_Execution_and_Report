@@ -22,6 +22,8 @@ export type TestRow = {
   date?: string;
   /** Default-flow step name where an Aborted run was auto-disabled. Empty if not available/applicable. */
   abortStep?: string;
+  /** NGA failure bucket name(s) linked to this run's failures. Empty if none. */
+  bucketName?: string;
   raw: Record<string, unknown>;
 };
 
@@ -31,6 +33,7 @@ export type Summary = {
   tests: number;
   passed: number;
   failed: number;
+  bucketized: number;
   blocked: number;
   inProgress: number;
   notRun: number;
@@ -56,6 +59,7 @@ export type Summary = {
     tests: number;
     passed: number;
     failed: number;
+    bucketized: number;
     blocked: number;
     inProgress: number;
     notRun: number;

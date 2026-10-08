@@ -925,7 +925,15 @@ export default function Dashboard() {
                         <td className="px-3 py-2 tabular-nums text-green-600">{d.passed}</td>
                         <td className="px-3 py-2 tabular-nums">{d.passRatePct}%</td>
                         <td className="px-3 py-2 tabular-nums text-red-600">{d.failed}</td>
-                        <td className="px-3 py-2 tabular-nums">{d.bucketized ?? 0}</td>
+                        <td className="px-3 py-2 tabular-nums">
+                          <div className="flex items-center gap-2.5">
+                            <span className="font-semibold">{d.bucketized ?? 0}</span>
+                            <span className="flex flex-col whitespace-nowrap text-[11px] leading-4">
+                              <span className="text-sky-500">HSD {d.bucketizedWithHsd ?? 0}</span>
+                              <span className="text-[var(--text-muted)]">No HSD {d.bucketizedWithoutHsd ?? 0}</span>
+                            </span>
+                          </div>
+                        </td>
                         <td className="px-3 py-2 tabular-nums text-amber-600">{d.blocked}</td>
                         <td className="px-3 py-2 tabular-nums text-[var(--text-muted)]">{d.notRun}</td>
                       </tr>
@@ -937,7 +945,15 @@ export default function Dashboard() {
                       <td className="px-3 py-2 tabular-nums text-green-600">{s.passed}</td>
                       <td className="px-3 py-2 tabular-nums">{s.passRatePct}%</td>
                       <td className="px-3 py-2 tabular-nums text-red-600">{s.failed}</td>
-                      <td className="px-3 py-2 tabular-nums">{s.bucketized ?? 0}</td>
+                      <td className="px-3 py-2 tabular-nums">
+                        <div className="flex items-center gap-2.5">
+                          <span>{s.bucketized ?? 0}</span>
+                          <span className="flex flex-col whitespace-nowrap text-[11px] leading-4">
+                            <span className="text-sky-700">HSD {s.bucketizedWithHsd ?? 0}</span>
+                            <span className="text-[var(--text-muted)]">No HSD {s.bucketizedWithoutHsd ?? 0}</span>
+                          </span>
+                        </div>
+                      </td>
                       <td className="px-3 py-2 tabular-nums text-amber-600">{s.blocked}</td>
                       <td className="px-3 py-2 tabular-nums text-[var(--text-muted)]">{s.notRun}</td>
                     </tr>

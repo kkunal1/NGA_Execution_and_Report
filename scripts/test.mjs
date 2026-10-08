@@ -155,6 +155,26 @@ assert.equal(s.passRatePct, 33.3);
 assert.equal(s.byTestline[0].testline, "TL1");
 assert.equal(s.failures.length, 1);
 
+const bucketNames = [
+  "15019970627",
+  "hsd_16031656538",
+  "presighting_16031994288",
+  "hsd_16031581796_txt_and_tdx",
+  "need_to_change_cmdline_parameter",
+  "gh_pr_9677_fisher_tests_update",
+  "targeted_channel_didnt_failover",
+  "debug_ras_in_triage",
+  "debug_ras_in_triage; hsd_16031581796_txt_and_tdx",
+];
+const bucketRows = bucketNames.map((bucketName, index) => ({
+  ...rows[0], id: `bucket-${index}`, bucket: "Failed", state: "Failed", domain: "pv_security", bucketName,
+}));
+const bucketSummary = summarize([...bucketRows, { ...rows[0], id: "unbucketed", bucket: "Failed", domain: "pv_security" }]);
+assert.equal(bucketSummary.bucketized, 9);
+assert.equal(bucketSummary.bucketizedWithHsd, 5);
+assert.equal(bucketSummary.bucketizedWithoutHsd, 4);
+assert.equal(bucketSummary.byDomain[0].bucketizedWithHsd + bucketSummary.byDomain[0].bucketizedWithoutHsd, bucketSummary.byDomain[0].bucketized);
+
 const octoberWeeks = getWorkWeeks(new Date("2026-10-08T06:00:00Z"));
 assert.equal(octoberWeeks.year, 2026);
 assert.equal(octoberWeeks.weeks[0].label, "WW41");

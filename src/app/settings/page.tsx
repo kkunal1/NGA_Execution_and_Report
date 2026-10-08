@@ -439,13 +439,13 @@ export default function SettingsPage() {
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="dashboard-heading">
         <h2 id="dashboard-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Dashboard charts</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">These shared toggles control what every signed-in user sees on the Execution Report dashboard.</p>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Chart toggles apply to all signed-in users. Menu visibility toggles apply to viewers; administrators always see the menus.</p>
         <div className="mt-4 space-y-3">
           {([
             ["executionStatusSplit", "Execution status split"],
             ["rawStateValues", "Raw state values"],
             ["poolSystems", "B0 Pool Systems menu"],
-            ["weeklyReport", "Weekly Report menu"],
+            ["weeklyReport", "Weekly Report menu (viewers only)"],
             ["executionTime", "Check Execution Time menu"],
             ["ngaiTestRunData", "NGA Test Run Data menu (admin only)"],
           ] as const).map(([key, label]) => (

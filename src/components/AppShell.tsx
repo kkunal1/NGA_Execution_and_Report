@@ -305,7 +305,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className={`mt-2 flex-1 space-y-1 ${sidebarCollapsed ? "px-2" : "px-3"}`}>
           {NAV.filter((item) => {
-            if (item.visibilityKey === "weeklyReport") return menuVisibility.weeklyReport;
             if (role === "admin") return true;
             if (item.adminOnly) return false;
             return !item.visibilityKey || menuVisibility[item.visibilityKey];

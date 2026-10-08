@@ -46,8 +46,15 @@ function countBuckets(rows: TestRow[]) {
   return c;
 }
 
-const countBucketized = (rows: TestRow[]) =>
-  rows.filter((r) => r.bucket === "Failed" && r.bucketName).length;
+function countBucketized(rows: TestRow[]) {
+  const bucketized = rows.filter((row) => row.bucket === "Failed" && row.bucketName);
+  const bucketizedWithHsd = bucketized.filter((row) => /\d{10,}/.test(row.bucketName ?? "")).length;
+  return {
+    bucketized: bucketized.length,
+    bucketizedWithHsd,
+    bucketizedWithoutHsd: bucketized.length - bucketizedWithHsd,
+  };
+}
 
 export function summarize(rows: TestRow[]): Summary {
   const c = countBuckets(rows);
@@ -99,7 +106,7 @@ export function summarize(rows: TestRow[]): Summary {
         tests: list.length,
         passed: t.Passed,
         failed: t.Failed,
-        bucketized: countBucketized(list),
+        ...countBucketized(list),
         blocked: t.Blocked,
         inProgress: t["In Progress"],
         notRun: t["Not Run"],
@@ -112,7 +119,7 @@ export function summarize(rows: TestRow[]): Summary {
     tests: rows.length,
     passed: c.Passed,
     failed: c.Failed,
-    bucketized: countBucketized(rows),
+    ...countBucketized(rows),
     blocked: c.Blocked,
     inProgress: c["In Progress"],
     notRun: c["Not Run"],

@@ -34,6 +34,8 @@ export type Summary = {
   passed: number;
   failed: number;
   bucketized: number;
+  bucketizedWithHsd: number;
+  bucketizedWithoutHsd: number;
   blocked: number;
   inProgress: number;
   notRun: number;
@@ -60,6 +62,8 @@ export type Summary = {
     passed: number;
     failed: number;
     bucketized: number;
+    bucketizedWithHsd: number;
+    bucketizedWithoutHsd: number;
     blocked: number;
     inProgress: number;
     notRun: number;

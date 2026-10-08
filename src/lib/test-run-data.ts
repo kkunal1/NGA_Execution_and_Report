@@ -10,7 +10,7 @@ export function normalizeRunRecord(record: Record<string, unknown>, index: numbe
   const validationGroup = (record.validationGroup ?? record.ValidationGroup) as Record<string, unknown> | null;
   const autoDisablingTestStep = (record.autoDisablingTestStep ?? record.AutoDisablingTestStep) as Record<string, unknown> | null;
   const state = toText(record.state ?? record.stateDescription ?? "(empty)");
-  const goStatus = toText(record.goStatus ?? record.GoStatus ?? record["Go Status"]);
+  const goStatus = toText(record.goStatus ?? record.GoStatus ?? record["Go Status"] ?? testLine?.goStatus ?? testLine?.GoStatus);
   const testline = toText(revision?.testLineName ?? revision?.TestLineName ?? testLine?.testLineName ?? testLine?.Name);
   const testSuite = (revision?.testSuite ?? revision?.TestSuite) as Record<string, unknown> | null;
   const suite = toText(revision?.testSuiteName ?? revision?.TestSuiteName ?? testSuite?.testSuiteName ?? testSuite?.TestSuiteName ?? record.requestedSuiteName);

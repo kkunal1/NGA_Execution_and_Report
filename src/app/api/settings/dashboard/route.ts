@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
-import { getDashboardSettings, saveDashboardSettings } from "@/lib/dashboard-settings";
+import { getDashboardSettings, saveDashboardSettings, type DashboardSettings } from "@/lib/dashboard-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,14 +17,16 @@ export async function PUT(req: Request) {
   try {
     const body = (await req.json()) as Partial<Record<keyof Awaited<ReturnType<typeof getDashboardSettings>>, unknown>>;
     if (typeof body.executionStatusSplit !== "boolean" || typeof body.rawStateValues !== "boolean" ||
-      typeof body.poolSystems !== "boolean" || typeof body.executionTime !== "boolean" ||
-      typeof body.ngaiTestRunData !== "boolean") {
-      return NextResponse.json({ error: "Dashboard and menu settings must be boolean values." }, { status: 400 });
+      typeof body.poolSystems !== "boolean" || typeof body.weeklyReport !== "boolean" || typeof body.executionTime !== "boolean" ||
+      typeof body.ngaiTestRunData !== "boolean" || (body.weeklyReportMode !== "dateRange" && body.weeklyReportMode !== "workWeek")) {
+      return NextResponse.json({ error: "Invalid dashboard or Weekly Report settings." }, { status: 400 });
     }
-    const settings = {
+    const settings: DashboardSettings = {
       executionStatusSplit: body.executionStatusSplit,
       rawStateValues: body.rawStateValues,
       poolSystems: body.poolSystems,
+      weeklyReport: body.weeklyReport,
+      weeklyReportMode: body.weeklyReportMode,
       executionTime: body.executionTime,
       ngaiTestRunData: body.ngaiTestRunData,
     };

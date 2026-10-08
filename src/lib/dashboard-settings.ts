@@ -6,6 +6,8 @@ export type DashboardSettings = {
   executionStatusSplit: boolean;
   rawStateValues: boolean;
   poolSystems: boolean;
+  weeklyReport: boolean;
+  weeklyReportMode: "dateRange" | "workWeek";
   executionTime: boolean;
   ngaiTestRunData: boolean;
 };
@@ -14,6 +16,8 @@ export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
   executionStatusSplit: true,
   rawStateValues: true,
   poolSystems: false,
+  weeklyReport: false,
+  weeklyReportMode: "dateRange",
   executionTime: false,
   ngaiTestRunData: false,
 };
@@ -27,6 +31,8 @@ export async function getDashboardSettings(): Promise<DashboardSettings> {
       executionStatusSplit: saved.executionStatusSplit ?? DEFAULT_DASHBOARD_SETTINGS.executionStatusSplit,
       rawStateValues: saved.rawStateValues ?? DEFAULT_DASHBOARD_SETTINGS.rawStateValues,
       poolSystems: saved.poolSystems ?? DEFAULT_DASHBOARD_SETTINGS.poolSystems,
+      weeklyReport: saved.weeklyReport ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReport,
+      weeklyReportMode: saved.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
       executionTime: saved.executionTime ?? DEFAULT_DASHBOARD_SETTINGS.executionTime,
       ngaiTestRunData: saved.ngaiTestRunData ?? DEFAULT_DASHBOARD_SETTINGS.ngaiTestRunData,
     };

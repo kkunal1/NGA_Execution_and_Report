@@ -7,6 +7,7 @@ import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
 import { buildReportFilename } from "../src/lib/report-filename.ts";
+import { getWorkWeeks } from "../src/lib/work-weeks.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
 const encryptedToken = encryptNgaiToken("sample-pat", encryptionKey);
@@ -109,7 +110,9 @@ for (const [input, expected] of cases) {
   assert.equal(bucketOf(input), expected, `bucketOf("${input}")`);
 }
 assert.equal(bucketOf("PendingGatekeepers", "Blocked"), "Blocked");
+assert.equal(bucketOf("PendingGatekeeper", "Blocked"), "Blocked");
 assert.equal(bucketOf("PendingGatekeepers", "Go"), "Not Run");
+assert.equal(bucketOf("PendingGatekeeper", "Go"), "Not Run");
 assert.equal(bucketOf("PendingGatekeepers", "blocked"), "Blocked");
 
 const payload = {
@@ -151,5 +154,17 @@ assert.equal(s.progressPct, 66.7);
 assert.equal(s.passRatePct, 33.3);
 assert.equal(s.byTestline[0].testline, "TL1");
 assert.equal(s.failures.length, 1);
+
+const octoberWeeks = getWorkWeeks(new Date("2026-10-08T06:00:00Z"));
+assert.equal(octoberWeeks.year, 2026);
+assert.equal(octoberWeeks.weeks[0].label, "WW41");
+assert.equal(octoberWeeks.weeks[0].from.toISOString(), "2026-10-04T18:30:00.000Z");
+assert.equal(octoberWeeks.weeks[0].to.toISOString(), "2026-10-08T06:00:00.000Z");
+assert.equal(octoberWeeks.weeks[1].label, "WW40");
+assert.equal(octoberWeeks.weeks[1].to.toISOString(), "2026-10-04T18:30:00.000Z");
+assert.equal(octoberWeeks.weeks.at(-1).label, "WW01");
+const newYearWeeks = getWorkWeeks(new Date("2020-12-31T20:00:00Z"));
+assert.equal(newYearWeeks.year, 2020);
+assert.equal(newYearWeeks.weeks[0].label, "WW53");
 
 console.log(`OK - ${cases.length} bucket cases + harvest/summarize checks passed`);

@@ -29,6 +29,8 @@ type DashboardSettings = {
   executionStatusSplit: boolean;
   rawStateValues: boolean;
   poolSystems: boolean;
+  weeklyReport: boolean;
+  weeklyReportMode: "dateRange" | "workWeek";
   executionTime: boolean;
   ngaiTestRunData: boolean;
 };
@@ -63,6 +65,8 @@ export default function SettingsPage() {
     executionStatusSplit: true,
     rawStateValues: true,
     poolSystems: false,
+    weeklyReport: false,
+    weeklyReportMode: "dateRange",
     executionTime: false,
     ngaiTestRunData: false,
   });
@@ -127,6 +131,8 @@ export default function SettingsPage() {
           executionStatusSplit: data.executionStatusSplit,
           rawStateValues: data.rawStateValues,
           poolSystems: data.poolSystems,
+          weeklyReport: data.weeklyReport === true,
+          weeklyReportMode: data.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
           executionTime: data.executionTime,
           ngaiTestRunData: data.ngaiTestRunData,
         });
@@ -439,6 +445,7 @@ export default function SettingsPage() {
             ["executionStatusSplit", "Execution status split"],
             ["rawStateValues", "Raw state values"],
             ["poolSystems", "B0 Pool Systems menu"],
+            ["weeklyReport", "Weekly Report menu"],
             ["executionTime", "Check Execution Time menu"],
             ["ngaiTestRunData", "NGA Test Run Data menu (admin only)"],
           ] as const).map(([key, label]) => (
@@ -456,6 +463,32 @@ export default function SettingsPage() {
         </div>
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
           {dashboardSettingsSaved ? "Dashboard chart settings saved." : "Changes apply to all signed-in users."}
+        </p>
+        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
+      </section>
+
+      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="weekly-report-settings-heading">
+        <h2 id="weekly-report-settings-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Weekly Report Settings</h2>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {([[
+            "dateRange", "Date Range",
+          ], [
+            "workWeek", "Work Week (WW)",
+          ]] as const).map(([mode, label]) => (
+            <label key={mode} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={dashboardSettings.weeklyReportMode === mode}
+                onChange={() => void saveDashboardSettings({ ...dashboardSettings, weeklyReportMode: mode })}
+                className="h-5 w-5 accent-[var(--accent)]"
+              />
+            </label>
+          ))}
+        </div>
+        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
+          {dashboardSettings.weeklyReportMode === "workWeek" ? "Work Week is active; Date Range is off." : "Date Range is active; Work Week is off."}
         </p>
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>

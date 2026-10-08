@@ -3,7 +3,7 @@
 import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
@@ -12,6 +12,7 @@ import { RefreshScheduleContext, type RefreshSchedule } from "./refresh-context"
 const NAV = [
   { href: "/", label: "Execution Report", icon: LayoutDashboard },
   { href: "/pool-systems", label: "B0 Pool Systems", icon: Server, visibilityKey: "poolSystems" as const },
+  { href: "/weekly-report", label: "Weekly Report", icon: CalendarDays, visibilityKey: "weeklyReport" as const },
   { href: "/execution-time", label: "Check Execution Time", icon: Timer, visibilityKey: "executionTime" as const },
   { href: "/new-job", label: "NGA TestRun Data", icon: Database, adminOnly: true, visibilityKey: "ngaiTestRunData" as const },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
@@ -21,6 +22,7 @@ const SIDEBAR_COLLAPSED_KEY = "nga-sidebar-collapsed";
 
 type MenuVisibility = {
   poolSystems: boolean;
+  weeklyReport: boolean;
   executionTime: boolean;
   ngaiTestRunData: boolean;
 };
@@ -67,7 +69,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
-  const [menuVisibility, setMenuVisibility] = useState<MenuVisibility>({ poolSystems: false, executionTime: false, ngaiTestRunData: false });
+  const [menuVisibility, setMenuVisibility] = useState<MenuVisibility>({ poolSystems: false, weeklyReport: false, executionTime: false, ngaiTestRunData: false });
   const [now, setNow] = useState<Date | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [refreshSchedule, setRefreshSchedule] = useState<RefreshSchedule>({ nextRefreshAt: null, intervalSeconds: 0 });
@@ -142,7 +144,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         if (!response.ok) return;
         const data = (await response.json()) as MenuVisibility;
         if (!cancelled && typeof data.poolSystems === "boolean" && typeof data.executionTime === "boolean" && typeof data.ngaiTestRunData === "boolean") {
-          setMenuVisibility({ poolSystems: data.poolSystems, executionTime: data.executionTime, ngaiTestRunData: data.ngaiTestRunData });
+          setMenuVisibility({ poolSystems: data.poolSystems, weeklyReport: data.weeklyReport === true, executionTime: data.executionTime, ngaiTestRunData: data.ngaiTestRunData });
         }
       } catch {
         // Keep the default viewer menu if shared settings are temporarily unavailable.
@@ -194,7 +196,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    setSidebarCollapsed(window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
+    setSidebarCollapsed(window.matchMedia("(max-width: 640px)").matches || window.localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1");
   }, []);
 
   const toggleSidebar = () => {
@@ -303,6 +305,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         <nav className={`mt-2 flex-1 space-y-1 ${sidebarCollapsed ? "px-2" : "px-3"}`}>
           {NAV.filter((item) => {
+            if (item.visibilityKey === "weeklyReport") return menuVisibility.weeklyReport;
             if (role === "admin") return true;
             if (item.adminOnly) return false;
             return !item.visibilityKey || menuVisibility[item.visibilityKey];
@@ -334,8 +337,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-6 py-3">
-          <div className="flex items-center gap-3">
+        <header className="flex min-w-0 items-center justify-between gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-3 py-3 sm:px-6">
+          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
             <button
               type="button"
               onClick={toggleSidebar}
@@ -346,32 +349,32 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             >
               {sidebarCollapsed ? <PanelLeftOpen className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
             </button>
-            <div className="text-sm font-medium text-[var(--text-muted)]">NGA Execution &amp; Report</div>
+            <div className="hidden text-sm font-medium text-[var(--text-muted)] sm:block">NGA Execution &amp; Report</div>
             {role && sessionExpiresAt != null && (
-              <span className="whitespace-nowrap rounded-md bg-[var(--surface-alt)] px-2.5 py-1 text-xs tabular-nums text-[var(--text-muted)]">
+              <span className="hidden whitespace-nowrap rounded-md bg-[var(--surface-alt)] px-2.5 py-1 text-xs tabular-nums text-[var(--text-muted)] lg:inline-flex">
                 Session expires in {Math.floor(Math.max(0, sessionExpiresAt - sessionNow) / 3_600_000)}h{" "}
                 {String(Math.floor((Math.max(0, sessionExpiresAt - sessionNow) % 3_600_000) / 60_000)).padStart(2, "0")}m{" "}
                 {String(Math.floor((Math.max(0, sessionExpiresAt - sessionNow) % 60_000) / 1000)).padStart(2, "0")}s
               </span>
             )}
           </div>
-          <div className="flex items-center gap-4 text-sm text-[var(--text-muted)]">
+          <div className="flex items-center gap-2 text-sm text-[var(--text-muted)] sm:gap-4">
             {now && (
-              <span>
+              <span className="hidden lg:inline">
                 {now.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}
                 {" · "}
                 {now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })}
               </span>
             )}
-            <RefreshCountdown />
-            <span className="font-semibold text-[var(--text)]">intel</span>
-            <span className="text-xs">{username}</span>
+            <span className="hidden xl:inline-flex"><RefreshCountdown /></span>
+            <span className="hidden font-semibold text-[var(--text)] md:inline">intel</span>
+            <span className="hidden text-xs md:inline">{username}</span>
             <button type="button" onClick={() => void signOut()} title="Sign out" aria-label="Sign out" className="flex h-8 w-8 items-center justify-center rounded-md hover:bg-[var(--surface-alt)]">
               <LogOut className="h-4 w-4" />
             </button>
           </div>
         </header>
-        <main className="flex-1 px-6 py-6">{children}</main>
+        <main className="min-w-0 flex-1 px-3 py-5 sm:px-6 sm:py-6">{children}</main>
       </div>
     </div>
     </RefreshScheduleContext.Provider>

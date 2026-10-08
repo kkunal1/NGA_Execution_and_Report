@@ -45,7 +45,7 @@ export function toText(v: unknown): string {
 export function bucketOf(state: string, goStatus = ""): StateBucket {
   const s = state.toLowerCase().trim();
   if (!s || /^(n\/?a|-|none|null|undefined)$/.test(s)) return "Not Run";
-  if (norm(s) === "pendinggatekeepers") {
+  if (norm(s) === "pendinggatekeeper" || norm(s) === "pendinggatekeepers") {
     return goStatus.toLowerCase().trim() === "blocked" ? "Blocked" : "Not Run";
   }
   // "PendingRunning" is NGA's queued-but-not-started state, not actually in progress.

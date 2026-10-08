@@ -1,0 +1,218 @@
+import { request as undiciRequest } from "undici";
+import { config } from "./config";
+import { getNgaiApiToken } from "./ngai-token";
+import { resolveDispatcher } from "./proxy";
+
+const PAGE_SIZE = 1000;
+const MAX_PAGES = 50;
+
+export const STAGES = ["Preboot", "RebootStation", "PreTest", "Test", "PostTest", "Other"] as const;
+export type Stage = (typeof STAGES)[number];
+
+type Failure = {
+  failureId?: string;
+  stageName?: string | null;
+  sightingId?: string | null;
+  subState?: string | null;
+  description?: string | null;
+  testStep?: { testStepName?: string | null } | null;
+};
+
+type Run = {
+  testRunId?: string;
+  testLineId?: string;
+  testEndDateTime?: string | null;
+  state?: string;
+  isTriageFlag?: boolean;
+  validationGroup?: { testGroupName?: string | null } | null;
+  testLine?: { testLineName?: string | null; config?: { configName?: string | null } | null } | null;
+  failure?: Failure[] | null;
+};
+
+type TestLine = {
+  testLineId?: string;
+  goStatus?: string;
+  allowAutomationFlag?: boolean;
+};
+
+export type FailureRow = {
+  group: string;
+  stages: Record<Stage, number>;
+  total: number;
+  attached: number;
+};
+
+export type StageDetail = {
+  stage: Stage;
+  group: string;
+  config: string;
+  testLine: string;
+  step: string;
+  subState: string;
+  count: number;
+};
+
+export type WeeklyReport = {
+  generatedAt: string;
+  suites: string[];
+  from: string;
+  to: string;
+  planned: number;
+  latestPassed: number;
+  latestFailed: number;
+  blockedLines: number;
+  latestPending: number;
+  validRuns: number;
+  triageRuns: number;
+  validLines: number;
+  passedLines: number;
+  failedLines: number;
+  windowFailures: FailureRow[];
+  backlogFailures: FailureRow[];
+  stageDetails: StageDetail[];
+};
+
+function stageOf(value: string | null | undefined): Stage {
+  const stage = (value ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  if (stage === "preboot") return "Preboot";
+  if (stage === "rebootstation") return "RebootStation";
+  if (stage === "pretest") return "PreTest";
+  if (stage === "test") return "Test";
+  if (stage === "posttest") return "PostTest";
+  return "Other";
+}
+
+const escaped = (text: string) => text.replace(/'/g, "''");
+const suiteFilter = (suite: string) => `TestLine/TestSuite/TestSuiteName eq '${escaped(suite)}'`;
+
+async function fetchRecords<T>(buildUrl: (skip: number) => URL, headers: Record<string, string>): Promise<T[]> {
+  const rows: T[] = [];
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const response = await undiciRequest(buildUrl(page * PAGE_SIZE), {
+      method: "GET",
+      headers,
+      dispatcher: resolveDispatcher(),
+      headersTimeout: config.ngaiTimeoutMs,
+      bodyTimeout: config.ngaiTimeoutMs,
+    });
+    const body = await response.body.text();
+    if (response.statusCode === 401 || response.statusCode === 403) {
+      throw new Error("Intel NGAi rejected the request. Check the configured token or cookie.");
+    }
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw new Error(`Intel NGAi report request failed (${response.statusCode}): ${body.slice(0, 300)}`);
+    }
+    const payload = JSON.parse(body) as { value?: T[]; "@odata.count"?: number } | T[];
+    const batch = Array.isArray(payload) ? payload : payload.value ?? [];
+    rows.push(...batch);
+    if (batch.length < PAGE_SIZE || (!Array.isArray(payload) && payload["@odata.count"] != null && rows.length >= payload["@odata.count"])) return rows;
+  }
+  throw new Error("Report query exceeded its pagination limit. Choose a shorter date range.");
+}
+
+function buildUrl(entity: "TestLine" | "TestRunComposite", filter: string, expand: string, select: string, skip: number) {
+  const url = new URL(config.ngaiApiUrl);
+  url.pathname = url.pathname.replace(/\/TestRunComposite\/?$/, `/${entity}`);
+  url.searchParams.set("$filter", filter);
+  url.searchParams.set("$count", "true");
+  url.searchParams.set("$top", String(PAGE_SIZE));
+  if (skip) url.searchParams.set("$skip", String(skip));
+  url.searchParams.set("$select", select);
+  if (expand) url.searchParams.set("$expand", expand);
+  return url;
+}
+
+function failureRows(runs: Run[]): FailureRow[] {
+  const grouped = new Map<string, FailureRow>();
+  for (const run of runs) {
+    if (run.state !== "Failed") continue;
+    const group = run.validationGroup?.testGroupName || "Unknown";
+    const row = grouped.get(group) ?? {
+      group,
+      stages: { Preboot: 0, RebootStation: 0, PreTest: 0, Test: 0, PostTest: 0, Other: 0 },
+      total: 0,
+      attached: 0,
+    };
+    for (const failure of run.failure?.length ? run.failure : [{}]) {
+      row.stages[stageOf(failure.stageName)]++;
+      row.total++;
+      if (failure.sightingId) row.attached++;
+    }
+    grouped.set(group, row);
+  }
+  return [...grouped.values()].sort((a, b) => b.total - a.total || a.group.localeCompare(b.group));
+}
+
+function detailsFor(runs: Run[]): StageDetail[] {
+  const grouped = new Map<string, StageDetail>();
+  for (const run of runs) {
+    if (run.state !== "Failed") continue;
+    for (const failure of run.failure?.length ? run.failure : [{}]) {
+      const stage = stageOf(failure.stageName);
+      const group = run.validationGroup?.testGroupName || "Unknown";
+      const configName = run.testLine?.config?.configName || "Unknown configuration";
+      const testLine = run.testLine?.testLineName || run.testLineId || "Unknown test line";
+      const step = failure.testStep?.testStepName || "Unknown step";
+      const subState = failure.subState || "Unknown";
+      const key = JSON.stringify([stage, group, configName, testLine, step, subState]);
+      const detail = grouped.get(key) ?? { stage, group, config: configName, testLine, step, subState, count: 0 };
+      detail.count++;
+      grouped.set(key, detail);
+    }
+  }
+  return [...grouped.values()].sort((a, b) => STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage) || b.count - a.count);
+}
+
+export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, lines: TestLine[], windowRuns: Run[], latestRuns: Run[]): WeeklyReport {
+  const eligible = new Set(lines.filter((line) => line.allowAutomationFlag !== false && line.goStatus?.toLowerCase() !== "disabled")
+    .map((line) => line.testLineId).filter((id): id is string => Boolean(id)));
+  const latestValid = latestRuns.filter((run) => !run.isTriageFlag && run.testLineId && eligible.has(run.testLineId));
+  const recent = windowRuns.filter((run) => run.testLineId && eligible.has(run.testLineId) && (run.state === "Passed" || run.state === "Failed"));
+  const valid = recent.filter((run) => !run.isTriageFlag);
+  const latestInWindow = new Map<string, Run>();
+  for (const run of valid) {
+    const prior = latestInWindow.get(run.testLineId!);
+    if (!prior || (run.testEndDateTime ?? "") > (prior.testEndDateTime ?? "")) latestInWindow.set(run.testLineId!, run);
+  }
+  const linesInWindow = [...latestInWindow.values()];
+  return {
+    generatedAt: new Date().toISOString(),
+    suites,
+    from: from.toISOString(),
+    to: to.toISOString(),
+    planned: eligible.size,
+    latestPassed: latestValid.filter((run) => run.state === "Passed").length,
+    latestFailed: latestValid.filter((run) => run.state === "Failed").length,
+    blockedLines: lines.filter((line) => line.testLineId && eligible.has(line.testLineId) && line.goStatus?.toLowerCase() === "blocked").length,
+    latestPending: latestValid.filter((run) => (run.state ?? "").startsWith("Pending")).length,
+    validRuns: valid.length,
+    triageRuns: recent.length - valid.length,
+    validLines: linesInWindow.length,
+    passedLines: linesInWindow.filter((run) => run.state === "Passed").length,
+    failedLines: linesInWindow.filter((run) => run.state === "Failed").length,
+    windowFailures: failureRows(linesInWindow),
+    backlogFailures: failureRows(latestValid),
+    stageDetails: detailsFor(linesInWindow),
+  };
+}
+
+export async function generateWeeklyReport(suites: string[], from: Date, to: Date): Promise<WeeklyReport> {
+  const headers: Record<string, string> = { accept: "application/json" };
+  const token = await getNgaiApiToken();
+  if (token) headers["X-NGA-PAT"] = token;
+  if (config.ngaiCookie) headers.cookie = config.ngaiCookie;
+  const datasets = await Promise.all(suites.map(async (suite) => {
+    const filter = suiteFilter(suite);
+    const lineFilter = `TestSuite/TestSuiteName eq '${escaped(suite)}'`;
+    const runSelect = "TestRunId,TestLineId,State,TestEndDateTime,IsTriageFlag";
+    const runExpand = "ValidationGroup($select=TestGroupName),TestLine($select=TestLineName;$expand=Config($select=ConfigName)),Failure($select=FailureId,StageName,SightingId,SubState;$expand=TestStep($select=TestStepName))";
+    return Promise.all([
+      fetchRecords<TestLine>((skip) => buildUrl("TestLine", lineFilter, "", "TestLineId,GoStatus,AllowAutomationFlag", skip), headers),
+      fetchRecords<Run>((skip) => buildUrl("TestRunComposite", `${filter} and TestEndDateTime ge ${from.toISOString()} and TestEndDateTime lt ${to.toISOString()}`, runExpand, runSelect, skip), headers),
+      fetchRecords<Run>((skip) => buildUrl("TestRunComposite", `${filter} and NonTriageLatestRunFlag eq true`, runExpand, runSelect, skip), headers),
+    ]);
+  }));
+  const missing = datasets.findIndex(([lines]) => lines.length === 0);
+  if (missing >= 0) throw new Error(`No test lines found for suite "${suites[missing]}" in this NGAi project.`);
+  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[0]), datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]));
+}

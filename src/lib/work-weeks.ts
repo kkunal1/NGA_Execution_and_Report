@@ -6,6 +6,16 @@ function mondayOf(day: number) {
   return day - ((new Date(day).getUTCDay() + 6) % 7) * DAY_MS;
 }
 
+export function getIsoWorkWeekLabel(date: Date) {
+  const ist = new Date(date.getTime() + IST_OFFSET_MS);
+  const day = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate());
+  const thursday = day + (3 - ((new Date(day).getUTCDay() + 6) % 7)) * DAY_MS;
+  const year = new Date(thursday).getUTCFullYear();
+  const firstMonday = mondayOf(Date.UTC(year, 0, 4));
+  const week = Math.floor((mondayOf(day) - firstMonday) / WEEK_MS) + 1;
+  return `WW${String(week).padStart(2, "0")}`;
+}
+
 export function getWorkWeeks(now = new Date()) {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
   const today = Date.UTC(ist.getUTCFullYear(), ist.getUTCMonth(), ist.getUTCDate());

@@ -27,6 +27,7 @@ export function normalizeRunRecord(record: Record<string, unknown>, index: numbe
     testline,
     suite,
     state,
+    rerunIndex: Number.isFinite(Number(record.rerunIndex ?? record.RerunIndex)) ? Number(record.rerunIndex ?? record.RerunIndex) : undefined,
     bucket: bucketOf(state, goStatus),
     owner: toText(record.submittedBy ?? record.updatedBy),
     platform: toText(record.vType),

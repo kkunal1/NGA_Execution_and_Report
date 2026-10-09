@@ -2,6 +2,20 @@ import type { StateBucket, TestRow } from "./types";
 
 const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
 
+const DOMAIN_WORDS: Record<string, string> = {
+  io: "IO",
+  ras: "RAS",
+  pcie: "PCIe",
+  rdt: "RDT",
+  ace: "ACE",
+};
+
+export function formatValidationGroupName(value: string): string {
+  return value.replace(/^pv_/i, "").split(/[_\s]+/).filter(Boolean)
+    .map((word) => DOMAIN_WORDS[word.toLowerCase()] ?? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
+}
+
 export function normalizeSuiteNames(input: string | string[] | undefined): string[] {
   const values = Array.isArray(input) ? input : [input ?? ""];
   const unique = new Map<string, string>();

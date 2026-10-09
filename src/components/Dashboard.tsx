@@ -15,7 +15,7 @@ import {
 } from "recharts";
 import { BarChart3, CheckCircle2, ChevronDown, ChevronRight, Clock, Download as DownloadIcon, ListChecks, PlayCircle, Plus, ShieldBan, Trash2, X, XCircle } from "lucide-react";
 import type { RunResult, Summary, TestRow } from "@/lib/types";
-import { normalizeSuiteNames } from "@/lib/normalize";
+import { formatValidationGroupName, normalizeSuiteNames } from "@/lib/normalize";
 import { summarize } from "@/lib/summarize";
 import { DATA_PROVIDER_KEY, readNgaiNetworkOverride, type DataProvider } from "@/lib/provider";
 import { THEME_KEY } from "@/lib/theme";
@@ -805,11 +805,9 @@ export default function Dashboard() {
               </div>
             </section>
           )}
-          {run.meta.filterVerified && (
-            <p className="mb-4 text-sm font-medium text-green-700">
-              ✓ Filter verified: {run.meta.appliedCondition.join(" / ")}
-            </p>
-          )}
+          <p className="mb-4 border-l-[3px] border-[#d7a02b] bg-[#fff6d6] px-3 py-2 text-sm leading-relaxed text-[#594416]" role="note">
+            Note: <strong>Execution Attempted = Passed + Failed + reruns</strong> created for failed tests that are now moved to <strong>NOT RUN</strong>.
+          </p>
 
           {!!run.meta.warnings.length && (
             <section className="mb-6 rounded-2xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 shadow-sm">
@@ -822,8 +820,9 @@ export default function Dashboard() {
             </section>
           )}
 
-          <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+          <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-7">
             <Card label="Total tests" value={s.tests} icon={ListChecks} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" />
+            <Card label="Execution Attempted" value={s.executionAttempted} detail={`${pctOf(s.executionAttempted, s.tests)}%`} tone="text-[var(--card-progress-label)]" icon={PlayCircle} iconTone="bg-sky-100 text-sky-600" cardTone="bg-[var(--card-progress-bg)] border-[var(--card-progress-border)]" />
             <Card label="Passed" value={s.passed} detail={`${s.passRatePct}%`} tone="text-[var(--card-pass-label)]" icon={CheckCircle2} iconTone="bg-green-100 text-green-600" cardTone="bg-[var(--card-pass-bg)] border-[var(--card-pass-border)]" />
             <Card label="Failed" value={s.failed} detail={`${failRatePct}%`} tone="text-[var(--card-fail-label)]" icon={XCircle} iconTone="bg-red-100 text-red-600" cardTone="bg-[var(--card-fail-bg)] border-[var(--card-fail-border)]" />
             <Card label="Blocked" value={s.blocked} detail={`${blockedRatePct}%`} tone="text-[var(--card-blocked-label)]" icon={ShieldBan} iconTone="bg-amber-100 text-amber-600" cardTone="bg-[var(--card-blocked-bg)] border-[var(--card-blocked-border)]" />
@@ -935,7 +934,7 @@ export default function Dashboard() {
                     {(s.byDomain ?? []).map((d, i) => (
                       <tr key={d.domain} className="border-t border-[var(--border)] transition even:bg-[var(--surface-alt)] hover:bg-indigo-50/40">
                         <td className="px-3 py-2 text-[var(--text-muted)]">{i + 1}</td>
-                        <td className="px-3 py-2 font-medium text-[var(--text)]">{d.domain}</td>
+                        <td className="px-3 py-2 font-medium text-[var(--text)]">{formatValidationGroupName(d.domain)}</td>
                         <td className="px-3 py-2 tabular-nums">{d.tests}</td>
                         <td className="px-3 py-2 tabular-nums text-green-600">{d.passed}</td>
                         <td className="px-3 py-2 tabular-nums">{d.passRatePct}%</td>

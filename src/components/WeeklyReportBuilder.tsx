@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CalendarDays, FileText } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CalendarDays, Download, FileText, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, StageDetail, WeeklyReport } from "@/lib/weekly-report";
-import { getWorkWeeks } from "@/lib/work-weeks";
+import { getIsoWorkWeekLabel, getWorkWeeks } from "@/lib/work-weeks";
 
 const offsetMs = 330 * 60_000;
+const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
 const today = () => new Date(Date.now() + offsetMs).toISOString().slice(0, 10);
 const sevenDaysAgo = () => new Date(Date.now() + offsetMs - 6 * 86_400_000).toISOString().slice(0, 10);
 const percentage = (count: number, total: number) => total ? `${(count / total * 100).toFixed(1)}%` : "0%";
@@ -130,8 +131,31 @@ export default function WeeklyReportBuilder() {
   const [suiteInput, setSuiteInput] = useState("");
   const [report, setReport] = useState<WeeklyReport | null>(null);
   const [generatedWeek, setGeneratedWeek] = useState<string | null>(null);
+  const [reportReady, setReportReady] = useState(false);
+  const reportElementRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    try {
+      const saved = window.sessionStorage.getItem(WEEKLY_REPORT_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as { report?: WeeklyReport; generatedWeek?: string | null };
+        if (parsed.report && Array.isArray(parsed.report.suites) && typeof parsed.report.from === "string" && typeof parsed.report.to === "string") {
+          setReport(parsed.report);
+          setGeneratedWeek(typeof parsed.generatedWeek === "string" ? parsed.generatedWeek : null);
+        }
+      }
+    } catch {
+      try {
+        window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY);
+      } catch {
+        // Storage may be unavailable in restricted browser contexts.
+      }
+    } finally {
+      setReportReady(true);
+    }
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -155,6 +179,38 @@ export default function WeeklyReportBuilder() {
   const workWeeks = getWorkWeeks();
   const activeWeek = workWeeks.weeks.find((option) => option.label === selectedWeek) ?? workWeeks.weeks[0];
 
+  const downloadHtml = () => {
+    const article = reportElementRef.current;
+    if (!article || !report) return;
+
+    const clone = article.cloneNode(true) as HTMLElement;
+    const sourceElements = [article, ...Array.from(article.querySelectorAll<HTMLElement>("*"))];
+    const clonedElements = [clone, ...Array.from(clone.querySelectorAll<HTMLElement>("*"))];
+    sourceElements.forEach((source, index) => {
+      const computed = getComputedStyle(source);
+      const target = clonedElements[index];
+      for (const property of Array.from(computed)) {
+        target.style.setProperty(property, computed.getPropertyValue(property), computed.getPropertyPriority(property));
+      }
+    });
+    clone.style.setProperty("width", "100%");
+    clone.style.setProperty("max-width", "1200px");
+    clone.style.setProperty("margin", "0 auto");
+    clone.style.setProperty("box-sizing", "border-box");
+    clone.style.setProperty("overflow-x", "auto");
+
+    const weekMatch = generatedWeek?.match(/WW(\d{2})$/);
+    const week = weekMatch ? `WW-${weekMatch[1]}` : `WW-${getIsoWorkWeekLabel(new Date(Date.parse(report.to) - 1)).slice(2)}`;
+    const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const documentHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DMR-AP1 B0 Execution Weekly Report for ${week}</title></head><body style="margin:0;padding:24px 16px;min-height:100vh;box-sizing:border-box;background:#f3f6fa;font-family:Arial,sans-serif"><main style="width:100%;max-width:1200px;margin:0 auto">${clone.outerHTML}</main></body></html>`;
+    const url = URL.createObjectURL(new Blob([documentHtml], { type: "text/html;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `DMR-AP1 B0 Execution Weekly Report for ${week}_${timestamp}.html`;
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
   const create = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
@@ -173,8 +229,14 @@ export default function WeeklyReportBuilder() {
       });
       const result = (await response.json()) as WeeklyReport & { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not create the report.");
+      const nextGeneratedWeek = mode === "workWeek" ? `${workWeeks.year}${activeWeek.label}` : null;
       setReport(result);
-      setGeneratedWeek(mode === "workWeek" ? `${workWeeks.year}${activeWeek.label}` : null);
+      setGeneratedWeek(nextGeneratedWeek);
+      try {
+        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: result, generatedWeek: nextGeneratedWeek }));
+      } catch {
+        setError("Report created, but this browser could not save it for navigation.");
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not create the report.");
     } finally {
@@ -182,8 +244,34 @@ export default function WeeklyReportBuilder() {
     }
   };
 
+  const clearReport = () => {
+    setReport(null);
+    setGeneratedWeek(null);
+    setError("");
+    try {
+      window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY);
+    } catch {
+      // The visible report is cleared even if browser storage is unavailable.
+    }
+  };
+
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
+  const createButton = (
+    <button type="submit" disabled={busy || !modeReady} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-60">
+      <FileText className="h-4 w-4" aria-hidden="true" />{busy ? "Creating…" : "Create report"}
+    </button>
+  );
+  const downloadButton = report && (
+    <button type="button" onClick={downloadHtml} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)]">
+      <Download className="h-4 w-4" aria-hidden="true" />Download report
+    </button>
+  );
+  const clearReportButton = report && (
+    <button type="button" onClick={clearReport} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-red-200 bg-white px-4 text-sm font-medium text-red-700 hover:bg-red-50">
+      <Trash2 className="h-4 w-4" aria-hidden="true" />Clear report
+    </button>
+  );
   return (
     <div className="mx-auto max-w-7xl text-[var(--text)]">
       <div className="mb-5 flex items-center gap-2">
@@ -191,44 +279,48 @@ export default function WeeklyReportBuilder() {
         <h1 className="text-lg font-semibold">Weekly Report</h1>
       </div>
       <form onSubmit={(event) => void create(event)} className="border-y border-[var(--border)] bg-[var(--surface)] px-4 py-4">
-        <fieldset disabled={mode !== "dateRange"} className={`flex flex-wrap items-end gap-3 ${mode !== "dateRange" ? "opacity-50" : ""}`}>
-          <label className="min-w-36 flex-1 text-xs font-semibold text-[var(--text-muted)]">From (IST)
-            <input required type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} className={`mt-1 ${control}`} />
-          </label>
-          <label className="w-32 text-xs font-semibold text-[var(--text-muted)]">Time
-            <input required type="time" value={fromTime} onChange={(event) => setFromTime(event.target.value)} className={`mt-1 ${control}`} />
-          </label>
-          <label className="min-w-36 flex-1 text-xs font-semibold text-[var(--text-muted)]">To (IST)
-            <input required type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} className={`mt-1 ${control}`} />
-          </label>
-          <label className="w-32 text-xs font-semibold text-[var(--text-muted)]">Time
-            <input required type="time" value={toTime} onChange={(event) => setToTime(event.target.value)} className={`mt-1 ${control}`} />
-          </label>
-        </fieldset>
-        <div className={`mt-4 flex flex-wrap items-end gap-3 border-t border-[var(--border)] pt-4 ${mode !== "workWeek" ? "opacity-50" : ""}`}>
+        {mode === "dateRange" ? (
+          <div className="flex flex-wrap items-end gap-3">
+            <label className="min-w-36 flex-1 text-xs font-semibold text-[var(--text-muted)]">From (IST)
+              <input required type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} className={`mt-1 ${control}`} />
+            </label>
+            <label className="w-32 text-xs font-semibold text-[var(--text-muted)]">Time
+              <input required type="time" value={fromTime} onChange={(event) => setFromTime(event.target.value)} className={`mt-1 ${control}`} />
+            </label>
+            <label className="min-w-36 flex-1 text-xs font-semibold text-[var(--text-muted)]">To (IST)
+              <input required type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} className={`mt-1 ${control}`} />
+            </label>
+            <label className="w-32 text-xs font-semibold text-[var(--text-muted)]">Time
+              <input required type="time" value={toTime} onChange={(event) => setToTime(event.target.value)} className={`mt-1 ${control}`} />
+            </label>
+            {createButton}
+            {downloadButton}
+            {clearReportButton}
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-end gap-3">
           <label className="w-40 text-xs font-semibold text-[var(--text-muted)]">Work Week ({workWeeks.year})
-            <select value={activeWeek.label} disabled={mode !== "workWeek"} onChange={(event) => setSelectedWeek(event.target.value)} className={`mt-1 ${control}`}>
+            <select value={activeWeek.label} onChange={(event) => setSelectedWeek(event.target.value)} className={`mt-1 ${control}`}>
               {workWeeks.weeks.map((week) => <option key={week.label} value={week.label}>{week.label}</option>)}
             </select>
           </label>
-          {mode === "workWeek" && <span className="pb-2 text-xs text-[var(--text-muted)]">{timeLabel(activeWeek.from.toISOString())} – {timeLabel(new Date(activeWeek.to.getTime() - 1).toISOString())} IST</span>}
-        </div>
+            <span className="pb-2 text-xs text-[var(--text-muted)]">{timeLabel(activeWeek.from.toISOString())} – {timeLabel(new Date(activeWeek.to.getTime() - 1).toISOString())} IST</span>
+            {createButton}
+            {downloadButton}
+            {clearReportButton}
+          </div>
+        )}
         <details className="mt-3 text-xs text-[var(--text-muted)]">
           <summary className="cursor-pointer">Suites: B0 P1 + P2</summary>
           <label className="mt-2 block max-w-3xl">Custom NGAi suite names (one per line; leave empty for B0 P1 + P2)
             <textarea value={suiteInput} onChange={(event) => setSuiteInput(event.target.value)} rows={2} className={`mt-1 ${control}`} />
           </label>
         </details>
-        <div className="mt-4 flex justify-end">
-          <button type="submit" disabled={busy || !modeReady} className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-60">
-            <FileText className="h-4 w-4" aria-hidden="true" />{busy ? "Creating…" : "Create report"}
-          </button>
-        </div>
         {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
       </form>
 
-      {!report && !busy && <p className="py-12 text-center text-sm text-[var(--text-muted)]">No report for the selected dates yet.</p>}
-      {report && <article className="mt-6 border border-[#c1d3e2] bg-white text-[#253646] shadow-sm">
+      {!report && !busy && reportReady && <p className="py-12 text-center text-sm text-[var(--text-muted)]">No report generated yet.</p>}
+      {report && <article ref={reportElementRef} className="mt-6 border border-[#c1d3e2] bg-white text-[#253646] shadow-sm">
         <header className="border-l-4 border-[#204e76] px-5 py-5 sm:px-7">
           <p className="text-base font-semibold text-[#204e76]">
             {generatedWeek && <>{generatedWeek} · </>}

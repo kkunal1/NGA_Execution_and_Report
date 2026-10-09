@@ -11,7 +11,7 @@
     "lint": "next lint",
     "auth": "node scripts/auth.mjs",
     "doctor": "node scripts/check-browser.mjs",
-    "test": "node scripts/test.mjs",
+    "test": "tsx scripts/test.mjs",
     "test:e2e": "node scripts/e2e.mjs",
     "test:e2e:ngai": "node scripts/e2e-ngai.mjs",
     "postinstall": "playwright install chromium"
@@ -39,6 +39,7 @@
     "eslint-config-next": "^15.5.23",
     "playwright": "^1.62.1",
     "tailwindcss": "4.1.13",
+    "tsx": "^4.20.6",
     "typescript": "5.9.2"
   }
 }

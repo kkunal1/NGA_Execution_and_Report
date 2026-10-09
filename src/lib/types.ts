@@ -13,6 +13,8 @@ export type TestRow = {
   suite: string;
   /** Raw value of the grid's state column (default: "Last Rerun State"). */
   state: string;
+  /** Latest rerun index reported by NGA. */
+  rerunIndex?: number;
   bucket: StateBucket;
   owner: string;
   platform: string;
@@ -31,6 +33,7 @@ export type ScrapeSource = "network" | "dom";
 
 export type Summary = {
   tests: number;
+  executionAttempted: number;
   passed: number;
   failed: number;
   bucketized: number;

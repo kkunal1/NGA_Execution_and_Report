@@ -1,6 +1,8 @@
 import type { RunResult, TestRow } from "./types";
 import { THEMES, type ThemeId } from "./theme";
 import { buildReportFilename } from "./report-filename";
+import { formatValidationGroupName } from "./normalize";
+import { visibleReportSections, type ReportSectionVisibility } from "./report-sections";
 export { buildReportFilename } from "./report-filename";
 
 const pctOfTotal = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
@@ -95,17 +97,18 @@ export function renderReportHtml(
   latestExecutedRows: TestRow[] = [],
   testRangeLabel = "",
   latestExecutedTotal?: number,
+  sections: ReportSectionVisibility = { executionStatusSplit: true, rawStateValues: true },
 ): string {
   const t = THEMES[theme] ?? THEMES.professional;
   const { meta, summary } = run;
-  const card = (label: string, value: string | number, tone = "") =>
-    `<div class="card ${tone}"><span>${esc(label)}</span><b>${esc(value)}</b></div>`;
+  const card = (label: string, value: string | number, tone = "", detail?: string) =>
+    `<div class="card ${tone}"><span>${esc(label)}</span><b>${esc(value)}</b>${detail ? `<small>${esc(detail)}</small>` : ""}</div>`;
 
   const domainRows = (summary.byDomain ?? [])
     .map(
       (d, i) => `<tr>
         <td class="num">${i + 1}</td>
-        <td class="name">${esc(d.domain)}</td>
+        <td class="name">${esc(formatValidationGroupName(d.domain))}</td>
         <td class="num">${d.tests}</td>
         <td class="num pass">${d.passed}</td>
         <td class="num">${d.passRatePct}%</td>
@@ -139,6 +142,10 @@ export function renderReportHtml(
         .map((w) => `<li>${esc(w)}</li>`)
         .join("")}</ul></div>`
     : "";
+  const visibleSections = visibleReportSections(sections, {
+    executionStatusSplit: `<h2>Execution status split</h2><div class="panel">${donut(summary.byState)}</div>`,
+    rawStateValues: `<h2>Raw "${esc(meta.stateColumn)}" values</h2><table class="grid"><thead><tr><th>State</th><th>Tests</th><th>Share</th></tr></thead><tbody>${rawRows || '<tr><td colspan="3" class="empty">No states.</td></tr>'}</tbody></table>`,
+  });
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -156,7 +163,10 @@ h2{font-size:15px;margin:32px 0 12px;text-transform:uppercase;letter-spacing:.06
 .card{background:${t.surface};border:1px solid ${t.border};border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:4px}
 .card span{color:${t.textMuted};font-size:12px;text-transform:uppercase;letter-spacing:.05em}
 .card b{font-size:26px;color:${t.text}}
+.card small{font-size:12px;font-weight:600;color:${t.textMuted}}
 .card.pass b{color:#16a34a}.card.fail b{color:#dc2626}.card.block b{color:#f59e0b}
+.card.pass small{color:#16a34a}.card.fail small{color:#dc2626}.card.block small{color:#f59e0b}
+.note{border-left:3px solid #d7a02b;background:#fff6d6;color:#594416;padding:8px 12px;margin:0 0 16px}
 .panel{background:${t.surface};border:1px solid ${t.border};border-radius:10px;padding:20px}
 .donut{display:flex;gap:32px;align-items:center;flex-wrap:wrap}
 .legend{list-style:none;margin:0;padding:0;display:grid;gap:8px}
@@ -192,26 +202,20 @@ Captured ${esc(new Date(meta.capturedAt).toLocaleString())}</p>
 
 ${verification}
 
+<p class="note">Note: <strong>Execution Attempted = Passed + Failed + reruns</strong> created for failed tests that are now moved to <strong>NOT RUN</strong>.</p>
+
 <div class="cards">
-  ${card("Tests", summary.tests)}
-  ${card("Passed", summary.passed, "pass")}
-  ${card("Failed", summary.failed, "fail")}
-  ${card("Blocked", summary.blocked, "block")}
+  ${card("Total tests", summary.tests)}
+  ${card("Execution Attempted", summary.executionAttempted, "", `${pctOfTotal(summary.executionAttempted, summary.tests)}%`)}
+  ${card("Passed", summary.passed, "pass", `${summary.passRatePct}%`)}
+  ${card("Failed", summary.failed, "fail", `${pctOfTotal(summary.failed, summary.tests)}%`)}
+  ${card("Blocked", summary.blocked, "block", `${pctOfTotal(summary.blocked, summary.tests)}%`)}
   ${card("In progress", summary.inProgress)}
   ${card("Not run", summary.notRun)}
-  ${card("Pass rate", `${summary.passRatePct}%`, "pass")}
-  ${card("Fail rate", `${pctOfTotal(summary.failed, summary.tests)}%`, "fail")}
-  ${card("Blocked rate", `${pctOfTotal(summary.blocked, summary.tests)}%`, "block")}
+  ${summary.other > 0 ? card("Other", summary.other) : ""}
 </div>
 
-<h2>Execution status split</h2>
-<div class="panel">${donut(summary.byState)}</div>
-
-<h2>Raw "${esc(meta.stateColumn)}" values</h2>
-<table class="grid">
-  <thead><tr><th>State</th><th>Tests</th><th>Share</th></tr></thead>
-  <tbody>${rawRows || '<tr><td colspan="3" class="empty">No states.</td></tr>'}</tbody>
-</table>
+${visibleSections}
 
 <h2>Domain-wise data</h2>
 <table class="grid">

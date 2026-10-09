@@ -1,12 +1,14 @@
 // Sanity checks for state bucketing and payload harvesting.
 // Run with: npm run test
 import assert from "node:assert/strict";
-import { bucketOf, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
+import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
 import { buildReportFilename } from "../src/lib/report-filename.ts";
+import { renderReportHtml } from "../src/lib/report-html.ts";
+import { visibleReportSections } from "../src/lib/report-sections.ts";
 import { getWorkWeeks } from "../src/lib/work-weeks.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
@@ -18,6 +20,10 @@ assert.deepEqual(
   normalizeSuiteNames([" Suite One ", "", "suite one", "Suite Two\nSuite Three"]),
   ["Suite One", "Suite Two", "Suite Three"],
 );
+assert.equal(formatValidationGroupName("pv_power_management"), "Power Management");
+assert.equal(formatValidationGroupName("pv_memory"), "Memory");
+assert.equal(formatValidationGroupName("pv_serial_io"), "Serial IO");
+assert.equal(formatValidationGroupName("pv_ras"), "RAS");
 const multiSuiteFilename = buildReportFilename("Suite_One\nSuite_Two");
 assert.ok(!/[\r\n\t]/.test(multiSuiteFilename), "report filename must not contain control characters");
 assert.ok(multiSuiteFilename.startsWith("Suite_One_Suite_Two_"));
@@ -154,6 +160,41 @@ assert.equal(s.progressPct, 66.7);
 assert.equal(s.passRatePct, 33.3);
 assert.equal(s.byTestline[0].testline, "TL1");
 assert.equal(s.failures.length, 1);
+const reportSections = visibleReportSections(
+  { executionStatusSplit: false, rawStateValues: false },
+  { executionStatusSplit: "<h2>Execution status split</h2>", rawStateValues: '<h2>Raw "State" values</h2>' },
+);
+assert.ok(!reportSections.includes("Execution status split"), "disabled execution split must be omitted from exported HTML");
+assert.ok(!reportSections.includes('Raw "State" values'), "disabled raw states must be omitted from exported HTML");
+assert.equal(
+  visibleReportSections(
+    { executionStatusSplit: true, rawStateValues: false },
+    { executionStatusSplit: "execution chart", rawStateValues: "raw values" },
+  ),
+  "execution chart",
+  "each HTML section follows its matching shared visibility setting",
+);
+
+const attemptedSummary = summarize([
+  { ...rows[0], bucket: "Passed", state: "Passed", rerunIndex: 0 },
+  { ...rows[1], bucket: "Failed", state: "Failed", rerunIndex: 0 },
+  { ...rows[2], bucket: "Not Run", state: "PendingRunning", rerunIndex: 0 },
+  { ...rows[2], id: "rerun-pending", bucket: "Not Run", state: "PendingRunning", rerunIndex: 2 },
+]);
+assert.equal(attemptedSummary.executionAttempted, 3, "attempted includes pass + fail + PendingRunning reruns with index > 0");
+const reportHtml = renderReportHtml({
+  meta: {
+    runId: "test-run", capturedAt: "2026-10-09T00:00:00Z", filter: { value: "Test Suite" },
+    filterVerified: true, appliedCondition: [], stateColumn: "State", warnings: [], durationMs: 0,
+  },
+  summary: attemptedSummary,
+});
+assert.match(reportHtml, /Execution Attempted = Passed \+ Failed \+ reruns.*NOT RUN/);
+assert.match(reportHtml, /<span>Execution Attempted<\/span><b>3<\/b><small>75%<\/small>/);
+assert.match(reportHtml, /<span>Passed<\/span><b>1<\/b><small>25%<\/small>/);
+assert.match(reportHtml, /<span>Failed<\/span><b>1<\/b><small>25%<\/small>/);
+assert.match(reportHtml, /<span>Blocked<\/span><b>0<\/b><small>0%<\/small>/);
+assert.doesNotMatch(reportHtml, /<span>(?:Pass|Fail|Blocked) rate<\/span>/);
 
 const bucketNames = [
   "15019970627",

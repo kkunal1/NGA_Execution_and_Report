@@ -1,12 +1,13 @@
 import { request as undiciRequest } from "undici";
 import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
+import { bucketOf } from "./normalize";
 import { resolveDispatcher } from "./proxy";
 
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 50;
 
-export const STAGES = ["Preboot", "RebootStation", "PreTest", "Test", "PostTest", "Other"] as const;
+export const STAGES = ["Preboot", "RebootStation", "PreTest", "Test", "PostTest", "Cleanup", "Other"] as const;
 export type Stage = (typeof STAGES)[number];
 
 type Failure = {
@@ -23,9 +24,10 @@ type Run = {
   testLineId?: string;
   testEndDateTime?: string | null;
   state?: string;
+  rerunIndex?: number | null;
   isTriageFlag?: boolean;
   validationGroup?: { testGroupName?: string | null } | null;
-  testLine?: { testLineName?: string | null; config?: { configName?: string | null } | null } | null;
+  testLine?: { testLineName?: string | null; goStatus?: string | null; config?: { configName?: string | null } | null } | null;
   failure?: Failure[] | null;
 };
 
@@ -60,8 +62,10 @@ export type WeeklyReport = {
   planned: number;
   latestPassed: number;
   latestFailed: number;
+  latestRerunPendingRunning: number;
   blockedLines: number;
-  latestPending: number;
+  latestInProgress: number;
+  latestNotRun: number;
   validRuns: number;
   triageRuns: number;
   validLines: number;
@@ -79,6 +83,7 @@ function stageOf(value: string | null | undefined): Stage {
   if (stage === "pretest") return "PreTest";
   if (stage === "test") return "Test";
   if (stage === "posttest") return "PostTest";
+  if (stage === "cleanup") return "Cleanup";
   return "Other";
 }
 
@@ -129,7 +134,7 @@ function failureRows(runs: Run[]): FailureRow[] {
     const group = run.validationGroup?.testGroupName || "Unknown";
     const row = grouped.get(group) ?? {
       group,
-      stages: { Preboot: 0, RebootStation: 0, PreTest: 0, Test: 0, PostTest: 0, Other: 0 },
+      stages: { Preboot: 0, RebootStation: 0, PreTest: 0, Test: 0, PostTest: 0, Cleanup: 0, Other: 0 },
       total: 0,
       attached: 0,
     };
@@ -163,11 +168,10 @@ function detailsFor(runs: Run[]): StageDetail[] {
   return [...grouped.values()].sort((a, b) => STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage) || b.count - a.count);
 }
 
-export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, lines: TestLine[], windowRuns: Run[], latestRuns: Run[]): WeeklyReport {
-  const eligible = new Set(lines.filter((line) => line.allowAutomationFlag !== false && line.goStatus?.toLowerCase() !== "disabled")
-    .map((line) => line.testLineId).filter((id): id is string => Boolean(id)));
-  const latestValid = latestRuns.filter((run) => !run.isTriageFlag && run.testLineId && eligible.has(run.testLineId));
-  const recent = windowRuns.filter((run) => run.testLineId && eligible.has(run.testLineId) && (run.state === "Passed" || run.state === "Failed"));
+export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, windowRuns: Run[], latestRuns: Run[]): WeeklyReport {
+  const latestValid = latestRuns;
+  const latestBucket = (run: Run) => bucketOf(run.state ?? "", run.testLine?.goStatus ?? "");
+  const recent = windowRuns.filter((run) => run.testLineId && (run.state === "Passed" || run.state === "Failed"));
   const valid = recent.filter((run) => !run.isTriageFlag);
   const latestInWindow = new Map<string, Run>();
   for (const run of valid) {
@@ -180,11 +184,13 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, li
     suites,
     from: from.toISOString(),
     to: to.toISOString(),
-    planned: eligible.size,
-    latestPassed: latestValid.filter((run) => run.state === "Passed").length,
-    latestFailed: latestValid.filter((run) => run.state === "Failed").length,
-    blockedLines: lines.filter((line) => line.testLineId && eligible.has(line.testLineId) && line.goStatus?.toLowerCase() === "blocked").length,
-    latestPending: latestValid.filter((run) => (run.state ?? "").startsWith("Pending")).length,
+    planned: latestValid.length,
+    latestPassed: latestValid.filter((run) => latestBucket(run) === "Passed").length,
+    latestFailed: latestValid.filter((run) => latestBucket(run) === "Failed").length,
+    latestRerunPendingRunning: latestValid.filter((run) => (run.rerunIndex ?? 0) > 0 && run.state?.trim().toLowerCase() === "pendingrunning").length,
+    blockedLines: latestValid.filter((run) => latestBucket(run) === "Blocked").length,
+    latestInProgress: latestValid.filter((run) => latestBucket(run) === "In Progress").length,
+    latestNotRun: latestValid.filter((run) => latestBucket(run) === "Not Run").length,
     validRuns: valid.length,
     triageRuns: recent.length - valid.length,
     validLines: linesInWindow.length,
@@ -204,8 +210,8 @@ export async function generateWeeklyReport(suites: string[], from: Date, to: Dat
   const datasets = await Promise.all(suites.map(async (suite) => {
     const filter = suiteFilter(suite);
     const lineFilter = `TestSuite/TestSuiteName eq '${escaped(suite)}'`;
-    const runSelect = "TestRunId,TestLineId,State,TestEndDateTime,IsTriageFlag";
-    const runExpand = "ValidationGroup($select=TestGroupName),TestLine($select=TestLineName;$expand=Config($select=ConfigName)),Failure($select=FailureId,StageName,SightingId,SubState;$expand=TestStep($select=TestStepName))";
+    const runSelect = "TestRunId,TestLineId,State,RerunIndex,TestEndDateTime,IsTriageFlag";
+    const runExpand = "ValidationGroup($select=TestGroupName),TestLine($select=TestLineName,GoStatus;$expand=Config($select=ConfigName)),Failure($select=FailureId,StageName,SightingId,SubState;$expand=TestStep($select=TestStepName))";
     return Promise.all([
       fetchRecords<TestLine>((skip) => buildUrl("TestLine", lineFilter, "", "TestLineId,GoStatus,AllowAutomationFlag", skip), headers),
       fetchRecords<Run>((skip) => buildUrl("TestRunComposite", `${filter} and TestEndDateTime ge ${from.toISOString()} and TestEndDateTime lt ${to.toISOString()}`, runExpand, runSelect, skip), headers),
@@ -214,5 +220,5 @@ export async function generateWeeklyReport(suites: string[], from: Date, to: Dat
   }));
   const missing = datasets.findIndex(([lines]) => lines.length === 0);
   if (missing >= 0) throw new Error(`No test lines found for suite "${suites[missing]}" in this NGAi project.`);
-  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[0]), datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]));
+  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]));
 }

@@ -104,6 +104,9 @@ export default function Dashboard() {
   const [abortTo, setAbortTo] = useState("");
   const [testFrom, setTestFrom] = useState("");
   const [testTo, setTestTo] = useState("");
+  const [executedDomainFilter, setExecutedDomainFilter] = useState("");
+  const [executedTestlineFilter, setExecutedTestlineFilter] = useState("");
+  const [executedStatusFilter, setExecutedStatusFilter] = useState<"" | "Passed" | "Failed">("");
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
   const [dashboardSettings, setDashboardSettings] = useState({ executionStatusSplit: true, rawStateValues: true });
   const autoRefreshInFlight = useRef(false);
@@ -608,7 +611,19 @@ export default function Dashboard() {
     return [...filtered].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
   }, [visibleRows, testFrom, testTo]);
 
-  const displayedExecutedRows = useMemo(() => latestExecutedRows.slice(0, LATEST_EXECUTED_DISPLAY_LIMIT), [latestExecutedRows]);
+  const filteredExecutedRows = useMemo(() => {
+    const domainQuery = executedDomainFilter.trim().toLowerCase();
+    const testlineQuery = executedTestlineFilter.trim().toLowerCase();
+    return latestExecutedRows.filter((row) => {
+      if (domainQuery && !(row.domain ?? "").toLowerCase().includes(domainQuery)) return false;
+      if (testlineQuery && !row.testline.toLowerCase().includes(testlineQuery)) return false;
+      if (executedStatusFilter && row.bucket !== executedStatusFilter) return false;
+      return true;
+    });
+  }, [latestExecutedRows, executedDomainFilter, executedTestlineFilter, executedStatusFilter]);
+  const displayedExecutedRows = useMemo(() => filteredExecutedRows.slice(0, LATEST_EXECUTED_DISPLAY_LIMIT), [filteredExecutedRows]);
+  const filteredExecutedPassCount = filteredExecutedRows.filter((row) => row.bucket === "Passed").length;
+  const filteredExecutedFailCount = filteredExecutedRows.filter((row) => row.bucket === "Failed").length;
 
   return (
     <div className="mx-auto max-w-7xl">
@@ -1119,10 +1134,7 @@ export default function Dashboard() {
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                   Latest executed tests{" "}
-                  {latestExecutedRows.length > 0 &&
-                    (latestExecutedRows.length > displayedExecutedRows.length
-                      ? `(showing ${displayedExecutedRows.length} of ${latestExecutedRows.length})`
-                      : `(${latestExecutedRows.length})`)}
+                  {latestExecutedRows.length > 0 && `(${displayedExecutedRows.length} of ${filteredExecutedRows.length})`}
                 </h2>
                 {(testFrom || testTo) && (
                   <p className="mt-0.5 text-xs text-[var(--text-muted)]">
@@ -1131,6 +1143,8 @@ export default function Dashboard() {
                 )}
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-md bg-green-100 px-2.5 py-1.5 text-xs font-semibold tabular-nums text-green-700">PASS = {filteredExecutedPassCount}</span>
+                <span className="rounded-md bg-red-100 px-2.5 py-1.5 text-xs font-semibold tabular-nums text-red-700">FAIL = {filteredExecutedFailCount}</span>
                 <input
                   type="date"
                   value={testFrom}
@@ -1151,12 +1165,15 @@ export default function Dashboard() {
                 >
                   Last 7 days
                 </button>
-                {(testFrom || testTo) && (
+                {(testFrom || testTo || executedDomainFilter || executedTestlineFilter || executedStatusFilter) && (
                   <button
                     type="button"
                     onClick={() => {
                       setTestFrom("");
                       setTestTo("");
+                      setExecutedDomainFilter("");
+                      setExecutedTestlineFilter("");
+                      setExecutedStatusFilter("");
                     }}
                     className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm font-medium text-[var(--text)] shadow-sm transition hover:opacity-80"
                   >
@@ -1182,6 +1199,42 @@ export default function Dashboard() {
                       </th>
                     ))}
                   </tr>
+                  <tr>
+                    <th className="px-3 pb-2" />
+                    <th className="px-3 pb-2">
+                      <input
+                        type="search"
+                        value={executedDomainFilter}
+                        onChange={(event) => setExecutedDomainFilter(event.target.value)}
+                        placeholder="Filter domain"
+                        aria-label="Filter latest executed tests by domain"
+                        className="w-full min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text)] placeholder:text-[var(--text-muted)]"
+                      />
+                    </th>
+                    <th className="px-3 pb-2">
+                      <input
+                        type="search"
+                        value={executedTestlineFilter}
+                        onChange={(event) => setExecutedTestlineFilter(event.target.value)}
+                        placeholder="Filter testline"
+                        aria-label="Filter latest executed tests by testline"
+                        className="w-full min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text)] placeholder:text-[var(--text-muted)]"
+                      />
+                    </th>
+                    <th className="px-3 pb-2">
+                      <select
+                        value={executedStatusFilter}
+                        onChange={(event) => setExecutedStatusFilter(event.target.value as "" | "Passed" | "Failed")}
+                        aria-label="Filter latest executed tests by status"
+                        className="w-full min-w-0 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text)]"
+                      >
+                        <option value="">All</option>
+                        <option value="Passed">Pass</option>
+                        <option value="Failed">Fail</option>
+                      </select>
+                    </th>
+                    <th className="px-3 pb-2" />
+                  </tr>
                 </thead>
                 <tbody>
                   {displayedExecutedRows.map((row, i) => (
@@ -1205,10 +1258,10 @@ export default function Dashboard() {
                       </td>
                     </tr>
                   ))}
-                  {!latestExecutedRows.length && (
+                  {!filteredExecutedRows.length && (
                     <tr>
                       <td colSpan={5} className="px-3 py-8 text-center text-[var(--text-muted)]">
-                        No executed tests in the selected range.
+                        {latestExecutedRows.length ? "No executed tests match the filters." : "No executed tests in the selected range."}
                       </td>
                     </tr>
                   )}

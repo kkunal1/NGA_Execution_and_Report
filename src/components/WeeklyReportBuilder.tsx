@@ -9,12 +9,19 @@ const offsetMs = 330 * 60_000;
 const today = () => new Date(Date.now() + offsetMs).toISOString().slice(0, 10);
 const sevenDaysAgo = () => new Date(Date.now() + offsetMs - 6 * 86_400_000).toISOString().slice(0, 10);
 const percentage = (count: number, total: number) => total ? `${(count / total * 100).toFixed(1)}%` : "0%";
+const reportPercentage = (count: number, total: number) => percentage(count, total).replace(/\.0%$/, "%");
 const timeLabel = (value: string) => new Intl.DateTimeFormat("en-IN", {
   dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Kolkata",
 }).format(new Date(value));
 const stageNames: Record<Stage, string> = {
-  Preboot: "Preboot", RebootStation: "Reboot station", PreTest: "PreTest", Test: "Test", PostTest: "PostTest", Other: "Other",
+  Preboot: "PreBoot", RebootStation: "Reboot station", PreTest: "PreTest", Test: "Test", PostTest: "PostTest", Cleanup: "Cleanup", Other: "Other",
 };
+const breakdownStages: Stage[] = ["Preboot", "PreTest", "Test", "PostTest", "Cleanup"];
+const groupWords: Record<string, string> = { io: "IO", ras: "RAS", serio: "Serial", pcie: "PCIe", pm: "PM", rdt: "RDT", ace: "ACE" };
+const formatValidationGroup = (group: string) => group.replace(/^pv_/i, "").split("_")
+  .filter(Boolean)
+  .map((word) => groupWords[word.toLowerCase()] ?? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+  .join(" ");
 
 function Breakdown({ title, rows }: { title: string; rows: FailureRow[] }) {
   const totals = rows.reduce((result, row) => {
@@ -22,16 +29,17 @@ function Breakdown({ title, rows }: { title: string; rows: FailureRow[] }) {
     result.total += row.total;
     result.attached += row.attached;
     return result;
-  }, { stages: { Preboot: 0, RebootStation: 0, PreTest: 0, Test: 0, PostTest: 0, Other: 0 }, total: 0, attached: 0 });
+  }, { stages: { Preboot: 0, RebootStation: 0, PreTest: 0, Test: 0, PostTest: 0, Cleanup: 0, Other: 0 }, total: 0, attached: 0 });
+  const hiddenStages = totals.stages.RebootStation + totals.stages.Other;
   return (
     <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
       <h2 className="mb-1 text-base font-bold text-[#204e76]">{title}</h2>
-      <p className="mb-4 text-xs leading-relaxed text-[#57718a]">Failure records, not distinct test lines. Sighting attachment counts are not sighting-status counts.</p>
+      <p className="mb-4 text-xs leading-relaxed text-[#57718a]">Failure records, not distinct test lines. Sighting attachment counts are not sighting-status counts.{hiddenStages > 0 && ` Total also includes ${hiddenStages} Reboot station/other failures.`}</p>
       <div className="overflow-x-auto border border-[#b8cadb]">
-        <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+        <table className="w-full min-w-[700px] border-collapse text-left text-sm">
           <thead className="bg-[#204e76] text-xs font-semibold text-white">
             <tr>
-              {["Validation group", "Preboot", "Reboot station", "PreTest", "Test", "PostTest", "Other", "Total", "Sighting IDs attached"].map((label) => (
+              {["Validation Group", "PreBoot", "PreTest", "Test", "PostTest", "Cleanup", "Total", "Sighting IDs Attached"].map((label) => (
                 <th key={label} className="border-r border-white/20 px-3 py-3 last:border-0">{label}</th>
               ))}
             </tr>
@@ -39,21 +47,21 @@ function Breakdown({ title, rows }: { title: string; rows: FailureRow[] }) {
           <tbody className="divide-y divide-[#cfdae5]">
             {rows.map((row) => (
               <tr key={row.group} className="bg-white even:bg-[#edf3f9]">
-                <th className="px-3 py-2.5 font-semibold text-[#244c70]">{row.group}</th>
-                {(["Preboot", "RebootStation", "PreTest", "Test", "PostTest", "Other"] as Stage[]).map((stage) => (
+                <th className="px-3 py-2.5 font-semibold text-[#244c70]">{formatValidationGroup(row.group)}</th>
+                {breakdownStages.map((stage) => (
                   <td key={stage} className={`px-3 py-2.5 tabular-nums ${row.stages[stage] ? "font-medium text-[#bb3846]" : "text-[#72869a]"}`}>{row.stages[stage]}</td>
                 ))}
                 <td className="px-3 py-2.5 font-bold tabular-nums text-[#204e76]">{row.total}</td>
                 <td className="px-3 py-2.5 font-semibold tabular-nums text-[#087a78]">{row.attached}</td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={9} className="bg-white px-3 py-6 text-center text-[#647e94]">No failed runs.</td></tr>}
+            {!rows.length && <tr><td colSpan={8} className="bg-white px-3 py-6 text-center text-[#647e94]">No failed runs.</td></tr>}
           </tbody>
           {rows.length > 0 && (
             <tfoot className="border-t-2 border-[#94aec6] bg-[#dce8f4] font-bold text-[#173f60]">
               <tr>
                 <th className="px-3 py-2 text-left">Total</th>
-                {(["Preboot", "RebootStation", "PreTest", "Test", "PostTest", "Other"] as Stage[]).map((stage) => (
+                {breakdownStages.map((stage) => (
                   <td key={stage} className="px-3 py-2 tabular-nums">{totals.stages[stage]}</td>
                 ))}
                 <td className="px-3 py-2 tabular-nums">{totals.total}</td>
@@ -86,12 +94,12 @@ function StageSection({ stage, details }: { stage: Stage; details: StageDetail[]
       <div className="mt-4 overflow-x-auto border border-[#b8cadb]">
         <table className="w-full min-w-[540px] text-left text-sm">
           <thead className="bg-[#204e76] text-xs font-semibold text-white"><tr>
-            <th className="border-r border-white/20 px-3 py-3">Configuration</th><th className="px-3 py-3">Failures by validation group</th>
+            <th className="border-r border-white/20 px-3 py-3">Configuration</th><th className="px-3 py-3">Failures by Validation Group</th>
           </tr></thead>
           <tbody className="divide-y divide-[#cfdae5]">
             {[...byConfig.entries()].map(([config, groups], index) => (
               <tr key={config} className={index % 2 ? "bg-[#edf3f9]" : "bg-white"}><td className="max-w-md break-words px-3 py-2.5 font-medium text-[#244c70]">{config}</td>
-                <td className="px-3 py-2.5 text-[#bb3846]">{[...groups.entries()].map(([group, value]) => `${group}: ${value}`).join(" · ")}</td></tr>
+                <td className="px-3 py-2.5 text-[#bb3846]">{[...groups.entries()].map(([group, value]) => `${formatValidationGroup(group)}: ${value}`).join(" · ")}</td></tr>
             ))}
           </tbody>
         </table>
@@ -101,7 +109,7 @@ function StageSection({ stage, details }: { stage: Stage; details: StageDetail[]
         <div className="mt-2 max-h-64 overflow-auto border-l-2 border-[#9ab6ce] pl-4 text-[#253646]">
           {rows.map((row) => (
             <p key={JSON.stringify([row.config, row.testLine, row.step, row.subState, row.group])} className="py-1.5">
-              <strong>{row.count}× {row.step}</strong> · {row.subState} · {row.group}
+              <strong>{row.count}× {row.step}</strong> · {row.subState} · {formatValidationGroup(row.group)}
               <span className="block break-words text-xs text-[#60788e]">{row.testLine}</span>
             </p>
           ))}
@@ -166,7 +174,7 @@ export default function WeeklyReportBuilder() {
       const result = (await response.json()) as WeeklyReport & { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not create the report.");
       setReport(result);
-      setGeneratedWeek(mode === "workWeek" ? `${workWeeks.year} ${activeWeek.label}` : null);
+      setGeneratedWeek(mode === "workWeek" ? `${workWeeks.year}${activeWeek.label}` : null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not create the report.");
     } finally {
@@ -175,6 +183,7 @@ export default function WeeklyReportBuilder() {
   };
 
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
+  const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
   return (
     <div className="mx-auto max-w-7xl text-[var(--text)]">
       <div className="mb-5 flex items-center gap-2">
@@ -221,9 +230,10 @@ export default function WeeklyReportBuilder() {
       {!report && !busy && <p className="py-12 text-center text-sm text-[var(--text-muted)]">No report for the selected dates yet.</p>}
       {report && <article className="mt-6 border border-[#c1d3e2] bg-white text-[#253646] shadow-sm">
         <header className="border-l-4 border-[#204e76] px-5 py-5 sm:px-7">
-          <h2 className="text-xl font-bold text-[#204e76]">Execution Summary</h2>
-          {generatedWeek && <p className="mt-1 text-sm font-semibold text-[#204e76]">{generatedWeek}</p>}
-          <p className="mt-1 text-sm text-[#435f78]">{timeLabel(report.from)} – {timeLabel(new Date(Date.parse(report.to) - 1).toISOString())} IST</p>
+          <p className="text-base font-semibold text-[#204e76]">
+            {generatedWeek && <>{generatedWeek} · </>}
+            {timeLabel(report.from)} – {timeLabel(new Date(Date.parse(report.to) - 1).toISOString())} IST
+          </p>
           <p className="mt-4 border-l-[3px] border-[#d7a02b] bg-[#fff6d6] px-3 py-2 text-sm leading-relaxed text-[#594416]">
             <strong>Note:</strong> This report was generated with AI assistance. The updates have been reviewed for accuracy.
           </p>
@@ -239,18 +249,20 @@ export default function WeeklyReportBuilder() {
         </header>
 
         <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
-          <h3 className="mb-4 text-base font-bold text-[#204e76]">Execution Summary · All configs</h3>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-4 border-y border-[#c4d6e5] bg-[#eef4fa] px-3 py-4 sm:grid-cols-3 xl:grid-cols-6">
+          <h3 className="mb-4 text-base font-bold text-[#204e76]">Execution Summary</h3>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-4 border-y border-[#c4d6e5] bg-[#eef4fa] px-3 py-4 sm:grid-cols-3 xl:grid-cols-5">
             {[
-              ["Execution Attempted", (report.latestPassed + report.latestFailed).toLocaleString(), percentage(report.latestPassed + report.latestFailed, report.planned), "text-[#204e76]", "border-[#204e76]"],
+              ["Execution Attempted", attempted.toLocaleString(), percentage(attempted, report.planned), "text-[#204e76]", "border-[#204e76]"],
               ["Test Passed", report.latestPassed.toLocaleString(), percentage(report.latestPassed, report.planned), "text-[#087a50]", "border-[#087a50]"],
               ["Test Failed", report.latestFailed.toLocaleString(), percentage(report.latestFailed, report.planned), "text-[#bb3846]", "border-[#bb3846]"],
               ["Test Blocked", report.blockedLines.toLocaleString(), percentage(report.blockedLines, report.planned), "text-[#aa5420]", "border-[#aa5420]"],
-              ["Pass rate (total tests)", `${report.latestPassed.toLocaleString()} / ${report.planned.toLocaleString()}`, percentage(report.latestPassed, report.planned), "text-[#087a78]", "border-[#087a78]"],
-              ["Pending test lines", report.latestPending.toLocaleString(), percentage(report.latestPending, report.planned), "text-[#9a6313]", "border-[#c1852c]"],
+              ["Not run", report.latestNotRun.toLocaleString(), percentage(report.latestNotRun, report.planned), "text-[#9a6313]", "border-[#c1852c]"],
             ].map(([label, count, percent, color, border]) => (
               <div key={label} className={`border-l-[3px] pl-3 ${border}`}>
-                <p className="text-xs font-medium text-[#4e6c84]">{label}</p>
+                <p className="text-xs font-medium text-[#4e6c84]">
+                  {label}
+                  {label === "Execution Attempted" && <> <span className="ml-1 text-[11px] font-normal text-[#60788e]">(pass + fail + rerun created)</span></>}
+                </p>
                 <p className={`mt-1 flex flex-wrap items-baseline gap-x-2 font-bold tabular-nums ${color}`}>
                   <span className="text-xl">{count}</span>
                   <span className="text-sm font-semibold">{percent}</span>
@@ -258,18 +270,22 @@ export default function WeeklyReportBuilder() {
               </div>
             ))}
           </div>
-          <p className="mt-2 text-xs text-[#60788e]">Blocked uses NGAi test-line GoStatus; it can overlap with latest run-state counts.</p>
-          <ul className="mt-5 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-[#253646]">
-            <li>Latest eligible suite snapshot: {report.planned} planned, {report.latestPassed} passed, {report.latestFailed} failed, {report.blockedLines} blocked, {report.latestPending} pending.</li>
-            <li>Selected window: {report.validRuns + report.triageRuns} runs ({report.validRuns} valid + {report.triageRuns} triage).</li>
-            <li>Valid test lines executed: {report.validLines} ({report.passedLines} passed, {report.failedLines} failed).</li>
-            <li><strong className="text-[#bb3846]">{percentage(report.failedLines, report.validLines)}</strong> of executed valid test lines failed.</li>
+          <p className="mt-2 text-xs text-[#60788e]">Execution Attempted includes {report.latestRerunPendingRunning} PendingRunning reruns (index &gt; 0); those tests also appear in the current Not run count.</p>
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">DMR-AP1 B0 Execution Status Summary</h4>
+          <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-[#253646]">
+            <li><strong>{reportPercentage(attempted, report.planned)}</strong> tests have been attempted, with <strong className="text-[#087a50]">{reportPercentage(report.latestPassed, report.planned)} passed</strong>, <strong className="text-[#bb3846]">{reportPercentage(report.latestFailed, report.planned)} failed</strong> and <strong className="text-[#aa5420]">{reportPercentage(report.blockedLines, report.planned)} blocked</strong>.</li>
+            <li>Failure analysis and rerun in progress.</li>
+            <li>Execution is currently running with <strong className="text-black">BKC#40</strong>.</li>
+          </ul>
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">Links</h4>
+          <ul className="mt-2 list-disc pl-5 text-sm">
+            <li><a href="https://xve-dashboards.intel.com/dmr-ap/execution-summary" target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">PV VV Exec Summary Dashboard</a></li>
           </ul>
         </section>
 
         <Breakdown title="Overall stage-wise / validation group-wise failure breakdown · Current suite backlog" rows={report.backlogFailures} />
         <Breakdown title="Stage-wise / validation group-wise failure breakdown · Selected window" rows={report.windowFailures} />
-        {(["Preboot", "RebootStation", "PreTest", "Test", "PostTest", "Other"] as Stage[]).map((stage) => (
+        {(["Preboot", "RebootStation", "PreTest", "Test", "PostTest", "Cleanup", "Other"] as Stage[]).map((stage) => (
           <StageSection key={stage} stage={stage} details={report.stageDetails} />
         ))}
       </article>}

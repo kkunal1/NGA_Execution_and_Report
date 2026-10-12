@@ -218,8 +218,10 @@ assert.equal(normalizeWeeklyReportHsdesLink(DEFAULT_WEEKLY_REPORT_HSDES_LINK), D
 assert.equal(normalizeWeeklyReportHsdesLink("https://example.com/appstore/generalapps/#/pages/community/1?queryId=123"), null);
 assert.equal(canonicalizeSightingDomain("pm_subsystem_validation"), "pv_power_management");
 assert.equal(canonicalizeSightingDomain("io_subsystem_validation"), "pv_serial_io");
-assert.equal(canonicalizeSightingDomain("manageability_subsystem_validation"), "pv_manageability");
+assert.equal(canonicalizeSightingDomain("managebility_subsystem_validation"), "pv_manageability");
 assert.equal(canonicalizeSightingDomain("ras_subsystem_validation"), "pv_ras");
+assert.equal(canonicalizeSightingDomain("stability_subsystem_validation"), "pv_reset");
+assert.equal(canonicalizeSightingDomain("memory_subsystem_validation"), "pv_memory");
 assert.equal(canonicalizeSightingDomain("virtualization_subsystem_validation"), "pv_virtualization");
 assert.equal(canonicalizeSightingDomain("unlisted_subsystem_validation"), null);
 assert.deepEqual(aggregateHsdesIssueIdsByDomain([
@@ -229,10 +231,12 @@ assert.deepEqual(aggregateHsdesIssueIdsByDomain([
   { id: "issue-3", report_type: "presighting", team_found: "pm_subsystem_validation" },
   { id: "issue-4", report_type: "test_request", team_found: "seamless_subsystem_validation" },
   { id: "issue-5", report_type: "sighting", team_found: "io_subsystem_validation" },
-  { id: "issue-6", report_type: "presighting", team_found: "manageability_subsystem_validation" },
+  { id: "issue-6", report_type: "presighting", team_found: "managebility_subsystem_validation" },
   { id: "issue-7", report_type: "test_request", team_found: "ras_subsystem_validation" },
-  { id: "issue-8", report_type: "sighting", team_found: "virtualization_subsystem_validation" },
-  { id: "issue-9", report_type: "sighting", team_found: "unlisted_subsystem_validation" },
+  { id: "issue-8", report_type: "sighting", team_found: "stability_subsystem_validation" },
+  { id: "issue-9", report_type: "sighting", team_found: "memory_subsystem_validation" },
+  { id: "issue-10", report_type: "sighting", team_found: "virtualization_subsystem_validation" },
+  { id: "issue-11", report_type: "sighting", team_found: "unlisted_subsystem_validation" },
 ]), {
   pv_security: 2,
   pv_power_management: 1,
@@ -240,6 +244,8 @@ assert.deepEqual(aggregateHsdesIssueIdsByDomain([
   pv_serial_io: 1,
   pv_manageability: 1,
   pv_ras: 1,
+  pv_reset: 1,
+  pv_memory: 1,
   pv_virtualization: 1,
 });
 assert.deepEqual(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3 }]), [{ team: "Team A", x1: 2, x4: 3 }]);

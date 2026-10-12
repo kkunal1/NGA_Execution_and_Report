@@ -21,9 +21,11 @@ const TEAM_FOUND_DOMAINS: Record<string, string> = {
   pm_subsystem_validation: "pv_power_management",
   seamless_subsystem_validation: "pv_seamless",
   io_subsystem_validation: "pv_serial_io",
-  manageability_subsystem_validation: "pv_manageability",
+  managebility_subsystem_validation: "pv_manageability",
   security_subsystem_validation: "pv_security",
   ras_subsystem_validation: "pv_ras",
+  stability_subsystem_validation: "pv_reset",
+  memory_subsystem_validation: "pv_memory",
   virtualization_subsystem_validation: "pv_virtualization",
 };
 

@@ -6,6 +6,10 @@ import type { TeamPlatformCount } from "@/lib/weekly-report-settings";
 
 type EditableTeamPlatformCount = { id: string; team: string; x1: string; x4: string };
 
+const createRowId = () => typeof globalThis.crypto?.randomUUID === "function"
+  ? globalThis.crypto.randomUUID()
+  : `row-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 export default function UpdateWeeklyReportPage() {
   const [bkc, setBkc] = useState("BKC#40");
   const [teamPlatformCounts, setTeamPlatformCounts] = useState<EditableTeamPlatformCount[]>([]);
@@ -28,7 +32,7 @@ export default function UpdateWeeklyReportPage() {
         if (!response.ok) throw new Error(result.error || "Could not load the saved BKC value.");
         if (!cancelled) {
           if (result.bkc) setBkc(result.bkc);
-          setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: globalThis.crypto.randomUUID(), team: row.team, x1: String(row.x1), x4: String(row.x4) })));
+          setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: createRowId(), team: row.team, x1: String(row.x1), x4: String(row.x4) })));
           setHsdesLink(result.hsdesLink ?? "");
         }
       })
@@ -64,7 +68,7 @@ export default function UpdateWeeklyReportPage() {
       };
       if (!response.ok) throw new Error(result.error || "Could not save the BKC value.");
       setBkc(result.bkc ?? bkc.trim());
-      setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: globalThis.crypto.randomUUID(), team: row.team, x1: String(row.x1), x4: String(row.x4) })));
+      setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: createRowId(), team: row.team, x1: String(row.x1), x4: String(row.x4) })));
       setHsdesLink(result.hsdesLink ?? hsdesLink.trim());
       setSaved(true);
     } catch (cause) {
@@ -116,7 +120,7 @@ export default function UpdateWeeklyReportPage() {
             <button
               type="button"
               disabled={loading || saving || teamPlatformCounts.length >= 20}
-              onClick={() => { setTeamPlatformCounts((current) => [...current, { id: globalThis.crypto.randomUUID(), team: "", x1: "0", x4: "0" }]); setSaved(false); }}
+              onClick={() => { setTeamPlatformCounts((current) => [...current, { id: createRowId(), team: "", x1: "0", x4: "0" }]); setSaved(false); }}
               className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60"
             >
               <Plus className="h-4 w-4" aria-hidden="true" />Add team

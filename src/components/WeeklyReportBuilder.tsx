@@ -282,6 +282,31 @@ export default function WeeklyReportBuilder() {
       element.style.setProperty("position", "static", "important");
       element.style.setProperty("top", "auto", "important");
     });
+    const summaryGrid = clone.querySelector<HTMLElement>("[data-copy-metrics]");
+    if (summaryGrid) {
+      const metricCards = Array.from(summaryGrid.children);
+      const table = document.createElement("table");
+      table.setAttribute("role", "presentation");
+      table.style.cssText = "width:100%;table-layout:fixed;border-collapse:collapse;";
+      table.style.backgroundColor = summaryGrid.style.backgroundColor;
+      table.style.borderTop = summaryGrid.style.borderTop;
+      table.style.borderBottom = summaryGrid.style.borderBottom;
+      const row = table.insertRow();
+      metricCards.forEach((card) => {
+        const cell = row.insertCell();
+        cell.style.cssText = `width:${100 / metricCards.length}%;padding:16px 12px;vertical-align:top;`;
+        cell.append(card);
+      });
+      summaryGrid.replaceWith(table);
+    }
+    clone.querySelectorAll<HTMLElement>("[data-copy-pair]").forEach((element) => {
+      const values = element.querySelectorAll(":scope > span");
+      if (values.length > 1) values[1].before(document.createTextNode("\u00a0"));
+    });
+    clone.querySelectorAll<HTMLElement>("[data-copy-suite]").forEach((element) => {
+      const values = element.querySelectorAll(":scope > span");
+      if (values.length > 1) values[1].before(document.createTextNode(" "));
+    });
 
     const weekMatch = generatedWeek?.match(/WW(\d{2})$/);
     const week = weekMatch ? `WW-${weekMatch[1]}` : `WW-${getIsoWorkWeekLabel(new Date(Date.parse(report.to) - 1)).slice(2)}`;
@@ -493,7 +518,7 @@ export default function WeeklyReportBuilder() {
           </p>
           <div className="mt-4 space-y-2">
             {report.suites.map((suite, index) => (
-              <div key={suite} className="flex items-start gap-3 text-sm">
+              <div key={suite} data-copy-suite className="flex items-start gap-3 text-sm">
                 <span className="w-14 shrink-0 font-semibold text-[#204e76]">Suite {index + 1}</span>
                 <span className="min-w-0 break-all text-[#435f78]">{suite}</span>
               </div>
@@ -504,7 +529,7 @@ export default function WeeklyReportBuilder() {
 
         <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
           <h3 className="mb-4 text-base font-bold text-[#204e76]">Execution Summary</h3>
-          <div className="grid grid-cols-2 gap-x-3 gap-y-4 border-y border-[#c4d6e5] bg-[#eef4fa] px-3 py-4 sm:grid-cols-3 xl:grid-cols-5">
+          <div data-copy-metrics className="grid grid-cols-2 gap-x-3 gap-y-4 border-y border-[#c4d6e5] bg-[#eef4fa] px-3 py-4 sm:grid-cols-3 xl:grid-cols-5">
             {[
               ["Execution Attempted", attempted.toLocaleString(), percentage(attempted, report.planned), "text-[#204e76]", "border-[#204e76]"],
               ["Test Passed", report.latestPassed.toLocaleString(), percentage(report.latestPassed, report.planned), "text-[#087a50]", "border-[#087a50]"],
@@ -517,7 +542,7 @@ export default function WeeklyReportBuilder() {
                   {label}
                   {label === "Execution Attempted" && <> <span className="ml-1 text-[11px] font-normal text-[#60788e]">(pass + fail + rerun created)</span></>}
                 </p>
-                <p className={`mt-1 flex flex-wrap items-baseline gap-x-2 font-bold tabular-nums ${color}`}>
+                <p data-copy-pair className={`mt-1 flex flex-wrap items-baseline gap-x-2 font-bold tabular-nums ${color}`}>
                   <span className="text-xl">{count}</span>
                   <span className="text-sm font-semibold">{percent}</span>
                 </p>

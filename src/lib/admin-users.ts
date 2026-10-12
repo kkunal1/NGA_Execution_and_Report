@@ -8,7 +8,7 @@ type StoredAdminUser = AdminUserSummary & { passwordHash: string };
 
 const adminUsersPath = path.join(config.dataDir, "admin-users.json");
 const USERNAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._@+-]{2,127}$/;
-const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MIN_LENGTH = 4;
 const PASSWORD_MAX_LENGTH = 256;
 const HASH_BYTES = 64;
 

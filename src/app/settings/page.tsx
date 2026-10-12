@@ -555,7 +555,7 @@ export default function SettingsPage() {
               id="new-admin-password"
               required
               type="password"
-              minLength={12}
+              minLength={4}
               maxLength={256}
               autoComplete="new-password"
               value={newAdminPassword}

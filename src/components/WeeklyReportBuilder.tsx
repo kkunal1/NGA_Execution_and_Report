@@ -507,7 +507,6 @@ export default function WeeklyReportBuilder() {
               {workWeeks.weeks.map((week) => <option key={week.label} value={week.label}>{week.label}</option>)}
             </select>
           </label>
-            <span className="pb-2 text-xs text-[var(--text-muted)]">{timeLabel(activeWeek.from.toISOString())} – {timeLabel(new Date(activeWeek.to.getTime() - 1).toISOString())} IST</span>
             {createButton}
             {downloadButton}
             {clearReportButton}

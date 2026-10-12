@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Download, FileText, Trash2 } from "lucide-react";
+import { CalendarDays, Copy, Download, FileText, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
 import { getIsoWorkWeekLabel, getWorkWeeks } from "@/lib/work-weeks";
 
@@ -123,6 +123,7 @@ export default function WeeklyReportBuilder() {
   const [hsdesDetailsLoading, setHsdesDetailsLoading] = useState(false);
   const [hsdesDetailsError, setHsdesDetailsError] = useState("");
   const [hsdesDomainFilter, setHsdesDomainFilter] = useState("all");
+  const [copyStatus, setCopyStatus] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -209,9 +210,9 @@ export default function WeeklyReportBuilder() {
   const workWeeks = getWorkWeeks();
   const activeWeek = workWeeks.weeks.find((option) => option.label === selectedWeek) ?? workWeeks.weeks[0];
 
-  const downloadHtml = () => {
+  const createStyledReportDocument = () => {
     const article = reportElementRef.current;
-    if (!article || !report) return;
+    if (!article || !report) return null;
 
     const clone = article.cloneNode(true) as HTMLElement;
     const sourceElements = [article, ...Array.from(article.querySelectorAll<HTMLElement>("*"))];
@@ -228,17 +229,54 @@ export default function WeeklyReportBuilder() {
     clone.style.setProperty("margin", "0 auto");
     clone.style.setProperty("box-sizing", "border-box");
     clone.style.setProperty("overflow-x", "auto");
+    clone.querySelectorAll<HTMLElement>("[data-copy-expand]").forEach((element) => {
+      element.style.setProperty("max-height", "none", "important");
+      element.style.setProperty("height", "auto", "important");
+      element.style.setProperty("overflow", "visible", "important");
+    });
+    clone.querySelectorAll<HTMLElement>(".sticky").forEach((element) => {
+      element.style.setProperty("position", "static", "important");
+      element.style.setProperty("top", "auto", "important");
+    });
 
     const weekMatch = generatedWeek?.match(/WW(\d{2})$/);
     const week = weekMatch ? `WW-${weekMatch[1]}` : `WW-${getIsoWorkWeekLabel(new Date(Date.parse(report.to) - 1)).slice(2)}`;
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const documentHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DMR-AP1 B0 Execution Weekly Report for ${week}</title></head><body style="margin:0;padding:24px 16px;min-height:100vh;box-sizing:border-box;background:#f3f6fa;font-family:Arial,sans-serif"><main style="width:100%;max-width:1200px;margin:0 auto">${clone.outerHTML}</main></body></html>`;
-    const url = URL.createObjectURL(new Blob([documentHtml], { type: "text/html;charset=utf-8" }));
+    return { documentHtml, week, timestamp, plainText: clone.innerText || clone.textContent || "" };
+  };
+
+  const downloadHtml = () => {
+    const prepared = createStyledReportDocument();
+    if (!prepared) return;
+    const url = URL.createObjectURL(new Blob([prepared.documentHtml], { type: "text/html;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `DMR-AP1 B0 Execution Weekly Report for ${week}_${timestamp}.html`;
+    anchor.download = `DMR-AP1 B0 Execution Weekly Report for ${prepared.week}_${prepared.timestamp}.html`;
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const copyReport = async () => {
+    setCopyStatus("");
+    const prepared = createStyledReportDocument();
+    if (!prepared) return;
+    try {
+      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/html": new Blob([prepared.documentHtml], { type: "text/html" }),
+          "text/plain": new Blob([prepared.plainText], { type: "text/plain" }),
+        })]);
+        setCopyStatus("Report copied with formatting.");
+      } else if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(prepared.plainText);
+        setCopyStatus("Copied as plain text; rich clipboard is not supported in this browser.");
+      } else {
+        throw new Error("Clipboard access is unavailable.");
+      }
+    } catch {
+      setCopyStatus("Could not copy the report. Check clipboard permission and try again.");
+    }
   };
 
   const create = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -262,6 +300,7 @@ export default function WeeklyReportBuilder() {
       const nextGeneratedWeek = mode === "workWeek" ? `${workWeeks.year}${activeWeek.label}` : null;
       setHsdesDetailsLoading(false);
       setHsdesDetailsError("");
+      setCopyStatus("");
       setReport(result);
       setGeneratedWeek(nextGeneratedWeek);
       try {
@@ -281,6 +320,7 @@ export default function WeeklyReportBuilder() {
     setGeneratedWeek(null);
     setHsdesDetailsLoading(false);
     setHsdesDetailsError("");
+    setCopyStatus("");
     setError("");
     try {
       window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY);
@@ -329,6 +369,11 @@ export default function WeeklyReportBuilder() {
       <Trash2 className="h-4 w-4" aria-hidden="true" />Clear report
     </button>
   );
+  const copyReportButton = report && (
+    <button type="button" onClick={() => void copyReport()} disabled={busy || hsdesDetailsLoading} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:cursor-not-allowed disabled:opacity-60">
+      <Copy className="h-4 w-4" aria-hidden="true" />Copy Report
+    </button>
+  );
   return (
     <div className="mx-auto max-w-7xl text-[var(--text)]">
       <div className="mb-5 flex items-center gap-2">
@@ -353,6 +398,7 @@ export default function WeeklyReportBuilder() {
             {createButton}
             {downloadButton}
             {clearReportButton}
+            {copyReportButton}
           </div>
         ) : (
           <div className="flex flex-wrap items-end gap-3">
@@ -365,6 +411,7 @@ export default function WeeklyReportBuilder() {
             {createButton}
             {downloadButton}
             {clearReportButton}
+            {copyReportButton}
           </div>
         )}
         <details className="mt-3 text-xs text-[var(--text-muted)]">
@@ -374,6 +421,7 @@ export default function WeeklyReportBuilder() {
           </label>
         </details>
         {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
+        {copyStatus && <p role="status" className={`mt-3 text-sm ${copyStatus.startsWith("Could not") ? "text-red-600" : "text-[var(--text-muted)]"}`}>{copyStatus}</p>}
       </form>
 
       {!report && !busy && reportReady && <p className="py-12 text-center text-sm text-[var(--text-muted)]">No report generated yet.</p>}
@@ -499,7 +547,7 @@ export default function WeeklyReportBuilder() {
                   </select>
                 </label>
               </div>
-              <div className="max-h-[32rem] overflow-auto overscroll-contain border border-[#b8cadb]">
+              <div data-copy-expand className="max-h-[32rem] overflow-auto overscroll-contain border border-[#b8cadb]">
                 <table className="w-full min-w-[850px] border-collapse text-left text-xs" style={{ fontFamily: '"Courier New", Courier, monospace' }}>
                   <thead className="sticky top-0 z-10 bg-[#204e76] text-[11px] font-semibold text-white">
                     <tr><th className="w-40 px-2.5 py-2">Domain</th><th className="w-36 px-2.5 py-2">HSDES ID</th><th className="px-2.5 py-2">Title</th><th className="w-28 px-2.5 py-2">Status</th><th className="w-24 px-2.5 py-2">Days open</th></tr>

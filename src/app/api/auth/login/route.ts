@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 const attempts = new Map<string, { count: number; resetAt: number }>();
 
 export async function GET() {
-  return NextResponse.json({ adminConfigured: isAdminConfigured() });
+  return NextResponse.json({ adminConfigured: await isAdminConfigured() });
 }
 
 export async function POST(req: Request) {
@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Enter a username and password." }, { status: 400 });
   }
 
-  const role = authenticate(username, password);
+  const role = await authenticate(username, password);
   if (!role) {
     attempts.set(address, {
       count: current && current.resetAt > now ? current.count + 1 : 1,

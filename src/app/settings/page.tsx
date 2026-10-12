@@ -44,6 +44,8 @@ type LoginAuditEntry = {
   userAgent: string;
 };
 
+type AdminUserSummary = { username: string; createdAt: string };
+
 export default function SettingsPage() {
   const [provider, setProvider] = useState<DataProvider>("ngai");
   const [saved, setSaved] = useState(false);
@@ -74,6 +76,12 @@ export default function SettingsPage() {
   const [dashboardSettingsError, setDashboardSettingsError] = useState("");
   const [loginAudit, setLoginAudit] = useState<LoginAuditEntry[]>([]);
   const [loginAuditError, setLoginAuditError] = useState("");
+  const [adminUsers, setAdminUsers] = useState<AdminUserSummary[]>([]);
+  const [newAdminUsername, setNewAdminUsername] = useState("");
+  const [newAdminPassword, setNewAdminPassword] = useState("");
+  const [adminUsersBusy, setAdminUsersBusy] = useState(false);
+  const [adminUsersMessage, setAdminUsersMessage] = useState("");
+  const [adminUsersError, setAdminUsersError] = useState("");
   const [graphMail, setGraphMail] = useState<GraphMailForm>({
     enabled: false,
     tenantId: "",
@@ -145,6 +153,13 @@ export default function SettingsPage() {
         setLoginAudit(data.entries ?? []);
       })
       .catch((error: unknown) => setLoginAuditError(error instanceof Error ? error.message : "Could not load login audit."));
+    void fetch("/api/settings/admin-users", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { admins?: AdminUserSummary[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not load admin users.");
+        setAdminUsers(data.admins ?? []);
+      })
+      .catch((error: unknown) => setAdminUsersError(error instanceof Error ? error.message : "Could not load admin users."));
     void fetch("/api/settings/mail", { cache: "no-store" })
       .then(async (response) => {
         const data = (await response.json()) as Partial<GraphMailForm> & { error?: string };
@@ -324,6 +339,30 @@ export default function SettingsPage() {
     }
   };
 
+  const addAdmin = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setAdminUsersBusy(true);
+    setAdminUsersError("");
+    setAdminUsersMessage("");
+    try {
+      const response = await fetch("/api/settings/admin-users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username: newAdminUsername, password: newAdminPassword }),
+      });
+      const data = (await response.json()) as { admin?: AdminUserSummary; error?: string };
+      if (!response.ok || !data.admin) throw new Error(data.error || "Could not add admin.");
+      setAdminUsers((current) => [...current, data.admin!].sort((a, b) => a.username.localeCompare(b.username)));
+      setNewAdminUsername("");
+      setNewAdminPassword("");
+      setAdminUsersMessage(`Admin ${data.admin.username} added.`);
+    } catch (error) {
+      setAdminUsersError(error instanceof Error ? error.message : "Could not add admin.");
+    } finally {
+      setAdminUsersBusy(false);
+    }
+  };
+
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-8">
@@ -491,6 +530,59 @@ export default function SettingsPage() {
           {dashboardSettings.weeklyReportMode === "workWeek" ? "Work Week is active; Date Range is off." : "Date Range is active; Work Week is off."}
         </p>
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
+      </section>
+
+      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="add-admin-heading">
+        <h2 id="add-admin-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add Admin</h2>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Create an additional administrator account. Passwords are stored as salted hashes, never as plain text. New accounts can sign in immediately.</p>
+        <form onSubmit={addAdmin} className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="new-admin-username">Username
+            <input
+              id="new-admin-username"
+              required
+              minLength={3}
+              maxLength={128}
+              pattern="[A-Za-z0-9][A-Za-z0-9._@+-]*"
+              autoComplete="off"
+              value={newAdminUsername}
+              onChange={(event) => setNewAdminUsername(event.target.value)}
+              disabled={adminUsersBusy}
+              className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
+            />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="new-admin-password">Password
+            <input
+              id="new-admin-password"
+              required
+              type="password"
+              minLength={12}
+              maxLength={256}
+              autoComplete="new-password"
+              value={newAdminPassword}
+              onChange={(event) => setNewAdminPassword(event.target.value)}
+              disabled={adminUsersBusy}
+              className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+            <button type="submit" disabled={adminUsersBusy} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-text)] disabled:opacity-60">
+              {adminUsersBusy ? "Adding…" : "Add Admin"}
+            </button>
+            <p role="status" aria-live="polite" className={`text-sm ${adminUsersError ? "text-red-600" : "text-[var(--text-muted)]"}`}>
+              {adminUsersError || adminUsersMessage}
+            </p>
+          </div>
+        </form>
+        <div className="mt-5 border-t border-[var(--border)] pt-4">
+          <h3 className="text-sm font-semibold text-[var(--text)]">Additional admin accounts</h3>
+          {adminUsers.length ? (
+            <ul className="mt-2 space-y-1 text-sm text-[var(--text-muted)]">
+              {adminUsers.map((admin) => <li key={admin.username}>{admin.username} <span className="text-xs">(added {new Date(admin.createdAt).toLocaleDateString()})</span></li>)}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--text-muted)]">No additional admin accounts have been added.</p>
+          )}
+        </div>
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="login-audit-heading">

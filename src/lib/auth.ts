@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import path from "node:path";
 import { NextResponse } from "next/server";
+import { hasStoredAdminUsers, verifyStoredAdminPassword } from "./admin-users";
 
 export type AppRole = "admin" | "viewer";
 export type AppSession = { role: AppRole; username: string; expiresAt: number };
@@ -42,12 +43,12 @@ async function signingKey(): Promise<Buffer> {
   }
 }
 
-export function isAdminConfigured() {
+export async function isAdminConfigured() {
   const username = process.env.APP_ADMIN_USERNAME?.trim() ?? "";
-  return Boolean(username && username.toLowerCase() !== "root" && process.env.APP_ADMIN_PASSWORD);
+  return Boolean(username && username.toLowerCase() !== "root" && process.env.APP_ADMIN_PASSWORD) || hasStoredAdminUsers();
 }
 
-export function authenticate(username: string, password: string): AppRole | null {
+export async function authenticate(username: string, password: string): Promise<AppRole | null> {
   if (safeEqual(username, "root") && safeEqual(password, "root")) return "viewer";
   const adminUsername = process.env.APP_ADMIN_USERNAME?.trim() ?? "";
   const adminPassword = process.env.APP_ADMIN_PASSWORD ?? "";
@@ -55,6 +56,7 @@ export function authenticate(username: string, password: string): AppRole | null
     safeEqual(username, adminUsername) && safeEqual(password, adminPassword)) {
     return "admin";
   }
+  if (await verifyStoredAdminPassword(username, password)) return "admin";
   return null;
 }
 

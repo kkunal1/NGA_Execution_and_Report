@@ -10,6 +10,6 @@ export async function GET(req: Request) {
     role: session?.role ?? null,
     username: session?.username ?? null,
     expiresAt: session?.expiresAt ?? null,
-    adminConfigured: isAdminConfigured(),
+    adminConfigured: await isAdminConfigured(),
   });
 }

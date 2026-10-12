@@ -377,14 +377,15 @@ export default function WeeklyReportBuilder() {
               <ul className="list-disc space-y-1 pl-5">
                 {agedIssuesByDomain.map(([domain, issues]) => (
                   <li key={domain}>
-                    <strong>{formatValidationGroup(domain)}:</strong>{" "}
-                    {issues.map((issue, index) => (
-                      <span key={issue.id}>
-                        {index > 0 && "; "}
+                    <strong>{formatValidationGroup(domain)}:</strong>
+                    <ul className="mt-1 list-disc space-y-0.5 pl-5">
+                      {issues.map((issue) => (
+                        <li key={issue.id}>
                         <a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a>
-                        {` “${issue.title || "Untitled"}” (${issue.status}, ${issue.daysOpen} days)`}
-                      </span>
-                    ))}.
+                          {` “${issue.title || "Untitled"}” (${issue.status}, ${issue.daysOpen} days)`}
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>

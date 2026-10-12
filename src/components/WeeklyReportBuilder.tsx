@@ -7,6 +7,7 @@ import { getIsoWorkWeekLabel, getWorkWeeks } from "@/lib/work-weeks";
 
 const offsetMs = 330 * 60_000;
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
+const DEFAULT_WEEKLY_REPORT_LINKS = [{ label: "PV VV Exec Summary Dashboard", url: "https://xve-dashboards.intel.com/dmr-ap/execution-summary" }];
 const today = () => new Date(Date.now() + offsetMs).toISOString().slice(0, 10);
 const sevenDaysAgo = () => new Date(Date.now() + offsetMs - 6 * 86_400_000).toISOString().slice(0, 10);
 const percentage = (count: number, total: number) => total ? `${(count / total * 100).toFixed(1)}%` : "0%";
@@ -129,6 +130,7 @@ export default function WeeklyReportBuilder() {
         if (parsed.report && Array.isArray(parsed.report.suites) && typeof parsed.report.from === "string" && typeof parsed.report.to === "string") {
           setReport({
             ...parsed.report,
+            links: Array.isArray(parsed.report.links) ? parsed.report.links : DEFAULT_WEEKLY_REPORT_LINKS,
             agedHsdesIssues: Array.isArray(parsed.report.agedHsdesIssues) ? parsed.report.agedHsdesIssues : [],
           });
           setGeneratedWeek(typeof parsed.generatedWeek === "string" ? parsed.generatedWeek : null);
@@ -245,6 +247,7 @@ export default function WeeklyReportBuilder() {
 
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
+  const reportLinks = Array.isArray(report?.links) ? report.links : DEFAULT_WEEKLY_REPORT_LINKS;
   const agedHsdesIssues = Array.isArray(report?.agedHsdesIssues) ? report.agedHsdesIssues : [];
   const agedIssuesByDomain = [...agedHsdesIssues.reduce((groups, issue) => {
     const issues = groups.get(issue.domain) ?? [];
@@ -369,8 +372,8 @@ export default function WeeklyReportBuilder() {
           </ul>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">Links</h4>
           <ul className="mt-2 list-disc pl-5 text-sm">
-            {report.links.map((link) => <li key={`${link.label}-${link.url}`}><a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">{link.label}</a></li>)}
-            {!report.links.length && <li className="text-[#647e94]">No links configured.</li>}
+            {reportLinks.map((link) => <li key={`${link.label}-${link.url}`}><a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">{link.label}</a></li>)}
+            {!reportLinks.length && <li className="text-[#647e94]">No links configured.</li>}
           </ul>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">HSDES Issues Opened More Than 30 Days Ago</h4>
           {report.sightingWarning ? (

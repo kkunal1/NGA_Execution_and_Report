@@ -9,7 +9,10 @@ const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
 
 type HsdesQueryRecord = {
   id?: unknown;
+  title?: unknown;
+  status?: unknown;
   team_found?: unknown;
+  days_open?: unknown;
 };
 
 type HsdesQueryResponse = {
@@ -50,7 +53,39 @@ export function aggregateHsdesIssueIdsByDomain(records: unknown[]): Record<strin
   return Object.fromEntries([...idsByGroup.entries()].map(([group, ids]) => [group, ids.size]));
 }
 
-export async function fetchHsdesIssueCounts(linkValue: string): Promise<Record<string, number>> {
+export type AgedHsdesIssue = {
+  id: string;
+  title: string;
+  teamFound: string;
+  domain: string;
+  status: string;
+  daysOpen: number;
+};
+
+export function extractHsdesIssuesOlderThan(records: unknown[], minimumDays = 30): AgedHsdesIssue[] {
+  const issues = new Map<string, AgedHsdesIssue>();
+  for (const value of records) {
+    if (typeof value !== "object" || value === null) continue;
+    const record = value as HsdesQueryRecord;
+    if (typeof record.id !== "string" || !record.id.trim()) continue;
+    const daysOpen = Number(record.days_open);
+    if (!Number.isFinite(daysOpen) || daysOpen <= minimumDays) continue;
+    const id = record.id.trim();
+    if (issues.has(id)) continue;
+    const teamFound = typeof record.team_found === "string" ? record.team_found.trim() : "";
+    issues.set(id, {
+      id,
+      title: typeof record.title === "string" ? record.title : "",
+      teamFound,
+      domain: canonicalizeSightingDomain(teamFound) ?? teamFound,
+      status: typeof record.status === "string" ? record.status : "Unknown",
+      daysOpen,
+    });
+  }
+  return [...issues.values()].sort((a, b) => b.daysOpen - a.daysOpen || a.id.localeCompare(b.id));
+}
+
+export async function fetchHsdesIssueData(linkValue: string): Promise<{ countsByDomain: Record<string, number>; agedIssues: AgedHsdesIssue[] }> {
   const link = normalizeWeeklyReportHsdesLink(linkValue);
   if (!link) throw new Error("The saved HSDES link is invalid or has no queryId.");
   const linkUrl = new URL(link);
@@ -102,5 +137,8 @@ export async function fetchHsdesIssueCounts(linkValue: string): Promise<Record<s
   if (Number.isFinite(total) && total > response.data.length) {
     throw new Error(`The HSDES query returned ${response.data.length} of ${total} rows; reduce the query result set before reporting.`);
   }
-  return aggregateHsdesIssueIdsByDomain(response.data);
+  return {
+    countsByDomain: aggregateHsdesIssueIdsByDomain(response.data),
+    agedIssues: extractHsdesIssuesOlderThan(response.data),
+  };
 }

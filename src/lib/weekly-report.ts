@@ -3,6 +3,7 @@ import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
 import { bucketOf } from "./normalize";
 import { resolveDispatcher } from "./proxy";
+import type { AgedHsdesIssue } from "./hsdes-sightings";
 import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, type TeamPlatformCount } from "./weekly-report-settings";
 
 const PAGE_SIZE = 1000;
@@ -79,6 +80,7 @@ export type WeeklyReport = {
   runningBkc: string;
   teamPlatformCounts: TeamPlatformCount[];
   sightingWarning?: string;
+  agedHsdesIssues: AgedHsdesIssue[];
   stageDetails: StageDetail[];
 };
 
@@ -219,6 +221,7 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     prebootAbortCounts: prebootAbortCounts(abortedRuns),
     runningBkc,
     teamPlatformCounts: teamPlatformCounts.map((row) => ({ ...row })),
+    agedHsdesIssues: [],
     stageDetails: detailsFor(linesInWindow),
   };
 }

@@ -5,7 +5,7 @@ import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, fi
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
 import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink } from "../src/lib/weekly-report-settings.ts";
-import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain } from "../src/lib/hsdes-sightings.ts";
+import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
@@ -248,6 +248,15 @@ assert.deepEqual(aggregateHsdesIssueIdsByDomain([
   pv_memory: 1,
   pv_virtualization: 1,
 });
+assert.deepEqual(extractHsdesIssuesOlderThan([
+  { id: "late-security", title: "Older security issue", team_found: "security_subsystem_validation", status: "open", days_open: "45" },
+  { id: "late-security", title: "Duplicate row", team_found: "security_subsystem_validation", status: "open", days_open: "45" },
+  { id: "exactly-30", title: "Boundary issue", team_found: "pm_subsystem_validation", status: "open", days_open: "30" },
+  { id: "late-other-domain", title: "Older other issue", team_found: "other_team", status: "implemented", days_open: "31" },
+]), [
+  { id: "late-security", title: "Older security issue", teamFound: "security_subsystem_validation", domain: "pv_security", status: "open", daysOpen: 45 },
+  { id: "late-other-domain", title: "Older other issue", teamFound: "other_team", domain: "other_team", status: "implemented", daysOpen: 31 },
+]);
 assert.deepEqual(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3 }]), [{ team: "Team A", x1: 2, x4: 3 }]);
 assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: -1, x4: 0 }]), null);
 assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: 0, x4: 0 }, { team: "team a", x1: 1, x4: 1 }]), null);

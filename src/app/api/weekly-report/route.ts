@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
 import { getDashboardSettings } from "@/lib/dashboard-settings";
 import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
-import { canonicalizeSightingDomain, fetchHsdesIssueCounts } from "@/lib/hsdes-sightings";
+import { canonicalizeSightingDomain, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
 import { B0_SUITES } from "@/lib/pool-systems";
 import { generateWeeklyReport } from "@/lib/weekly-report";
 import { getWorkWeeks } from "@/lib/work-weeks";
@@ -49,10 +49,11 @@ export async function POST(req: Request) {
     const reportSettings = await getWeeklyReportSettings();
     const [report, sightingResult] = await Promise.all([
       generateWeeklyReport(suites, from, to, reportSettings.bkc, reportSettings.teamPlatformCounts),
-      fetchHsdesIssueCounts(reportSettings.hsdesLink)
-        .then((countsByDomain) => ({ countsByDomain, warning: "" }))
+      fetchHsdesIssueData(reportSettings.hsdesLink)
+        .then((issueData) => ({ ...issueData, warning: "" }))
         .catch((error: unknown) => ({
           countsByDomain: null,
+          agedIssues: [],
           warning: error instanceof Error ? error.message : "Could not load HSDES IDs through Kerberos.",
         })),
     ]);
@@ -62,7 +63,7 @@ export async function POST(req: Request) {
           attached: sightingResult.countsByDomain?.[canonicalizeSightingDomain(row.group) ?? ""] ?? 0,
         }))
       : report.backlogFailures;
-    return NextResponse.json({ ...report, backlogFailures, sightingWarning: sightingResult.warning });
+    return NextResponse.json({ ...report, backlogFailures, agedHsdesIssues: sightingResult.agedIssues, sightingWarning: sightingResult.warning });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not generate the report." }, { status: 502 });
   }

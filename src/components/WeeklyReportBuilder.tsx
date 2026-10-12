@@ -120,21 +120,58 @@ export default function WeeklyReportBuilder() {
   const [reportReady, setReportReady] = useState(false);
   const reportElementRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
+  const [hsdesDetailsLoading, setHsdesDetailsLoading] = useState(false);
+  const [hsdesDetailsError, setHsdesDetailsError] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     try {
       const saved = window.sessionStorage.getItem(WEEKLY_REPORT_STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved) as { report?: WeeklyReport; generatedWeek?: string | null };
         if (parsed.report && Array.isArray(parsed.report.suites) && typeof parsed.report.from === "string" && typeof parsed.report.to === "string") {
+          const cachedReport = parsed.report;
+          const cachedAgedIssues = Array.isArray(cachedReport.agedHsdesIssues) ? cachedReport.agedHsdesIssues : [];
+          const hasSavedIssueCounts = Array.isArray(cachedReport.backlogFailures) && cachedReport.backlogFailures.some((row) => row.attached > 0);
+          const needsHsdesRefresh = !Array.isArray(cachedReport.hsdesIssues) ||
+            (cachedReport.hsdesIssues.length === 0 && (cachedAgedIssues.length > 0 || hasSavedIssueCounts));
+          const cachedGeneratedWeek = typeof parsed.generatedWeek === "string" ? parsed.generatedWeek : null;
           setReport({
-            ...parsed.report,
-            links: Array.isArray(parsed.report.links) ? parsed.report.links : DEFAULT_WEEKLY_REPORT_LINKS,
-            hsdesIssues: Array.isArray(parsed.report.hsdesIssues) ? parsed.report.hsdesIssues : [],
-            agedHsdesIssues: Array.isArray(parsed.report.agedHsdesIssues) ? parsed.report.agedHsdesIssues : [],
+            ...cachedReport,
+            links: Array.isArray(cachedReport.links) ? cachedReport.links : DEFAULT_WEEKLY_REPORT_LINKS,
+            hsdesIssues: Array.isArray(cachedReport.hsdesIssues) ? cachedReport.hsdesIssues : [],
+            agedHsdesIssues: cachedAgedIssues,
           });
-          setGeneratedWeek(typeof parsed.generatedWeek === "string" ? parsed.generatedWeek : null);
+          setGeneratedWeek(cachedGeneratedWeek);
+          if (needsHsdesRefresh) {
+            setHsdesDetailsLoading(true);
+            void fetch("/api/weekly-report", { cache: "no-store" })
+              .then(async (response) => {
+                const result = (await response.json()) as Partial<Pick<WeeklyReport, "hsdesIssues" | "agedHsdesIssues">> & { error?: string };
+                if (!response.ok) throw new Error(result.error || "Could not refresh the saved report's HSDES details.");
+                if (!Array.isArray(result.hsdesIssues) || !Array.isArray(result.agedHsdesIssues)) {
+                  throw new Error("The server did not return the full HSDES issue list. Restart or update the app, then reload this report.");
+                }
+                return result as Pick<WeeklyReport, "hsdesIssues" | "agedHsdesIssues">;
+              })
+              .then((details) => {
+                if (cancelled) return;
+                const refreshedReport = { ...cachedReport, ...details };
+                setReport(refreshedReport);
+                try {
+                  window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek: cachedGeneratedWeek }));
+                } catch {
+                  // Keep the refreshed details visible even if the browser cannot cache them.
+                }
+              })
+              .catch((cause: unknown) => {
+                if (!cancelled) setHsdesDetailsError(cause instanceof Error ? cause.message : "Could not refresh the saved report's HSDES details.");
+              })
+              .finally(() => {
+                if (!cancelled) setHsdesDetailsLoading(false);
+              });
+          }
         }
       }
     } catch {
@@ -146,6 +183,7 @@ export default function WeeklyReportBuilder() {
     } finally {
       setReportReady(true);
     }
+    return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
@@ -221,6 +259,8 @@ export default function WeeklyReportBuilder() {
       const result = (await response.json()) as WeeklyReport & { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not create the report.");
       const nextGeneratedWeek = mode === "workWeek" ? `${workWeeks.year}${activeWeek.label}` : null;
+      setHsdesDetailsLoading(false);
+      setHsdesDetailsError("");
       setReport(result);
       setGeneratedWeek(nextGeneratedWeek);
       try {
@@ -238,6 +278,8 @@ export default function WeeklyReportBuilder() {
   const clearReport = () => {
     setReport(null);
     setGeneratedWeek(null);
+    setHsdesDetailsLoading(false);
+    setHsdesDetailsError("");
     setError("");
     try {
       window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY);
@@ -435,7 +477,11 @@ export default function WeeklyReportBuilder() {
         <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />
         <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
           <h2 className="mb-1 text-base font-bold text-[#204e76]">All HSDES Issues by Domain</h2>
-          {report.sightingWarning ? (
+          {hsdesDetailsLoading ? (
+            <p role="status" className="mt-3 text-sm text-[#647e94]">Refreshing HSDES details for this saved report…</p>
+          ) : hsdesDetailsError ? (
+            <p role="alert" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">{hsdesDetailsError}</p>
+          ) : report.sightingWarning ? (
             <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES issue list unavailable: {report.sightingWarning}</p>
           ) : hsdesIssuesByDomain.length ? (
             <>

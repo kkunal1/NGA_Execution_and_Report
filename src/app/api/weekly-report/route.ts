@@ -10,6 +10,18 @@ import { getWorkWeeks } from "@/lib/work-weeks";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+export async function GET(req: Request) {
+  const denied = await authorizeRequest(req);
+  if (denied) return denied;
+
+  try {
+    const reportSettings = await getWeeklyReportSettings();
+    return NextResponse.json(await fetchHsdesIssueData(reportSettings.hsdesLink));
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load HSDES issue details." }, { status: 502 });
+  }
+}
+
 export async function POST(req: Request) {
   const denied = await authorizeRequest(req);
   if (denied) return denied;

@@ -25,6 +25,50 @@ const formatValidationGroup = (group: string) => group.replace(/^pv_/i, "").spli
   .map((word) => groupWords[word.toLowerCase()] ?? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
   .join(" ");
 
+function copyHtmlWithSelection(html: string): boolean {
+  const container = document.createElement("div");
+  container.contentEditable = "true";
+  container.style.position = "fixed";
+  container.style.left = "-10000px";
+  container.style.top = "0";
+  container.innerHTML = html;
+  document.body.appendChild(container);
+  container.focus();
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(container);
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+  selection?.removeAllRanges();
+  container.remove();
+  return copied;
+}
+
+function copyTextWithSelection(text: string): boolean {
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.left = "-10000px";
+  textarea.style.top = "0";
+  document.body.appendChild(textarea);
+  textarea.focus();
+  textarea.select();
+  let copied = false;
+  try {
+    copied = document.execCommand("copy");
+  } catch {
+    copied = false;
+  }
+  textarea.remove();
+  return copied;
+}
+
 function Breakdown({ title, rows, prebootAbortCounts, highlightFailureBreakdown = false }: { title: string; rows: FailureRow[]; prebootAbortCounts?: Record<string, number>; highlightFailureBreakdown?: boolean }) {
   const displayRows = prebootAbortCounts
     ? (() => {
@@ -243,7 +287,7 @@ export default function WeeklyReportBuilder() {
     const week = weekMatch ? `WW-${weekMatch[1]}` : `WW-${getIsoWorkWeekLabel(new Date(Date.parse(report.to) - 1)).slice(2)}`;
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const documentHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DMR-AP1 B0 Execution Weekly Report for ${week}</title></head><body style="margin:0;padding:24px 16px;min-height:100vh;box-sizing:border-box;background:#f3f6fa;font-family:Arial,sans-serif"><main style="width:100%;max-width:1200px;margin:0 auto">${clone.outerHTML}</main></body></html>`;
-    return { documentHtml, week, timestamp, plainText: clone.innerText || clone.textContent || "" };
+    return { documentHtml, clipboardHtml: clone.outerHTML, week, timestamp, plainText: clone.innerText || clone.textContent || "" };
   };
 
   const downloadHtml = () => {
@@ -261,22 +305,34 @@ export default function WeeklyReportBuilder() {
     setCopyStatus("");
     const prepared = createStyledReportDocument();
     if (!prepared) return;
-    try {
-      if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+    if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
+      try {
         await navigator.clipboard.write([new ClipboardItem({
           "text/html": new Blob([prepared.documentHtml], { type: "text/html" }),
           "text/plain": new Blob([prepared.plainText], { type: "text/plain" }),
         })]);
         setCopyStatus("Report copied with formatting.");
-      } else if (navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(prepared.plainText);
-        setCopyStatus("Copied as plain text; rich clipboard is not supported in this browser.");
-      } else {
-        throw new Error("Clipboard access is unavailable.");
+        return;
+      } catch {
+        // Try the browser's selection-based rich-copy path below.
       }
-    } catch {
-      setCopyStatus("Could not copy the report. Check clipboard permission and try again.");
     }
+    if (copyHtmlWithSelection(prepared.clipboardHtml)) {
+      setCopyStatus("Report copied with formatting.");
+      return;
+    }
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(prepared.plainText);
+        setCopyStatus("Copied as plain text; rich clipboard is blocked by this browser.");
+        return;
+      } catch {
+        // Fall through to the legacy plain-text copy path.
+      }
+    }
+    setCopyStatus(copyTextWithSelection(prepared.plainText)
+      ? "Copied as plain text; rich clipboard is blocked by this browser."
+      : "Could not copy the report. Check clipboard permission and try again.");
   };
 
   const create = async (event: React.FormEvent<HTMLFormElement>) => {

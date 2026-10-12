@@ -122,6 +122,7 @@ export default function WeeklyReportBuilder() {
   const [busy, setBusy] = useState(false);
   const [hsdesDetailsLoading, setHsdesDetailsLoading] = useState(false);
   const [hsdesDetailsError, setHsdesDetailsError] = useState("");
+  const [hsdesDomainFilter, setHsdesDomainFilter] = useState("all");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -299,6 +300,10 @@ export default function WeeklyReportBuilder() {
     return groups;
   }, new Map<string, typeof hsdesIssues>()).entries()]
     .sort(([left], [right]) => left.localeCompare(right));
+  const activeHsdesDomain = hsdesIssuesByDomain.some(([domain]) => domain === hsdesDomainFilter) ? hsdesDomainFilter : "all";
+  const filteredHsdesIssues = activeHsdesDomain === "all"
+    ? hsdesIssues
+    : hsdesIssues.filter((issue) => issue.domain === activeHsdesDomain);
   const agedHsdesIssues = Array.isArray(report?.agedHsdesIssues) ? report.agedHsdesIssues : [];
   const agedIssuesByDomain = [...agedHsdesIssues.reduce((groups, issue) => {
     const issues = groups.get(issue.domain) ?? [];
@@ -485,30 +490,33 @@ export default function WeeklyReportBuilder() {
             <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES issue list unavailable: {report.sightingWarning}</p>
           ) : hsdesIssuesByDomain.length ? (
             <>
-              <p className="mb-4 text-xs text-[#57718a]">{hsdesIssues.length} HSDES issues across {hsdesIssuesByDomain.length} domains.</p>
-              <div className="space-y-5">
-                {hsdesIssuesByDomain.map(([domain, issues]) => (
-                  <div key={domain}>
-                    <h3 className="mb-2 text-sm font-semibold text-[#244c70]">{formatValidationGroup(domain)} <span className="font-normal text-[#60788e]">({issues.length})</span></h3>
-                    <div className="overflow-x-auto border border-[#b8cadb]">
-                      <table className="w-full min-w-[700px] border-collapse text-left text-sm">
-                        <thead className="bg-[#204e76] text-xs font-semibold text-white">
-                          <tr><th className="w-48 px-3 py-2.5">HSDES ID</th><th className="px-3 py-2.5">Title</th><th className="w-36 px-3 py-2.5">Status</th><th className="w-28 px-3 py-2.5">Days open</th></tr>
-                        </thead>
-                        <tbody className="divide-y divide-[#cfdae5]">
-                          {issues.map((issue) => (
-                            <tr key={issue.id} className="even:bg-[#edf3f9]">
-                              <td className="break-all px-3 py-2.5"><a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a></td>
-                              <td className="break-words px-3 py-2.5">{issue.title || "Untitled"}</td>
-                              <td className="px-3 py-2.5">{issue.status}</td>
-                              <td className="px-3 py-2.5 tabular-nums">{issue.daysOpen}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                ))}
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-[#57718a]">Showing {filteredHsdesIssues.length} of {hsdesIssues.length} HSDES issues across {hsdesIssuesByDomain.length} domains.</p>
+                <label className="flex items-center gap-2 text-xs font-semibold text-[#244c70]">Domain
+                  <select value={activeHsdesDomain} onChange={(event) => setHsdesDomainFilter(event.target.value)} className="h-8 rounded-md border border-[#b8cadb] bg-white px-2 text-xs font-normal text-[#253646]">
+                    <option value="all">All domains ({hsdesIssues.length})</option>
+                    {hsdesIssuesByDomain.map(([domain, issues]) => <option key={domain} value={domain}>{formatValidationGroup(domain)} ({issues.length})</option>)}
+                  </select>
+                </label>
+              </div>
+              <div className="max-h-[32rem] overflow-auto overscroll-contain border border-[#b8cadb]">
+                <table className="w-full min-w-[850px] border-collapse text-left text-xs" style={{ fontFamily: '"Courier New", Courier, monospace' }}>
+                  <thead className="sticky top-0 z-10 bg-[#204e76] text-[11px] font-semibold text-white">
+                    <tr><th className="w-40 px-2.5 py-2">Domain</th><th className="w-36 px-2.5 py-2">HSDES ID</th><th className="px-2.5 py-2">Title</th><th className="w-28 px-2.5 py-2">Status</th><th className="w-24 px-2.5 py-2">Days open</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#cfdae5]">
+                    {filteredHsdesIssues.map((issue) => (
+                      <tr key={issue.id} className="even:bg-[#edf3f9]">
+                        <td className="px-2.5 py-2">{formatValidationGroup(issue.domain)}</td>
+                        <td className="break-all px-2.5 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a></td>
+                        <td className="break-words px-2.5 py-2">{issue.title || "Untitled"}</td>
+                        <td className="px-2.5 py-2">{issue.status}</td>
+                        <td className="px-2.5 py-2 tabular-nums">{issue.daysOpen}</td>
+                      </tr>
+                    ))}
+                    {!filteredHsdesIssues.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-[#647e94]">No issues in this domain.</td></tr>}
+                  </tbody>
+                </table>
               </div>
             </>
           ) : (

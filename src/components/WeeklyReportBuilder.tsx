@@ -389,7 +389,7 @@ export default function WeeklyReportBuilder() {
                       {issues.map((issue) => (
                         <li key={issue.id}>
                         <a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a>
-                          {` “${issue.title || "Untitled"}” (${issue.status}, ${issue.daysOpen} days)`}
+                          {` “${issue.title || "Untitled"}” `}<strong>({issue.status}, {issue.daysOpen} days)</strong>
                         </li>
                       ))}
                     </ul>

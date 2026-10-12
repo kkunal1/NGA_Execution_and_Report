@@ -4,7 +4,7 @@ import { getNgaiApiToken } from "./ngai-token";
 import { bucketOf } from "./normalize";
 import { resolveDispatcher } from "./proxy";
 import type { AgedHsdesIssue } from "./hsdes-sightings";
-import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, type TeamPlatformCount } from "./weekly-report-settings";
+import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_LINKS, type TeamPlatformCount, type WeeklyReportLink } from "./weekly-report-settings";
 
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 50;
@@ -79,6 +79,7 @@ export type WeeklyReport = {
   prebootAbortCounts: Record<string, number>;
   runningBkc: string;
   teamPlatformCounts: TeamPlatformCount[];
+  links: WeeklyReportLink[];
   sightingWarning?: string;
   agedHsdesIssues: AgedHsdesIssue[];
   stageDetails: StageDetail[];
@@ -188,7 +189,7 @@ function prebootAbortCounts(runs: Run[]): Record<string, number> {
   return Object.fromEntries([...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
-export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, windowRuns: Run[], latestRuns: Run[], abortedRuns: Run[] = [], runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS): WeeklyReport {
+export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, windowRuns: Run[], latestRuns: Run[], abortedRuns: Run[] = [], runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS, links: WeeklyReportLink[] = DEFAULT_WEEKLY_REPORT_LINKS): WeeklyReport {
   const latestValid = latestRuns;
   const latestBucket = (run: Run) => bucketOf(run.state ?? "", run.testLine?.goStatus ?? "");
   const recent = windowRuns.filter((run) => run.testLineId && (run.state === "Passed" || run.state === "Failed"));
@@ -221,12 +222,13 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     prebootAbortCounts: prebootAbortCounts(abortedRuns),
     runningBkc,
     teamPlatformCounts: teamPlatformCounts.map((row) => ({ ...row })),
+    links: links.map((link) => ({ ...link })),
     agedHsdesIssues: [],
     stageDetails: detailsFor(linesInWindow),
   };
 }
 
-export async function generateWeeklyReport(suites: string[], from: Date, to: Date, runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS): Promise<WeeklyReport> {
+export async function generateWeeklyReport(suites: string[], from: Date, to: Date, runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS, links: WeeklyReportLink[] = DEFAULT_WEEKLY_REPORT_LINKS): Promise<WeeklyReport> {
   const headers: Record<string, string> = { accept: "application/json" };
   const token = await getNgaiApiToken();
   if (token) headers["X-NGA-PAT"] = token;
@@ -247,5 +249,5 @@ export async function generateWeeklyReport(suites: string[], from: Date, to: Dat
   }));
   const missing = datasets.findIndex(([lines]) => lines.length === 0);
   if (missing >= 0) throw new Error(`No test lines found for suite "${suites[missing]}" in this NGAi project.`);
-  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]), datasets.flatMap((item) => item[3]), runningBkc, teamPlatformCounts);
+  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]), datasets.flatMap((item) => item[3]), runningBkc, teamPlatformCounts, links);
 }

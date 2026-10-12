@@ -48,7 +48,7 @@ export async function POST(req: Request) {
     }
     const reportSettings = await getWeeklyReportSettings();
     const [report, sightingResult] = await Promise.all([
-      generateWeeklyReport(suites, from, to, reportSettings.bkc, reportSettings.teamPlatformCounts),
+      generateWeeklyReport(suites, from, to, reportSettings.bkc, reportSettings.teamPlatformCounts, reportSettings.links),
       fetchHsdesIssueData(reportSettings.hsdesLink)
         .then((issueData) => ({ ...issueData, warning: "" }))
         .catch((error: unknown) => ({

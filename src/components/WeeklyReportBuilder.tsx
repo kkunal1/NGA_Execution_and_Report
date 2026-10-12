@@ -369,7 +369,8 @@ export default function WeeklyReportBuilder() {
           </ul>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">Links</h4>
           <ul className="mt-2 list-disc pl-5 text-sm">
-            <li><a href="https://xve-dashboards.intel.com/dmr-ap/execution-summary" target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">PV VV Exec Summary Dashboard</a></li>
+            {report.links.map((link) => <li key={`${link.label}-${link.url}`}><a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">{link.label}</a></li>)}
+            {!report.links.length && <li className="text-[#647e94]">No links configured.</li>}
           </ul>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">HSDES Issues Opened More Than 30 Days Ago</h4>
           {report.sightingWarning ? (

@@ -5,7 +5,7 @@ import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, fi
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
-import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink } from "../src/lib/weekly-report-settings.ts";
+import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
 import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
@@ -191,6 +191,10 @@ const attemptedSummary = summarize([
   { ...rows[2], id: "rerun-pending", bucket: "Not Run", state: "PendingRunning", rerunIndex: 2 },
 ]);
 assert.equal(attemptedSummary.executionAttempted, 3, "attempted includes pass + fail + PendingRunning reruns with index > 0");
+const customReportLinks = [
+  { label: "PV VV Exec Summary Dashboard", url: "https://xve-dashboards.intel.com/dmr-ap/execution-summary" },
+  { label: "DMR Query", url: "https://hsdes.intel.com/appstore/generalapps/#/pages/community/15010407190?queryId=16032003391" },
+];
 const weeklyReport = summarizeWeeklyReport(
   ["suite"],
   new Date("2026-10-01T00:00:00Z"),
@@ -205,10 +209,13 @@ const weeklyReport = summarizeWeeklyReport(
   ],
   "BKC#WW41",
   DEFAULT_TEAM_PLATFORM_COUNTS,
+  customReportLinks,
 );
 assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2 });
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.teamPlatformCounts, DEFAULT_TEAM_PLATFORM_COUNTS);
+assert.deepEqual(weeklyReport.links, customReportLinks);
+assert.deepEqual(DEFAULT_WEEKLY_REPORT_LINKS, [customReportLinks[0]]);
 assert.equal(DEFAULT_WEEKLY_REPORT_BKC, "BKC#40");
 assert.deepEqual(DEFAULT_TEAM_PLATFORM_COUNTS, [
   { team: "PV.BKC", x1: 6, x4: 2 },
@@ -222,6 +229,9 @@ assert.equal(normalizeWeeklyReportBkc("BKC#40"), "BKC#40");
 assert.equal(normalizeWeeklyReportBkc("WW41"), null);
 assert.equal(normalizeWeeklyReportHsdesLink(DEFAULT_WEEKLY_REPORT_HSDES_LINK), DEFAULT_WEEKLY_REPORT_HSDES_LINK);
 assert.equal(normalizeWeeklyReportHsdesLink("https://example.com/appstore/generalapps/#/pages/community/1?queryId=123"), null);
+assert.deepEqual(normalizeWeeklyReportLinks(customReportLinks), customReportLinks);
+assert.deepEqual(normalizeWeeklyReportLinks([]), []);
+assert.equal(normalizeWeeklyReportLinks([{ label: "Not secure", url: "http://example.intel.com" }]), null);
 assert.equal(canonicalizeSightingDomain("pm_subsystem_validation"), "pv_power_management");
 assert.equal(canonicalizeSightingDomain("io_subsystem_validation"), "pv_serial_io");
 assert.equal(canonicalizeSightingDomain("managebility_subsystem_validation"), "pv_manageability");

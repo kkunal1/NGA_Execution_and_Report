@@ -5,12 +5,16 @@ import { config } from "./config";
 export const DEFAULT_WEEKLY_REPORT_BKC = "BKC#40";
 export const DEFAULT_WEEKLY_REPORT_HSDES_LINK = "https://hsdes.intel.com/appstore/generalapps/#/pages/community/15010407190?queryId=16032003391&articleId=16031656538";
 export type TeamPlatformCount = { team: string; x1: number; x4: number };
-export type WeeklyReportSettings = { bkc: string; teamPlatformCounts: TeamPlatformCount[]; hsdesLink: string };
+export type WeeklyReportLink = { label: string; url: string };
+export type WeeklyReportSettings = { bkc: string; teamPlatformCounts: TeamPlatformCount[]; hsdesLink: string; links: WeeklyReportLink[] };
 export const DEFAULT_TEAM_PLATFORM_COUNTS: TeamPlatformCount[] = [
   { team: "PV.BKC", x1: 6, x4: 2 },
   { team: "DM", x1: 2, x4: 0 },
   { team: "DPMO", x1: 9, x4: 5 },
   { team: "Execution", x1: 39, x4: 6 },
+];
+export const DEFAULT_WEEKLY_REPORT_LINKS: WeeklyReportLink[] = [
+  { label: "PV VV Exec Summary Dashboard", url: "https://xve-dashboards.intel.com/dmr-ap/execution-summary" },
 ];
 
 const settingsPath = path.join(config.dataDir, "weekly-report-settings.json");
@@ -52,6 +56,26 @@ export function normalizeTeamPlatformCounts(value: unknown): TeamPlatformCount[]
   return rows;
 }
 
+export function normalizeWeeklyReportLinks(value: unknown): WeeklyReportLink[] | null {
+  if (!Array.isArray(value) || value.length > 20) return null;
+  const links: WeeklyReportLink[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) return null;
+    const row = item as Record<string, unknown>;
+    if (typeof row.label !== "string" || typeof row.url !== "string") return null;
+    const label = row.label.trim();
+    const url = row.url.trim();
+    if (!label || label.length > 120 || url.length > 2048) return null;
+    try {
+      if (new URL(url).protocol !== "https:") return null;
+    } catch {
+      return null;
+    }
+    links.push({ label, url });
+  }
+  return links;
+}
+
 export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
   try {
     const saved = JSON.parse(await readFile(settingsPath, "utf8")) as Partial<WeeklyReportSettings>;
@@ -59,6 +83,7 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
       bkc: normalizeWeeklyReportBkc(saved.bkc) ?? DEFAULT_WEEKLY_REPORT_BKC,
       teamPlatformCounts: normalizeTeamPlatformCounts(saved.teamPlatformCounts) ?? DEFAULT_TEAM_PLATFORM_COUNTS.map((row) => ({ ...row })),
       hsdesLink: normalizeWeeklyReportHsdesLink(saved.hsdesLink) ?? DEFAULT_WEEKLY_REPORT_HSDES_LINK,
+      links: normalizeWeeklyReportLinks(saved.links) ?? DEFAULT_WEEKLY_REPORT_LINKS.map((link) => ({ ...link })),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -66,19 +91,22 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
       bkc: DEFAULT_WEEKLY_REPORT_BKC,
       teamPlatformCounts: DEFAULT_TEAM_PLATFORM_COUNTS.map((row) => ({ ...row })),
       hsdesLink: DEFAULT_WEEKLY_REPORT_HSDES_LINK,
+      links: DEFAULT_WEEKLY_REPORT_LINKS.map((link) => ({ ...link })),
     };
   }
 }
 
-export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown): Promise<WeeklyReportSettings> {
+export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown): Promise<WeeklyReportSettings> {
   const bkc = normalizeWeeklyReportBkc(bkcValue);
   const teamPlatformCounts = normalizeTeamPlatformCounts(countsValue);
   const hsdesLink = normalizeWeeklyReportHsdesLink(hsdesLinkValue);
+  const links = normalizeWeeklyReportLinks(linksValue);
   if (!bkc) throw new TypeError("Enter a BKC value such as BKC#40 or BKC#WW41.");
   if (!teamPlatformCounts) throw new TypeError("Enter one to 20 unique teams with whole-number X1 and X4 counts from 0 to 1,000,000.");
   if (!hsdesLink) throw new TypeError("Enter an HSDES General Apps link containing a numeric queryId.");
+  if (!links) throw new TypeError("Enter up to 20 report links with a label and valid HTTPS URL.");
   await mkdir(config.dataDir, { recursive: true });
-  const settings = { bkc, teamPlatformCounts, hsdesLink };
+  const settings = { bkc, teamPlatformCounts, hsdesLink, links };
   await writeFile(settingsPath, JSON.stringify(settings, null, 2), { encoding: "utf8", mode: 0o600 });
   return settings;
 }

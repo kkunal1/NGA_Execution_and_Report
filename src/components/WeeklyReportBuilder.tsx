@@ -243,6 +243,13 @@ export default function WeeklyReportBuilder() {
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
   const agedHsdesIssues = Array.isArray(report?.agedHsdesIssues) ? report.agedHsdesIssues : [];
+  const agedIssuesByDomain = [...agedHsdesIssues.reduce((groups, issue) => {
+    const issues = groups.get(issue.domain) ?? [];
+    issues.push(issue);
+    groups.set(issue.domain, issues);
+    return groups;
+  }, new Map<string, typeof agedHsdesIssues>()).entries()]
+    .sort(([left], [right]) => left.localeCompare(right));
   const teamPlatformCounts = report?.teamPlatformCounts ?? [];
   const teamPlatformTotals = teamPlatformCounts.reduce((totals, row) => ({ x1: totals.x1 + row.x1, x4: totals.x4 + row.x4 }), { x1: 0, x4: 0 });
   const createButton = (
@@ -361,29 +368,29 @@ export default function WeeklyReportBuilder() {
           <ul className="mt-2 list-disc pl-5 text-sm">
             <li><a href="https://xve-dashboards.intel.com/dmr-ap/execution-summary" target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">PV VV Exec Summary Dashboard</a></li>
           </ul>
-          <h4 className="mt-5 text-sm font-bold text-[#204e76]">HSDES Issues Open for More Than 30 Days</h4>
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">HSDES Issues Opened More Than 30 Days Ago</h4>
           {report.sightingWarning ? (
             <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES issue list unavailable: {report.sightingWarning}</p>
-          ) : (
-            <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
-              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-                <thead className="bg-[#204e76] text-xs font-semibold text-white">
-                  <tr><th className="px-3 py-2.5">HSDES ID</th><th className="px-3 py-2.5">Title</th><th className="px-3 py-2.5">Domain</th><th className="px-3 py-2.5">Status</th><th className="px-3 py-2.5">Days Open</th></tr>
-                </thead>
-                <tbody className="divide-y divide-[#cfdae5]">
-                  {agedHsdesIssues.map((issue) => (
-                    <tr key={issue.id} className="even:bg-[#edf3f9]">
-                      <td className="whitespace-nowrap px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a></td>
-                      <td className="max-w-[34rem] break-words px-3 py-2">{issue.title || "-"}</td>
-                      <td className="whitespace-nowrap px-3 py-2">{issue.domain ? formatValidationGroup(issue.domain) : "-"}</td>
-                      <td className="whitespace-nowrap px-3 py-2">{issue.status}</td>
-                      <td className="px-3 py-2 font-semibold tabular-nums">{issue.daysOpen.toLocaleString()}</td>
-                    </tr>
-                  ))}
-                  {!agedHsdesIssues.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-[#647e94]">No HSDES issues are older than 30 days.</td></tr>}
-                </tbody>
-              </table>
+          ) : agedIssuesByDomain.length ? (
+            <div className="mt-3 space-y-2 text-sm leading-relaxed text-[#253646]">
+              <p><strong>{agedHsdesIssues.length}</strong> HSDES issues were opened more than 30 days ago.</p>
+              <ul className="list-disc space-y-1 pl-5">
+                {agedIssuesByDomain.map(([domain, issues]) => (
+                  <li key={domain}>
+                    <strong>{formatValidationGroup(domain)}:</strong>{" "}
+                    {issues.map((issue, index) => (
+                      <span key={issue.id}>
+                        {index > 0 && "; "}
+                        <a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a>
+                        {` “${issue.title || "Untitled"}” (${issue.status}, ${issue.daysOpen} days)`}
+                      </span>
+                    ))}.
+                  </li>
+                ))}
+              </ul>
             </div>
+          ) : (
+            <p className="mt-3 text-sm text-[#647e94]">No HSDES issues were opened more than 30 days ago.</p>
           )}
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">DMR X1 and X4 CPU breakdown</h4>
           <div className="mt-3 overflow-x-auto border border-[#b8cadb]">

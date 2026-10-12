@@ -53,6 +53,7 @@ export async function POST(req: Request) {
         .then((issueData) => ({ ...issueData, warning: "" }))
         .catch((error: unknown) => ({
           countsByDomain: null,
+          issues: [],
           agedIssues: [],
           warning: error instanceof Error ? error.message : "Could not load HSDES IDs through Kerberos.",
         })),
@@ -63,7 +64,7 @@ export async function POST(req: Request) {
           attached: sightingResult.countsByDomain?.[canonicalizeSightingDomain(row.group) ?? ""] ?? 0,
         }))
       : report.backlogFailures;
-    return NextResponse.json({ ...report, backlogFailures, agedHsdesIssues: sightingResult.agedIssues, sightingWarning: sightingResult.warning });
+    return NextResponse.json({ ...report, backlogFailures, hsdesIssues: sightingResult.issues, agedHsdesIssues: sightingResult.agedIssues, sightingWarning: sightingResult.warning });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not generate the report." }, { status: 502 });
   }

@@ -6,7 +6,7 @@ import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
 import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
-import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
+import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
@@ -273,6 +273,26 @@ assert.deepEqual(extractHsdesIssuesOlderThan([
   { id: "late-security", title: "Older security issue", teamFound: "security_subsystem_validation", domain: "pv_security", status: "open", daysOpen: 45 },
   { id: "late-other-domain", title: "Older other issue", teamFound: "other_team", domain: "other_team", status: "implemented", daysOpen: 31 },
 ]);
+const allIssueRecords = [
+  { id: "recent-pm", title: "Recently opened PM issue", team_found: "pm_subsystem_validation", status: "open", days_open: "4" },
+  { id: "aged-security", title: "Aged security issue", team_found: "security_subsystem_validation", status: "open", days_open: "45" },
+  { id: "recent-pm", title: "Duplicate", team_found: "pm_subsystem_validation", status: "open", days_open: "4" },
+];
+assert.deepEqual(extractHsdesIssues(allIssueRecords).map(({ id, title, domain }) => ({ id, title, domain })), [
+  { id: "recent-pm", title: "Recently opened PM issue", domain: "pv_power_management" },
+  { id: "aged-security", title: "Aged security issue", domain: "pv_security" },
+]);
+assert.deepEqual(extractHsdesIssuesOlderThan(allIssueRecords).map(({ id }) => id), ["aged-security"]);
+const pagedIssueRecords = Array.from({ length: 20001 }, (_, index) => ({ id: `paged-${index + 1}` }));
+const pageStarts = [];
+const collectedHsdesRecords = await collectHsdesQueryPages(async (startAt, maxResults) => {
+  pageStarts.push(startAt);
+  return { total: pagedIssueRecords.length, data: pagedIssueRecords.slice(startAt - 1, startAt - 1 + maxResults) };
+});
+assert.equal(collectedHsdesRecords.length, pagedIssueRecords.length);
+assert.equal(pageStarts.length, 21);
+assert.equal(pageStarts[0], 1);
+assert.equal(pageStarts.at(-1), 20001);
 assert.deepEqual(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3 }]), [{ team: "Team A", x1: 2, x4: 3 }]);
 assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: -1, x4: 0 }]), null);
 assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: 0, x4: 0 }, { team: "team a", x1: 1, x4: 1 }]), null);

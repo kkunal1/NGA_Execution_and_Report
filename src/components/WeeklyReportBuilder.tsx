@@ -131,6 +131,7 @@ export default function WeeklyReportBuilder() {
           setReport({
             ...parsed.report,
             links: Array.isArray(parsed.report.links) ? parsed.report.links : DEFAULT_WEEKLY_REPORT_LINKS,
+            hsdesIssues: Array.isArray(parsed.report.hsdesIssues) ? parsed.report.hsdesIssues : [],
             agedHsdesIssues: Array.isArray(parsed.report.agedHsdesIssues) ? parsed.report.agedHsdesIssues : [],
           });
           setGeneratedWeek(typeof parsed.generatedWeek === "string" ? parsed.generatedWeek : null);
@@ -248,6 +249,14 @@ export default function WeeklyReportBuilder() {
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
   const reportLinks = Array.isArray(report?.links) ? report.links : DEFAULT_WEEKLY_REPORT_LINKS;
+  const hsdesIssues = Array.isArray(report?.hsdesIssues) ? report.hsdesIssues : [];
+  const hsdesIssuesByDomain = [...hsdesIssues.reduce((groups, issue) => {
+    const issues = groups.get(issue.domain) ?? [];
+    issues.push(issue);
+    groups.set(issue.domain, issues);
+    return groups;
+  }, new Map<string, typeof hsdesIssues>()).entries()]
+    .sort(([left], [right]) => left.localeCompare(right));
   const agedHsdesIssues = Array.isArray(report?.agedHsdesIssues) ? report.agedHsdesIssues : [];
   const agedIssuesByDomain = [...agedHsdesIssues.reduce((groups, issue) => {
     const issues = groups.get(issue.domain) ?? [];
@@ -424,6 +433,42 @@ export default function WeeklyReportBuilder() {
         </section>
 
         <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />
+        <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
+          <h2 className="mb-1 text-base font-bold text-[#204e76]">All HSDES Issues by Domain</h2>
+          {report.sightingWarning ? (
+            <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES issue list unavailable: {report.sightingWarning}</p>
+          ) : hsdesIssuesByDomain.length ? (
+            <>
+              <p className="mb-4 text-xs text-[#57718a]">{hsdesIssues.length} HSDES issues across {hsdesIssuesByDomain.length} domains.</p>
+              <div className="space-y-5">
+                {hsdesIssuesByDomain.map(([domain, issues]) => (
+                  <div key={domain}>
+                    <h3 className="mb-2 text-sm font-semibold text-[#244c70]">{formatValidationGroup(domain)} <span className="font-normal text-[#60788e]">({issues.length})</span></h3>
+                    <div className="overflow-x-auto border border-[#b8cadb]">
+                      <table className="w-full min-w-[700px] border-collapse text-left text-sm">
+                        <thead className="bg-[#204e76] text-xs font-semibold text-white">
+                          <tr><th className="w-48 px-3 py-2.5">HSDES ID</th><th className="px-3 py-2.5">Title</th><th className="w-36 px-3 py-2.5">Status</th><th className="w-28 px-3 py-2.5">Days open</th></tr>
+                        </thead>
+                        <tbody className="divide-y divide-[#cfdae5]">
+                          {issues.map((issue) => (
+                            <tr key={issue.id} className="even:bg-[#edf3f9]">
+                              <td className="break-all px-3 py-2.5"><a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a></td>
+                              <td className="break-words px-3 py-2.5">{issue.title || "Untitled"}</td>
+                              <td className="px-3 py-2.5">{issue.status}</td>
+                              <td className="px-3 py-2.5 tabular-nums">{issue.daysOpen}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-[#647e94]">No HSDES issues found.</p>
+          )}
+        </section>
       </article>}
     </div>
   );

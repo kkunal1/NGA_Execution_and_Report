@@ -3,7 +3,7 @@ import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
 import { bucketOf } from "./normalize";
 import { resolveDispatcher } from "./proxy";
-import type { AgedHsdesIssue } from "./hsdes-sightings";
+import type { AgedHsdesIssue, HsdesIssue } from "./hsdes-sightings";
 import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_LINKS, type TeamPlatformCount, type WeeklyReportLink } from "./weekly-report-settings";
 
 const PAGE_SIZE = 1000;
@@ -81,6 +81,7 @@ export type WeeklyReport = {
   teamPlatformCounts: TeamPlatformCount[];
   links: WeeklyReportLink[];
   sightingWarning?: string;
+  hsdesIssues: HsdesIssue[];
   agedHsdesIssues: AgedHsdesIssue[];
   stageDetails: StageDetail[];
 };
@@ -223,6 +224,7 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     runningBkc,
     teamPlatformCounts: teamPlatformCounts.map((row) => ({ ...row })),
     links: links.map((link) => ({ ...link })),
+    hsdesIssues: [],
     agedHsdesIssues: [],
     stageDetails: detailsFor(linesInWindow),
   };

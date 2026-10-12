@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { normalizeWeeklyReportHsdesLink } from "./weekly-report-settings";
 
 const execFile = promisify(execFileCallback);
-const MAX_RESULTS = 20_000;
+const PAGE_SIZE = 1_000;
 const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
 
 type HsdesQueryRecord = {
@@ -15,7 +15,7 @@ type HsdesQueryRecord = {
   days_open?: unknown;
 };
 
-type HsdesQueryResponse = {
+export type HsdesQueryPage = {
   data?: unknown;
   total?: unknown;
 };
@@ -62,6 +62,30 @@ export type AgedHsdesIssue = {
   daysOpen: number;
 };
 
+export type HsdesIssue = AgedHsdesIssue;
+
+export function extractHsdesIssues(records: unknown[]): HsdesIssue[] {
+  const issues = new Map<string, HsdesIssue>();
+  for (const value of records) {
+    if (typeof value !== "object" || value === null) continue;
+    const record = value as HsdesQueryRecord;
+    if (typeof record.id !== "string" || !record.id.trim()) continue;
+    const id = record.id.trim();
+    if (issues.has(id)) continue;
+    const teamFound = typeof record.team_found === "string" ? record.team_found.trim() : "";
+    const daysOpen = Number(record.days_open);
+    issues.set(id, {
+      id,
+      title: typeof record.title === "string" ? record.title : "",
+      teamFound,
+      domain: canonicalizeSightingDomain(teamFound) ?? (teamFound || "Unmapped"),
+      status: typeof record.status === "string" ? record.status : "Unknown",
+      daysOpen: Number.isFinite(daysOpen) ? daysOpen : 0,
+    });
+  }
+  return [...issues.values()].sort((a, b) => a.domain.localeCompare(b.domain) || a.id.localeCompare(b.id));
+}
+
 export function extractHsdesIssuesOlderThan(records: unknown[], minimumDays = 30): AgedHsdesIssue[] {
   const issues = new Map<string, AgedHsdesIssue>();
   for (const value of records) {
@@ -85,19 +109,32 @@ export function extractHsdesIssuesOlderThan(records: unknown[], minimumDays = 30
   return [...issues.values()].sort((a, b) => b.daysOpen - a.daysOpen || a.id.localeCompare(b.id));
 }
 
-export async function fetchHsdesIssueData(linkValue: string): Promise<{ countsByDomain: Record<string, number>; agedIssues: AgedHsdesIssue[] }> {
-  const link = normalizeWeeklyReportHsdesLink(linkValue);
-  if (!link) throw new Error("The saved HSDES link is invalid or has no queryId.");
-  const linkUrl = new URL(link);
-  const fragmentQuery = linkUrl.hash.slice(1).split("?")[1] ?? "";
-  const queryId = new URLSearchParams(fragmentQuery).get("queryId");
-  if (!queryId) throw new Error("The saved HSDES link is missing its queryId.");
+export async function collectHsdesQueryPages(fetchPage: (startAt: number, maxResults: number) => Promise<HsdesQueryPage>): Promise<unknown[]> {
+  const records: unknown[] = [];
+  let startAt = 1;
+  let expectedTotal: number | null = null;
+  while (true) {
+    const page = await fetchPage(startAt, PAGE_SIZE);
+    if (!Array.isArray(page.data)) throw new Error("The HSDES query response did not contain a data list.");
+    const pageRecords = page.data;
+    records.push(...pageRecords);
+    const total = Number(page.total);
+    if (Number.isFinite(total) && total >= 0) expectedTotal = total;
+    if (expectedTotal !== null) {
+      if (records.length >= expectedTotal) return records;
+      if (pageRecords.length === 0) throw new Error(`The HSDES query returned ${records.length} of ${expectedTotal} rows.`);
+    } else if (pageRecords.length < PAGE_SIZE) {
+      return records;
+    }
+    startAt += pageRecords.length;
+  }
+}
 
-  const url = new URL(`https://hsdes.intel.com/rest/query/execution/${queryId}`);
-  url.searchParams.set("max_results", String(MAX_RESULTS));
-  url.searchParams.set("start_at", "1");
+async function fetchHsdesQueryPage(baseUrl: URL, startAt: number, maxResults: number): Promise<HsdesQueryPage> {
+  const url = new URL(baseUrl);
+  url.searchParams.set("max_results", String(maxResults));
+  url.searchParams.set("start_at", String(startAt));
   url.searchParams.set("tranId", randomUUID());
-
   const curl = process.platform === "win32" ? "curl.exe" : "curl";
   const args = [
     "--negotiate", "--user", ":", "--silent", "--show-error", "--max-time", "60",
@@ -126,19 +163,26 @@ export async function fetchHsdesIssueData(linkValue: string): Promise<{ countsBy
   }
   if (status < 200 || status >= 300) throw new Error(`The HSDES query API returned HTTP ${status}.`);
 
-  let response: HsdesQueryResponse;
   try {
-    response = JSON.parse(stdout.slice(0, statusIndex)) as HsdesQueryResponse;
+    return JSON.parse(stdout.slice(0, statusIndex)) as HsdesQueryPage;
   } catch {
     throw new Error("The HSDES query API returned invalid JSON.");
   }
-  if (!Array.isArray(response.data)) throw new Error("The HSDES query response did not contain a data list.");
-  const total = Number(response.total);
-  if (Number.isFinite(total) && total > response.data.length) {
-    throw new Error(`The HSDES query returned ${response.data.length} of ${total} rows; reduce the query result set before reporting.`);
-  }
+}
+
+export async function fetchHsdesIssueData(linkValue: string): Promise<{ countsByDomain: Record<string, number>; issues: HsdesIssue[]; agedIssues: AgedHsdesIssue[] }> {
+  const link = normalizeWeeklyReportHsdesLink(linkValue);
+  if (!link) throw new Error("The saved HSDES link is invalid or has no queryId.");
+  const linkUrl = new URL(link);
+  const fragmentQuery = linkUrl.hash.slice(1).split("?")[1] ?? "";
+  const queryId = new URLSearchParams(fragmentQuery).get("queryId");
+  if (!queryId) throw new Error("The saved HSDES link is missing its queryId.");
+
+  const url = new URL(`https://hsdes.intel.com/rest/query/execution/${queryId}`);
+  const records = await collectHsdesQueryPages((startAt, maxResults) => fetchHsdesQueryPage(url, startAt, maxResults));
   return {
-    countsByDomain: aggregateHsdesIssueIdsByDomain(response.data),
-    agedIssues: extractHsdesIssuesOlderThan(response.data),
+    countsByDomain: aggregateHsdesIssueIdsByDomain(records),
+    issues: extractHsdesIssues(records),
+    agedIssues: extractHsdesIssuesOlderThan(records),
   };
 }

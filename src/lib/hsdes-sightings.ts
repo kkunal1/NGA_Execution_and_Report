@@ -9,7 +9,6 @@ const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
 
 type HsdesQueryRecord = {
   id?: unknown;
-  report_type?: unknown;
   team_found?: unknown;
 };
 
@@ -34,12 +33,11 @@ export function canonicalizeSightingDomain(value: unknown): string | null {
   return TEAM_FOUND_DOMAINS[key] ?? (Object.values(TEAM_FOUND_DOMAINS).includes(key) ? key : null);
 }
 
-export function aggregateHsdesSightings(records: unknown[]): Record<string, number> {
+export function aggregateHsdesIssueIdsByDomain(records: unknown[]): Record<string, number> {
   const idsByGroup = new Map<string, Set<string>>();
   for (const value of records) {
     if (typeof value !== "object" || value === null) continue;
     const record = value as HsdesQueryRecord;
-    if (typeof record.report_type !== "string" || record.report_type.trim().toLowerCase() !== "sighting") continue;
     if (typeof record.id !== "string" || !record.id.trim()) continue;
     const group = typeof record.team_found === "string" ? TEAM_FOUND_DOMAINS[record.team_found.trim().toLowerCase()] : undefined;
     if (!group) continue;
@@ -50,7 +48,7 @@ export function aggregateHsdesSightings(records: unknown[]): Record<string, numb
   return Object.fromEntries([...idsByGroup.entries()].map(([group, ids]) => [group, ids.size]));
 }
 
-export async function fetchHsdesSightingCounts(linkValue: string): Promise<Record<string, number>> {
+export async function fetchHsdesIssueCounts(linkValue: string): Promise<Record<string, number>> {
   const link = normalizeWeeklyReportHsdesLink(linkValue);
   if (!link) throw new Error("The saved HSDES link is invalid or has no queryId.");
   const linkUrl = new URL(link);
@@ -102,5 +100,5 @@ export async function fetchHsdesSightingCounts(linkValue: string): Promise<Recor
   if (Number.isFinite(total) && total > response.data.length) {
     throw new Error(`The HSDES query returned ${response.data.length} of ${total} rows; reduce the query result set before reporting.`);
   }
-  return aggregateHsdesSightings(response.data);
+  return aggregateHsdesIssueIdsByDomain(response.data);
 }

@@ -383,7 +383,7 @@ export default function WeeklyReportBuilder() {
           </div>
         </section>
 
-        {report.sightingWarning && <p role="status" className="mx-5 mt-4 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:mx-7">HSDES Sighting counts unavailable: {report.sightingWarning}</p>}
+        {report.sightingWarning && <p role="status" className="mx-5 mt-4 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:mx-7">HSDES ID counts unavailable: {report.sightingWarning}</p>}
         <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />
       </article>}
     </div>

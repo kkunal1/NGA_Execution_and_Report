@@ -5,7 +5,7 @@ import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, fi
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
 import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink } from "../src/lib/weekly-report-settings.ts";
-import { aggregateHsdesSightings, canonicalizeSightingDomain } from "../src/lib/hsdes-sightings.ts";
+import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
@@ -222,19 +222,19 @@ assert.equal(canonicalizeSightingDomain("manageability_subsystem_validation"), "
 assert.equal(canonicalizeSightingDomain("ras_subsystem_validation"), "pv_ras");
 assert.equal(canonicalizeSightingDomain("virtualization_subsystem_validation"), "pv_virtualization");
 assert.equal(canonicalizeSightingDomain("unlisted_subsystem_validation"), null);
-assert.deepEqual(aggregateHsdesSightings([
+assert.deepEqual(aggregateHsdesIssueIdsByDomain([
   { id: "sighting-1", report_type: "sighting", team_found: "security_subsystem_validation" },
   { id: "sighting-1", report_type: "sighting", team_found: "security_subsystem_validation" },
-  { id: "sighting-2", report_type: "Sighting", team_found: "pm_subsystem_validation" },
-  { id: "request-1", report_type: "test_request", team_found: "security_subsystem_validation" },
-  { id: "sighting-3", report_type: "sighting", team_found: "seamless_subsystem_validation" },
-  { id: "sighting-4", report_type: "sighting", team_found: "io_subsystem_validation" },
-  { id: "sighting-5", report_type: "sighting", team_found: "manageability_subsystem_validation" },
-  { id: "sighting-6", report_type: "sighting", team_found: "ras_subsystem_validation" },
-  { id: "sighting-7", report_type: "sighting", team_found: "virtualization_subsystem_validation" },
-  { id: "sighting-8", report_type: "sighting", team_found: "unlisted_subsystem_validation" },
+  { id: "issue-2", report_type: "test_request", team_found: "security_subsystem_validation" },
+  { id: "issue-3", report_type: "presighting", team_found: "pm_subsystem_validation" },
+  { id: "issue-4", report_type: "test_request", team_found: "seamless_subsystem_validation" },
+  { id: "issue-5", report_type: "sighting", team_found: "io_subsystem_validation" },
+  { id: "issue-6", report_type: "presighting", team_found: "manageability_subsystem_validation" },
+  { id: "issue-7", report_type: "test_request", team_found: "ras_subsystem_validation" },
+  { id: "issue-8", report_type: "sighting", team_found: "virtualization_subsystem_validation" },
+  { id: "issue-9", report_type: "sighting", team_found: "unlisted_subsystem_validation" },
 ]), {
-  pv_security: 1,
+  pv_security: 2,
   pv_power_management: 1,
   pv_seamless: 1,
   pv_serial_io: 1,

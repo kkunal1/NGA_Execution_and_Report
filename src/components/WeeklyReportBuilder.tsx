@@ -7,12 +7,6 @@ import { getIsoWorkWeekLabel, getWorkWeeks } from "@/lib/work-weeks";
 
 const offsetMs = 330 * 60_000;
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
-const LEGACY_REPORT_CONTENT = {
-  links: [{ label: "PV VV Exec Summary Dashboard", url: "https://xve-dashboards.intel.com/dmr-ap/execution-summary" }],
-  executionSummaryTitle: "DMR-AP1 B0 Execution Status Summary",
-  failureProgressNote: "Failure analysis and rerun in progress.",
-  reportReviewNote: "This report was generated with AI assistance. The updates have been reviewed for accuracy.",
-};
 const today = () => new Date(Date.now() + offsetMs).toISOString().slice(0, 10);
 const sevenDaysAgo = () => new Date(Date.now() + offsetMs - 6 * 86_400_000).toISOString().slice(0, 10);
 const percentage = (count: number, total: number) => total ? `${(count / total * 100).toFixed(1)}%` : "0%";
@@ -135,10 +129,6 @@ export default function WeeklyReportBuilder() {
         if (parsed.report && Array.isArray(parsed.report.suites) && typeof parsed.report.from === "string" && typeof parsed.report.to === "string") {
           setReport({
             ...parsed.report,
-            links: Array.isArray(parsed.report.links) ? parsed.report.links : LEGACY_REPORT_CONTENT.links,
-            executionSummaryTitle: parsed.report.executionSummaryTitle || LEGACY_REPORT_CONTENT.executionSummaryTitle,
-            failureProgressNote: parsed.report.failureProgressNote || LEGACY_REPORT_CONTENT.failureProgressNote,
-            reportReviewNote: parsed.report.reportReviewNote || LEGACY_REPORT_CONTENT.reportReviewNote,
             agedHsdesIssues: Array.isArray(parsed.report.agedHsdesIssues) ? parsed.report.agedHsdesIssues : [],
           });
           setGeneratedWeek(typeof parsed.generatedWeek === "string" ? parsed.generatedWeek : null);
@@ -335,7 +325,7 @@ export default function WeeklyReportBuilder() {
             {timeLabel(report.from)} – {timeLabel(new Date(Date.parse(report.to) - 1).toISOString())} IST
           </p>
           <p className="mt-4 border-l-[3px] border-[#d7a02b] bg-[#fff6d6] px-3 py-2 text-sm leading-relaxed text-[#594416]">
-            <strong>Note:</strong> {report.reportReviewNote}
+            <strong>Note:</strong> This report was generated with AI assistance. The updates have been reviewed for accuracy.
           </p>
           <div className="mt-4 space-y-2">
             {report.suites.map((suite, index) => (
@@ -371,18 +361,16 @@ export default function WeeklyReportBuilder() {
             ))}
           </div>
           <p className="mt-2 text-xs text-[#60788e]">Execution Attempted includes {report.latestRerunPendingRunning} PendingRunning reruns (index &gt; 0); those tests also appear in the current Not run count.</p>
-          <h4 className="mt-5 text-sm font-bold text-[#204e76]">{report.executionSummaryTitle}</h4>
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">DMR-AP1 B0 Execution Status Summary</h4>
           <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-[#253646]">
             <li><strong>{reportPercentage(attempted, report.planned)}</strong> tests have been attempted, with <strong className="text-[#087a50]">{reportPercentage(report.latestPassed, report.planned)} passed</strong>, <strong className="text-[#bb3846]">{reportPercentage(report.latestFailed, report.planned)} failed</strong> and <strong className="text-[#aa5420]">{reportPercentage(report.blockedLines, report.planned)} blocked</strong>.</li>
-            <li>{report.failureProgressNote}</li>
+            <li>Failure analysis and rerun in progress.</li>
             <li>Execution is currently running with <strong className="text-black">{report.runningBkc || "BKC#40"}</strong>.</li>
           </ul>
-          {!!report.links.length && <>
-            <h4 className="mt-5 text-sm font-bold text-[#204e76]">Links</h4>
-            <ul className="mt-2 list-disc pl-5 text-sm">
-              {report.links.map((link) => <li key={`${link.label}-${link.url}`}><a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">{link.label}</a></li>)}
-            </ul>
-          </>}
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">Links</h4>
+          <ul className="mt-2 list-disc pl-5 text-sm">
+            <li><a href="https://xve-dashboards.intel.com/dmr-ap/execution-summary" target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">PV VV Exec Summary Dashboard</a></li>
+          </ul>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">HSDES Issues Opened More Than 30 Days Ago</h4>
           {report.sightingWarning ? (
             <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES issue list unavailable: {report.sightingWarning}</p>

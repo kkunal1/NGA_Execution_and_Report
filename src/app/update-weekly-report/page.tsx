@@ -2,19 +2,14 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { DEFAULT_WEEKLY_REPORT_CONTENT, type TeamPlatformCount, type WeeklyReportLink } from "@/lib/weekly-report-defaults";
+import type { TeamPlatformCount } from "@/lib/weekly-report-settings";
 
 type EditableTeamPlatformCount = { id: string; team: string; x1: string; x4: string };
-type EditableWeeklyReportLink = { id: string; label: string; url: string };
 
 export default function UpdateWeeklyReportPage() {
   const [bkc, setBkc] = useState("BKC#40");
   const [teamPlatformCounts, setTeamPlatformCounts] = useState<EditableTeamPlatformCount[]>([]);
   const [hsdesLink, setHsdesLink] = useState("");
-  const [links, setLinks] = useState<EditableWeeklyReportLink[]>([]);
-  const [executionSummaryTitle, setExecutionSummaryTitle] = useState("");
-  const [failureProgressNote, setFailureProgressNote] = useState("");
-  const [reportReviewNote, setReportReviewNote] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -28,10 +23,6 @@ export default function UpdateWeeklyReportPage() {
           bkc?: string;
           teamPlatformCounts?: TeamPlatformCount[];
           hsdesLink?: string;
-          links?: WeeklyReportLink[];
-          executionSummaryTitle?: string;
-          failureProgressNote?: string;
-          reportReviewNote?: string;
           error?: string;
         };
         if (!response.ok) throw new Error(result.error || "Could not load the saved BKC value.");
@@ -39,10 +30,6 @@ export default function UpdateWeeklyReportPage() {
           if (result.bkc) setBkc(result.bkc);
           setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: globalThis.crypto.randomUUID(), team: row.team, x1: String(row.x1), x4: String(row.x4) })));
           setHsdesLink(result.hsdesLink ?? "");
-          setLinks((result.links ?? DEFAULT_WEEKLY_REPORT_CONTENT.links).map((link) => ({ ...link, id: globalThis.crypto.randomUUID() })));
-          setExecutionSummaryTitle(result.executionSummaryTitle ?? DEFAULT_WEEKLY_REPORT_CONTENT.executionSummaryTitle);
-          setFailureProgressNote(result.failureProgressNote ?? DEFAULT_WEEKLY_REPORT_CONTENT.failureProgressNote);
-          setReportReviewNote(result.reportReviewNote ?? DEFAULT_WEEKLY_REPORT_CONTENT.reportReviewNote);
         }
       })
       .catch((cause: unknown) => {
@@ -67,30 +54,18 @@ export default function UpdateWeeklyReportPage() {
           bkc,
           teamPlatformCounts: teamPlatformCounts.map((row) => ({ team: row.team, x1: Number(row.x1), x4: Number(row.x4) })),
           hsdesLink,
-          links: links.map((link) => ({ label: link.label, url: link.url })),
-          executionSummaryTitle,
-          failureProgressNote,
-          reportReviewNote,
         }),
       });
       const result = (await response.json()) as {
         bkc?: string;
         teamPlatformCounts?: TeamPlatformCount[];
         hsdesLink?: string;
-        links?: WeeklyReportLink[];
-        executionSummaryTitle?: string;
-        failureProgressNote?: string;
-        reportReviewNote?: string;
         error?: string;
       };
       if (!response.ok) throw new Error(result.error || "Could not save the BKC value.");
       setBkc(result.bkc ?? bkc.trim());
       setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: globalThis.crypto.randomUUID(), team: row.team, x1: String(row.x1), x4: String(row.x4) })));
       setHsdesLink(result.hsdesLink ?? hsdesLink.trim());
-      setLinks((result.links ?? []).map((link) => ({ ...link, id: globalThis.crypto.randomUUID() })));
-      setExecutionSummaryTitle(result.executionSummaryTitle ?? executionSummaryTitle.trim());
-      setFailureProgressNote(result.failureProgressNote ?? failureProgressNote.trim());
-      setReportReviewNote(result.reportReviewNote ?? reportReviewNote.trim());
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save the BKC value.");
@@ -101,11 +76,6 @@ export default function UpdateWeeklyReportPage() {
 
   const updateTeam = (index: number, field: keyof EditableTeamPlatformCount, value: string) => {
     setTeamPlatformCounts((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
-    setSaved(false);
-  };
-
-  const updateLink = (index: number, field: keyof EditableWeeklyReportLink, value: string) => {
-    setLinks((current) => current.map((link, linkIndex) => linkIndex === index ? { ...link, [field]: value } : link));
     setSaved(false);
   };
 
@@ -139,43 +109,6 @@ export default function UpdateWeeklyReportPage() {
             aria-describedby="weekly-report-bkc-status"
             className="mt-2 h-10 w-56 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
           />
-        </section>
-        <section className="max-w-3xl space-y-4">
-          <h2 className="text-base font-semibold text-[var(--text)]">Execution status text</h2>
-          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="weekly-report-summary-title">Summary heading
-            <input id="weekly-report-summary-title" required maxLength={120} value={executionSummaryTitle} onChange={(event) => { setExecutionSummaryTitle(event.target.value); setSaved(false); }} disabled={loading || saving} className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]" />
-          </label>
-          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="weekly-report-progress-note">Progress note
-            <textarea id="weekly-report-progress-note" required maxLength={300} rows={2} value={failureProgressNote} onChange={(event) => { setFailureProgressNote(event.target.value); setSaved(false); }} disabled={loading || saving} className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)]" />
-          </label>
-          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="weekly-report-review-note">Report note
-            <textarea id="weekly-report-review-note" required maxLength={300} rows={2} value={reportReviewNote} onChange={(event) => { setReportReviewNote(event.target.value); setSaved(false); }} disabled={loading || saving} className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)]" />
-          </label>
-        </section>
-        <section>
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-base font-semibold text-[var(--text)]">Report links</h2>
-            <button type="button" disabled={loading || saving || links.length >= 20} onClick={() => { setLinks((current) => [...current, { id: globalThis.crypto.randomUUID(), label: "", url: "" }]); setSaved(false); }} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60">
-              <Plus className="h-4 w-4" aria-hidden="true" />Add link
-            </button>
-          </div>
-          <div className="overflow-x-auto border border-[var(--border)]">
-            <table className="w-full min-w-[620px] border-collapse text-left text-sm">
-              <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]">
-                <tr><th className="px-3 py-2">Link text</th><th className="px-3 py-2">HTTPS URL</th><th className="w-14 px-3 py-2" /></tr>
-              </thead>
-              <tbody>
-                {links.map((link, index) => (
-                  <tr key={link.id} className="border-t border-[var(--border)]">
-                    <td className="px-3 py-2"><input required maxLength={120} value={link.label} onChange={(event) => updateLink(index, "label", event.target.value)} aria-label={`Link ${index + 1} text`} className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>
-                    <td className="px-3 py-2"><input required type="url" maxLength={2048} value={link.url} onChange={(event) => updateLink(index, "url", event.target.value)} aria-label={`Link ${index + 1} URL`} className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>
-                    <td className="px-3 py-2"><button type="button" disabled={loading || saving} onClick={() => { setLinks((current) => current.filter((_, linkIndex) => linkIndex !== index)); setSaved(false); }} aria-label={`Remove link ${index + 1}`} title="Remove link" className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
-                  </tr>
-                ))}
-                {!links.length && <tr><td colSpan={3} className="px-3 py-6 text-center text-sm text-[var(--text-muted)]">No report links configured.</td></tr>}
-              </tbody>
-            </table>
-          </div>
         </section>
         <section>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

@@ -272,7 +272,20 @@ export default function WeeklyReportBuilder() {
     clone.style.setProperty("max-width", "1200px");
     clone.style.setProperty("margin", "0 auto");
     clone.style.setProperty("box-sizing", "border-box");
-    clone.style.setProperty("overflow-x", "auto");
+    clone.style.setProperty("overflow", "visible", "important");
+    clone.querySelectorAll<HTMLElement>(".overflow-x-auto").forEach((element) => {
+      element.style.setProperty("overflow", "visible", "important");
+      element.style.setProperty("max-width", "100%", "important");
+    });
+    clone.querySelectorAll<HTMLTableElement>("table").forEach((table) => {
+      table.style.setProperty("width", "100%", "important");
+      table.style.setProperty("min-width", "0", "important");
+      table.style.setProperty("max-width", "100%", "important");
+      table.style.setProperty("table-layout", "fixed", "important");
+    });
+    clone.querySelectorAll<HTMLElement>("th, td").forEach((cell) => {
+      cell.style.setProperty("overflow-wrap", "anywhere", "important");
+    });
     clone.querySelectorAll<HTMLElement>("[data-copy-expand]").forEach((element) => {
       element.style.setProperty("max-height", "none", "important");
       element.style.setProperty("height", "auto", "important");

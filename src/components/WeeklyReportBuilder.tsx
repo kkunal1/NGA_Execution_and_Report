@@ -242,6 +242,7 @@ export default function WeeklyReportBuilder() {
 
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
+  const agedHsdesIssues = Array.isArray(report?.agedHsdesIssues) ? report.agedHsdesIssues : [];
   const teamPlatformCounts = report?.teamPlatformCounts ?? [];
   const teamPlatformTotals = teamPlatformCounts.reduce((totals, row) => ({ x1: totals.x1 + row.x1, x4: totals.x4 + row.x4 }), { x1: 0, x4: 0 });
   const createButton = (
@@ -370,7 +371,7 @@ export default function WeeklyReportBuilder() {
                   <tr><th className="px-3 py-2.5">HSDES ID</th><th className="px-3 py-2.5">Title</th><th className="px-3 py-2.5">Domain</th><th className="px-3 py-2.5">Status</th><th className="px-3 py-2.5">Days Open</th></tr>
                 </thead>
                 <tbody className="divide-y divide-[#cfdae5]">
-                  {report.agedHsdesIssues.map((issue) => (
+                  {agedHsdesIssues.map((issue) => (
                     <tr key={issue.id} className="even:bg-[#edf3f9]">
                       <td className="whitespace-nowrap px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a></td>
                       <td className="max-w-[34rem] break-words px-3 py-2">{issue.title || "-"}</td>
@@ -379,7 +380,7 @@ export default function WeeklyReportBuilder() {
                       <td className="px-3 py-2 font-semibold tabular-nums">{issue.daysOpen.toLocaleString()}</td>
                     </tr>
                   ))}
-                  {!report.agedHsdesIssues.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-[#647e94]">No HSDES issues are older than 30 days.</td></tr>}
+                  {!agedHsdesIssues.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-[#647e94]">No HSDES issues are older than 30 days.</td></tr>}
                 </tbody>
               </table>
             </div>

@@ -102,6 +102,7 @@ export default function Dashboard() {
   const [persisted, setPersisted] = useState(true);
   const [abortFrom, setAbortFrom] = useState("");
   const [abortTo, setAbortTo] = useState("");
+  const [abortDomainFilter, setAbortDomainFilter] = useState("");
   const [testFrom, setTestFrom] = useState("");
   const [testTo, setTestTo] = useState("");
   const [executedDomainFilter, setExecutedDomainFilter] = useState("");
@@ -500,7 +501,10 @@ export default function Dashboard() {
     if (!displayedRun) return;
     setError(null);
     try {
-      const abortRangeLabel = abortFrom || abortTo ? `${abortFrom || "earliest"} to ${abortTo || "latest"}` : "";
+      const abortRangeLabel = [
+        abortFrom || abortTo ? `${abortFrom || "earliest"} to ${abortTo || "latest"}` : "",
+        abortDomainFilter ? `domain: ${formatValidationGroupName(abortDomainFilter)}` : "",
+      ].filter(Boolean).join("; ");
       const testRangeLabel = testFrom || testTo ? `${testFrom || "earliest"} to ${testTo || "latest"}` : "";
       const theme = window.localStorage.getItem(THEME_KEY) ?? undefined;
       const res = await fetch("/api/report", {
@@ -542,11 +546,19 @@ export default function Dashboard() {
     setTestTo(to.toISOString().slice(0, 10));
   };
 
-  const filteredAbortedRows = useMemo(() => {
+  const domainResolvedAbortedRows = useMemo(() => {
+    const domainByTestline = new Map<string, string>();
+    for (const r of run?.rows ?? []) {
+      if (r.domain && r.testline) domainByTestline.set(r.testline, r.domain);
+    }
+    return abortedRows.map((r) => r.domain ? r : { ...r, domain: domainByTestline.get(r.testline) ?? "" });
+  }, [abortedRows, run]);
+
+  const dateFilteredAbortedRows = useMemo(() => {
     if (!runHasSuite) return [];
     const fromMs = abortFrom ? new Date(abortFrom).getTime() : null;
     const toMs = abortTo ? new Date(abortTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
-    return abortedRows.filter((r) => {
+    return domainResolvedAbortedRows.filter((r) => {
       if (availableSuites.length > 1 && checkedDataSuites.length !== availableSuites.length &&
         !checkedSuiteKeys.has(r.suite.trim().toLowerCase())) return false;
       if (!fromMs && !toMs) return true;
@@ -557,17 +569,19 @@ export default function Dashboard() {
       if (toMs != null && ms > toMs) return false;
       return true;
     });
-  }, [runHasSuite, abortedRows, abortFrom, abortTo, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
+  }, [runHasSuite, domainResolvedAbortedRows, abortFrom, abortTo, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
+
+  const abortedDomains = useMemo(() => [...new Set(dateFilteredAbortedRows
+    .map((row) => row.domain)
+    .filter((domain): domain is string => Boolean(domain)))].sort(), [dateFilteredAbortedRows]);
+  const filteredAbortedRows = useMemo(
+    () => abortDomainFilter ? dateFilteredAbortedRows.filter((row) => row.domain === abortDomainFilter) : dateFilteredAbortedRows,
+    [dateFilteredAbortedRows, abortDomainFilter],
+  );
 
   const abortedByStep = useMemo(() => {
-    // Cached aborted rows may predate the ValidationGroup expand, so fall back to the main run's domain.
-    const domainByTestline = new Map<string, string>();
-    for (const r of run?.rows ?? []) {
-      if (r.domain && r.testline) domainByTestline.set(r.testline, r.domain);
-    }
     const byStep = new Map<string, TestRow[]>();
-    for (const raw of filteredAbortedRows) {
-      const r = raw.domain ? raw : { ...raw, domain: domainByTestline.get(raw.testline) ?? "" };
+    for (const r of filteredAbortedRows) {
       const key = r.abortStep || "Aborted Manually";
       const list = byStep.get(key);
       if (list) list.push(r);
@@ -583,7 +597,7 @@ export default function Dashboard() {
         }))
         .sort((a, b) => b.count - a.count),
     };
-  }, [filteredAbortedRows, run]);
+  }, [filteredAbortedRows]);
 
   const [expandedAbortSteps, setExpandedAbortSteps] = useState<Set<string>>(() => new Set());
   const toggleAbortStep = (step: string) => {
@@ -984,13 +998,23 @@ export default function Dashboard() {
                   <h2 className="text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
                     Aborted tests {abortedByStep.total > 0 && `(${abortedByStep.total})`}
                   </h2>
-                  {(abortFrom || abortTo) && (
+                  {(abortFrom || abortTo || abortDomainFilter) && (
                     <p className="mt-0.5 text-xs text-[var(--text-muted)]">
-                      Filtered range: {abortFrom || "earliest"} to {abortTo || "latest"}
+                      {(abortFrom || abortTo) && <>Filtered range: {abortFrom || "earliest"} to {abortTo || "latest"}</>}
+                      {abortDomainFilter && <>{(abortFrom || abortTo) ? " · " : ""}Domain: {formatValidationGroupName(abortDomainFilter)}</>}
                     </p>
                   )}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={abortDomainFilter}
+                    onChange={(e) => setAbortDomainFilter(e.target.value)}
+                    aria-label="Filter aborted tests by domain"
+                    className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm text-[var(--text)] shadow-sm"
+                  >
+                    <option value="">All domains</option>
+                    {abortedDomains.map((domain) => <option key={domain} value={domain}>{formatValidationGroupName(domain)}</option>)}
+                  </select>
                   <input
                     type="date"
                     value={abortFrom}
@@ -1011,12 +1035,13 @@ export default function Dashboard() {
                   >
                     Last 7 days
                   </button>
-                  {(abortFrom || abortTo) && (
+                  {(abortFrom || abortTo || abortDomainFilter) && (
                     <button
                       type="button"
                       onClick={() => {
                         setAbortFrom("");
                         setAbortTo("");
+                        setAbortDomainFilter("");
                       }}
                       className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm font-medium text-[var(--text)] shadow-sm transition hover:opacity-80"
                     >

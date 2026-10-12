@@ -3,6 +3,9 @@
 import assert from "node:assert/strict";
 import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
+import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
+import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink } from "../src/lib/weekly-report-settings.ts";
+import { aggregateHsdesSightings, canonicalizeSightingDomain } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
@@ -182,6 +185,66 @@ const attemptedSummary = summarize([
   { ...rows[2], id: "rerun-pending", bucket: "Not Run", state: "PendingRunning", rerunIndex: 2 },
 ]);
 assert.equal(attemptedSummary.executionAttempted, 3, "attempted includes pass + fail + PendingRunning reruns with index > 0");
+const weeklyReport = summarizeWeeklyReport(
+  ["suite"],
+  new Date("2026-10-01T00:00:00Z"),
+  new Date("2026-10-08T00:00:00Z"),
+  [],
+  [],
+  [
+    { state: "Aborted", validationGroup: { testGroupName: "pv_security" }, autoDisablingTestStep: { testStepName: "HPreBoot_UpdateSUTCollateral" } },
+    { state: "Aborted", validationGroup: { testGroupName: "pv_security" }, autoDisablingTestStep: { testStepName: "HPreBoot_UpdateNUCCollateral_pv" } },
+    { state: "Aborted", validationGroup: { testGroupName: "pv_memory" }, autoDisablingTestStep: { testStepName: "HPreBoot_UpdateSUTCollateral" } },
+    { state: "Aborted", validationGroup: { testGroupName: "pv_security" }, autoDisablingTestStep: { testStepName: "DifferentStep" } },
+  ],
+  "BKC#WW41",
+  DEFAULT_TEAM_PLATFORM_COUNTS,
+);
+assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2 });
+assert.equal(weeklyReport.runningBkc, "BKC#WW41");
+assert.deepEqual(weeklyReport.teamPlatformCounts, DEFAULT_TEAM_PLATFORM_COUNTS);
+assert.equal(DEFAULT_WEEKLY_REPORT_BKC, "BKC#40");
+assert.deepEqual(DEFAULT_TEAM_PLATFORM_COUNTS, [
+  { team: "PV.BKC", x1: 6, x4: 2 },
+  { team: "DM", x1: 2, x4: 0 },
+  { team: "DPMO", x1: 9, x4: 5 },
+  { team: "Execution", x1: 39, x4: 6 },
+]);
+assert.equal(DEFAULT_TEAM_PLATFORM_COUNTS.reduce((total, row) => total + row.x1 + row.x4, 0), 69);
+assert.equal(normalizeWeeklyReportBkc(" BKC#WW41 "), "BKC#WW41");
+assert.equal(normalizeWeeklyReportBkc("BKC#40"), "BKC#40");
+assert.equal(normalizeWeeklyReportBkc("WW41"), null);
+assert.equal(normalizeWeeklyReportHsdesLink(DEFAULT_WEEKLY_REPORT_HSDES_LINK), DEFAULT_WEEKLY_REPORT_HSDES_LINK);
+assert.equal(normalizeWeeklyReportHsdesLink("https://example.com/appstore/generalapps/#/pages/community/1?queryId=123"), null);
+assert.equal(canonicalizeSightingDomain("pm_subsystem_validation"), "pv_power_management");
+assert.equal(canonicalizeSightingDomain("io_subsystem_validation"), "pv_serial_io");
+assert.equal(canonicalizeSightingDomain("manageability_subsystem_validation"), "pv_manageability");
+assert.equal(canonicalizeSightingDomain("ras_subsystem_validation"), "pv_ras");
+assert.equal(canonicalizeSightingDomain("virtualization_subsystem_validation"), "pv_virtualization");
+assert.equal(canonicalizeSightingDomain("unlisted_subsystem_validation"), null);
+assert.deepEqual(aggregateHsdesSightings([
+  { id: "sighting-1", report_type: "sighting", team_found: "security_subsystem_validation" },
+  { id: "sighting-1", report_type: "sighting", team_found: "security_subsystem_validation" },
+  { id: "sighting-2", report_type: "Sighting", team_found: "pm_subsystem_validation" },
+  { id: "request-1", report_type: "test_request", team_found: "security_subsystem_validation" },
+  { id: "sighting-3", report_type: "sighting", team_found: "seamless_subsystem_validation" },
+  { id: "sighting-4", report_type: "sighting", team_found: "io_subsystem_validation" },
+  { id: "sighting-5", report_type: "sighting", team_found: "manageability_subsystem_validation" },
+  { id: "sighting-6", report_type: "sighting", team_found: "ras_subsystem_validation" },
+  { id: "sighting-7", report_type: "sighting", team_found: "virtualization_subsystem_validation" },
+  { id: "sighting-8", report_type: "sighting", team_found: "unlisted_subsystem_validation" },
+]), {
+  pv_security: 1,
+  pv_power_management: 1,
+  pv_seamless: 1,
+  pv_serial_io: 1,
+  pv_manageability: 1,
+  pv_ras: 1,
+  pv_virtualization: 1,
+});
+assert.deepEqual(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3 }]), [{ team: "Team A", x1: 2, x4: 3 }]);
+assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: -1, x4: 0 }]), null);
+assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: 0, x4: 0 }, { team: "team a", x1: 1, x4: 1 }]), null);
 const reportHtml = renderReportHtml({
   meta: {
     runId: "test-run", capturedAt: "2026-10-09T00:00:00Z", filter: { value: "Test Suite" },

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, Download, FileText, Trash2 } from "lucide-react";
-import type { FailureRow, Stage, StageDetail, WeeklyReport } from "@/lib/weekly-report";
+import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
 import { getIsoWorkWeekLabel, getWorkWeeks } from "@/lib/work-weeks";
 
 const offsetMs = 330 * 60_000;
@@ -24,18 +24,47 @@ const formatValidationGroup = (group: string) => group.replace(/^pv_/i, "").spli
   .map((word) => groupWords[word.toLowerCase()] ?? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
   .join(" ");
 
-function Breakdown({ title, rows }: { title: string; rows: FailureRow[] }) {
-  const totals = rows.reduce((result, row) => {
+function Breakdown({ title, rows, prebootAbortCounts, highlightFailureBreakdown = false }: { title: string; rows: FailureRow[]; prebootAbortCounts?: Record<string, number>; highlightFailureBreakdown?: boolean }) {
+  const displayRows = prebootAbortCounts
+    ? (() => {
+        const byGroup = new Map(rows.map((row) => [row.group, row]));
+        for (const group of Object.keys(prebootAbortCounts)) {
+          if (!byGroup.has(group)) {
+            byGroup.set(group, {
+              group,
+              stages: { Preboot: 0, RebootStation: 0, PreTest: 0, Test: 0, PostTest: 0, Cleanup: 0, Other: 0 },
+              total: 0,
+              attached: 0,
+            });
+          }
+        }
+        return [...byGroup.values()]
+          .map((row) => {
+            const stages = { ...row.stages, Preboot: prebootAbortCounts[row.group] ?? 0 };
+            return { ...row, stages, total: Object.values(stages).reduce((sum, count) => sum + count, 0) };
+          })
+          .sort((a, b) => b.total - a.total || a.group.localeCompare(b.group));
+      })()
+    : rows;
+  const totals = displayRows.reduce((result, row) => {
     for (const stage of Object.keys(row.stages) as Stage[]) result.stages[stage] += row.stages[stage];
     result.total += row.total;
     result.attached += row.attached;
     return result;
   }, { stages: { Preboot: 0, RebootStation: 0, PreTest: 0, Test: 0, PostTest: 0, Cleanup: 0, Other: 0 }, total: 0, attached: 0 });
   const hiddenStages = totals.stages.RebootStation + totals.stages.Other;
+  const description = prebootAbortCounts
+    ? "PreBoot counts are aborted tests stopped at the SUT/NUC collateral update steps; remaining stage counts are failure records. Sighting attachment counts are not sighting-status counts."
+    : "Failure records, not distinct test lines. Sighting attachment counts are not sighting-status counts.";
+  const failureBreakdownIndex = title.indexOf("failure breakdown");
   return (
     <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
-      <h2 className="mb-1 text-base font-bold text-[#204e76]">{title}</h2>
-      <p className="mb-4 text-xs leading-relaxed text-[#57718a]">Failure records, not distinct test lines. Sighting attachment counts are not sighting-status counts.{hiddenStages > 0 && ` Total also includes ${hiddenStages} Reboot station/other failures.`}</p>
+      <h2 className="mb-1 text-base font-bold text-[#204e76]">
+        {highlightFailureBreakdown && failureBreakdownIndex >= 0 ? <>
+          {title.slice(0, failureBreakdownIndex)}<span className="text-red-600">failure breakdown</span>{title.slice(failureBreakdownIndex + "failure breakdown".length)}
+        </> : title}
+      </h2>
+      <p className="mb-4 text-xs leading-relaxed text-[#57718a]">{description}{hiddenStages > 0 && ` Total also includes ${hiddenStages} Reboot station/other failures.`}</p>
       <div className="overflow-x-auto border border-[#b8cadb]">
         <table className="w-full min-w-[700px] border-collapse text-left text-sm">
           <thead className="bg-[#204e76] text-xs font-semibold text-white">
@@ -46,7 +75,7 @@ function Breakdown({ title, rows }: { title: string; rows: FailureRow[] }) {
             </tr>
           </thead>
           <tbody className="divide-y divide-[#cfdae5]">
-            {rows.map((row) => (
+            {displayRows.map((row) => (
               <tr key={row.group} className="bg-white even:bg-[#edf3f9]">
                 <th className="px-3 py-2.5 font-semibold text-[#244c70]">{formatValidationGroup(row.group)}</th>
                 {breakdownStages.map((stage) => (
@@ -56,9 +85,9 @@ function Breakdown({ title, rows }: { title: string; rows: FailureRow[] }) {
                 <td className="px-3 py-2.5 font-semibold tabular-nums text-[#087a78]">{row.attached}</td>
               </tr>
             ))}
-            {!rows.length && <tr><td colSpan={8} className="bg-white px-3 py-6 text-center text-[#647e94]">No failed runs.</td></tr>}
+            {!displayRows.length && <tr><td colSpan={8} className="bg-white px-3 py-6 text-center text-[#647e94]">No failed runs.</td></tr>}
           </tbody>
-          {rows.length > 0 && (
+          {displayRows.length > 0 && (
             <tfoot className="border-t-2 border-[#94aec6] bg-[#dce8f4] font-bold text-[#173f60]">
               <tr>
                 <th className="px-3 py-2 text-left">Total</th>
@@ -72,50 +101,6 @@ function Breakdown({ title, rows }: { title: string; rows: FailureRow[] }) {
           )}
         </table>
       </div>
-    </section>
-  );
-}
-
-function StageSection({ stage, details }: { stage: Stage; details: StageDetail[] }) {
-  const rows = details.filter((detail) => detail.stage === stage);
-  if (!rows.length) return null;
-  const count = rows.reduce((sum, row) => sum + row.count, 0);
-  const total = details.reduce((sum, row) => sum + row.count, 0);
-  const affectedLines = new Set(rows.map((row) => row.testLine)).size;
-  const byConfig = new Map<string, Map<string, number>>();
-  for (const row of rows) {
-    const groups = byConfig.get(row.config) ?? new Map<string, number>();
-    groups.set(row.group, (groups.get(row.group) ?? 0) + row.count);
-    byConfig.set(row.config, groups);
-  }
-  return (
-    <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
-      <h2 className="text-base font-bold text-[#204e76]">{stageNames[stage]} stage failures</h2>
-      <p className="mt-1 text-sm text-[#4f6980]"><strong className="text-[#bb3846]">{percentage(count, total)}</strong> of window failures ({count} of {total} records), affecting {affectedLines} test lines.</p>
-      <div className="mt-4 overflow-x-auto border border-[#b8cadb]">
-        <table className="w-full min-w-[540px] text-left text-sm">
-          <thead className="bg-[#204e76] text-xs font-semibold text-white"><tr>
-            <th className="border-r border-white/20 px-3 py-3">Configuration</th><th className="px-3 py-3">Failures by Validation Group</th>
-          </tr></thead>
-          <tbody className="divide-y divide-[#cfdae5]">
-            {[...byConfig.entries()].map(([config, groups], index) => (
-              <tr key={config} className={index % 2 ? "bg-[#edf3f9]" : "bg-white"}><td className="max-w-md break-words px-3 py-2.5 font-medium text-[#244c70]">{config}</td>
-                <td className="px-3 py-2.5 text-[#bb3846]">{[...groups.entries()].map(([group, value]) => `${formatValidationGroup(group)}: ${value}`).join(" · ")}</td></tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <details className="mt-3 text-sm text-[#204e76]">
-        <summary className="cursor-pointer font-semibold">Failed steps ({rows.length} grouped entries)</summary>
-        <div className="mt-2 max-h-64 overflow-auto border-l-2 border-[#9ab6ce] pl-4 text-[#253646]">
-          {rows.map((row) => (
-            <p key={JSON.stringify([row.config, row.testLine, row.step, row.subState, row.group])} className="py-1.5">
-              <strong>{row.count}× {row.step}</strong> · {row.subState} · {formatValidationGroup(row.group)}
-              <span className="block break-words text-xs text-[#60788e]">{row.testLine}</span>
-            </p>
-          ))}
-        </div>
-      </details>
     </section>
   );
 }
@@ -257,6 +242,8 @@ export default function WeeklyReportBuilder() {
 
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
+  const teamPlatformCounts = report?.teamPlatformCounts ?? [];
+  const teamPlatformTotals = teamPlatformCounts.reduce((totals, row) => ({ x1: totals.x1 + row.x1, x4: totals.x4 + row.x4 }), { x1: 0, x4: 0 });
   const createButton = (
     <button type="submit" disabled={busy || !modeReady} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-60">
       <FileText className="h-4 w-4" aria-hidden="true" />{busy ? "Creating…" : "Create report"}
@@ -367,19 +354,37 @@ export default function WeeklyReportBuilder() {
           <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-[#253646]">
             <li><strong>{reportPercentage(attempted, report.planned)}</strong> tests have been attempted, with <strong className="text-[#087a50]">{reportPercentage(report.latestPassed, report.planned)} passed</strong>, <strong className="text-[#bb3846]">{reportPercentage(report.latestFailed, report.planned)} failed</strong> and <strong className="text-[#aa5420]">{reportPercentage(report.blockedLines, report.planned)} blocked</strong>.</li>
             <li>Failure analysis and rerun in progress.</li>
-            <li>Execution is currently running with <strong className="text-black">BKC#40</strong>.</li>
+            <li>Execution is currently running with <strong className="text-black">{report.runningBkc || "BKC#40"}</strong>.</li>
           </ul>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">Links</h4>
           <ul className="mt-2 list-disc pl-5 text-sm">
             <li><a href="https://xve-dashboards.intel.com/dmr-ap/execution-summary" target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">PV VV Exec Summary Dashboard</a></li>
           </ul>
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">DMR X1 and X4 CPU breakdown</h4>
+          <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
+            <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+              <thead className="bg-[#204e76] text-xs font-semibold text-white">
+                <tr><th className="px-3 py-2.5">Team</th><th className="px-3 py-2.5">X1</th><th className="px-3 py-2.5">X4</th><th className="px-3 py-2.5">Total</th></tr>
+              </thead>
+              <tbody className="divide-y divide-[#cfdae5]">
+                {teamPlatformCounts.map((row) => (
+                  <tr key={row.team} className="even:bg-[#edf3f9]">
+                    <th className="px-3 py-2 font-semibold text-[#244c70]">{row.team}</th>
+                    <td className="px-3 py-2 tabular-nums">{row.x1.toLocaleString()}</td>
+                    <td className="px-3 py-2 tabular-nums">{row.x4.toLocaleString()}</td>
+                    <td className="px-3 py-2 font-semibold tabular-nums">{(row.x1 + row.x4).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot className="border-t-2 border-[#94aec6] bg-[#dce8f4] font-bold text-[#173f60]">
+                <tr><th className="px-3 py-2 text-left">Total</th><td className="px-3 py-2 tabular-nums">{teamPlatformTotals.x1.toLocaleString()}</td><td className="px-3 py-2 tabular-nums">{teamPlatformTotals.x4.toLocaleString()}</td><td className="px-3 py-2 tabular-nums">{(teamPlatformTotals.x1 + teamPlatformTotals.x4).toLocaleString()}</td></tr>
+              </tfoot>
+            </table>
+          </div>
         </section>
 
-        <Breakdown title="Overall stage-wise / validation group-wise failure breakdown · Current suite backlog" rows={report.backlogFailures} />
-        <Breakdown title="Stage-wise / validation group-wise failure breakdown · Selected window" rows={report.windowFailures} />
-        {(["Preboot", "RebootStation", "PreTest", "Test", "PostTest", "Cleanup", "Other"] as Stage[]).map((stage) => (
-          <StageSection key={stage} stage={stage} details={report.stageDetails} />
-        ))}
+        {report.sightingWarning && <p role="status" className="mx-5 mt-4 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900 sm:mx-7">HSDES Sighting counts unavailable: {report.sightingWarning}</p>}
+        <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />
       </article>}
     </div>
   );

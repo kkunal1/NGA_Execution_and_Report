@@ -3,7 +3,7 @@
 import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Database, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, FilePenLine, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
@@ -13,8 +13,8 @@ const NAV = [
   { href: "/", label: "Execution Report", icon: LayoutDashboard },
   { href: "/pool-systems", label: "B0 Pool Systems", icon: Server, visibilityKey: "poolSystems" as const },
   { href: "/weekly-report", label: "Weekly Report", icon: CalendarDays, visibilityKey: "weeklyReport" as const },
+  { href: "/update-weekly-report", label: "Update Weekly Report", icon: FilePenLine, adminOnly: true },
   { href: "/execution-time", label: "Check Execution Time", icon: Timer, visibilityKey: "executionTime" as const },
-  { href: "/new-job", label: "NGA TestRun Data", icon: Database, adminOnly: true, visibilityKey: "ngaiTestRunData" as const },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 
@@ -159,7 +159,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [role]);
 
   useEffect(() => {
-    if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job")) {
+    if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || pathname === "/update-weekly-report")) {
       router.replace("/");
     }
   }, [pathname, role, router]);
@@ -286,7 +286,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job")) {
+  if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || pathname === "/update-weekly-report")) {
     return <div className="flex min-h-screen items-center justify-center bg-[var(--page-bg)] text-sm text-[var(--text-muted)]">Opening viewer dashboard…</div>;
   }
 

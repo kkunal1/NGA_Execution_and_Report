@@ -3,6 +3,7 @@ import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
 import { bucketOf } from "./normalize";
 import { resolveDispatcher } from "./proxy";
+import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, type TeamPlatformCount } from "./weekly-report-settings";
 
 const PAGE_SIZE = 1000;
 const MAX_PAGES = 50;
@@ -27,6 +28,7 @@ type Run = {
   rerunIndex?: number | null;
   isTriageFlag?: boolean;
   validationGroup?: { testGroupName?: string | null } | null;
+  autoDisablingTestStep?: { testStepName?: string | null } | null;
   testLine?: { testLineName?: string | null; goStatus?: string | null; config?: { configName?: string | null } | null } | null;
   failure?: Failure[] | null;
 };
@@ -73,6 +75,10 @@ export type WeeklyReport = {
   failedLines: number;
   windowFailures: FailureRow[];
   backlogFailures: FailureRow[];
+  prebootAbortCounts: Record<string, number>;
+  runningBkc: string;
+  teamPlatformCounts: TeamPlatformCount[];
+  sightingWarning?: string;
   stageDetails: StageDetail[];
 };
 
@@ -168,7 +174,19 @@ function detailsFor(runs: Run[]): StageDetail[] {
   return [...grouped.values()].sort((a, b) => STAGES.indexOf(a.stage) - STAGES.indexOf(b.stage) || b.count - a.count);
 }
 
-export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, windowRuns: Run[], latestRuns: Run[]): WeeklyReport {
+function prebootAbortCounts(runs: Run[]): Record<string, number> {
+  const grouped = new Map<string, number>();
+  for (const run of runs) {
+    if (run.state !== "Aborted") continue;
+    const step = (run.autoDisablingTestStep?.testStepName ?? "").replace(/_pv$/i, "").toLowerCase();
+    if (!/^hpreboot_update(?:sut|nuc)collateral$/.test(step)) continue;
+    const group = run.validationGroup?.testGroupName || "Unknown";
+    grouped.set(group, (grouped.get(group) ?? 0) + 1);
+  }
+  return Object.fromEntries([...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)));
+}
+
+export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, windowRuns: Run[], latestRuns: Run[], abortedRuns: Run[] = [], runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS): WeeklyReport {
   const latestValid = latestRuns;
   const latestBucket = (run: Run) => bucketOf(run.state ?? "", run.testLine?.goStatus ?? "");
   const recent = windowRuns.filter((run) => run.testLineId && (run.state === "Passed" || run.state === "Failed"));
@@ -198,11 +216,14 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     failedLines: linesInWindow.filter((run) => run.state === "Failed").length,
     windowFailures: failureRows(linesInWindow),
     backlogFailures: failureRows(latestValid),
+    prebootAbortCounts: prebootAbortCounts(abortedRuns),
+    runningBkc,
+    teamPlatformCounts: teamPlatformCounts.map((row) => ({ ...row })),
     stageDetails: detailsFor(linesInWindow),
   };
 }
 
-export async function generateWeeklyReport(suites: string[], from: Date, to: Date): Promise<WeeklyReport> {
+export async function generateWeeklyReport(suites: string[], from: Date, to: Date, runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS): Promise<WeeklyReport> {
   const headers: Record<string, string> = { accept: "application/json" };
   const token = await getNgaiApiToken();
   if (token) headers["X-NGA-PAT"] = token;
@@ -212,13 +233,16 @@ export async function generateWeeklyReport(suites: string[], from: Date, to: Dat
     const lineFilter = `TestSuite/TestSuiteName eq '${escaped(suite)}'`;
     const runSelect = "TestRunId,TestLineId,State,RerunIndex,TestEndDateTime,IsTriageFlag";
     const runExpand = "ValidationGroup($select=TestGroupName),TestLine($select=TestLineName,GoStatus;$expand=Config($select=ConfigName)),Failure($select=FailureId,StageName,SightingId,SubState;$expand=TestStep($select=TestStepName))";
+    const abortedFilter = `State eq 'Aborted' and ${filter}`;
+    const abortedExpand = "ValidationGroup($select=TestGroupName),AutoDisablingTestStep($select=TestStepName)";
     return Promise.all([
       fetchRecords<TestLine>((skip) => buildUrl("TestLine", lineFilter, "", "TestLineId,GoStatus,AllowAutomationFlag", skip), headers),
       fetchRecords<Run>((skip) => buildUrl("TestRunComposite", `${filter} and TestEndDateTime ge ${from.toISOString()} and TestEndDateTime lt ${to.toISOString()}`, runExpand, runSelect, skip), headers),
       fetchRecords<Run>((skip) => buildUrl("TestRunComposite", `${filter} and NonTriageLatestRunFlag eq true`, runExpand, runSelect, skip), headers),
+      fetchRecords<Run>((skip) => buildUrl("TestRunComposite", abortedFilter, abortedExpand, "TestRunId,State,ValidationGroupId,AutoDisablingTestStepId", skip), headers),
     ]);
   }));
   const missing = datasets.findIndex(([lines]) => lines.length === 0);
   if (missing >= 0) throw new Error(`No test lines found for suite "${suites[missing]}" in this NGAi project.`);
-  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]));
+  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]), datasets.flatMap((item) => item[3]), runningBkc, teamPlatformCounts);
 }

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
 import { getDashboardSettings } from "@/lib/dashboard-settings";
+import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
+import { canonicalizeSightingDomain, fetchHsdesSightingCounts } from "@/lib/hsdes-sightings";
 import { B0_SUITES } from "@/lib/pool-systems";
 import { generateWeeklyReport } from "@/lib/weekly-report";
 import { getWorkWeeks } from "@/lib/work-weeks";
@@ -44,7 +46,23 @@ export async function POST(req: Request) {
     if (!suites.length || suites.length > 5 || suites.some((suite) => suite.length > 250)) {
       return NextResponse.json({ error: "Choose between one and five suite names." }, { status: 400 });
     }
-    return NextResponse.json(await generateWeeklyReport(suites, from, to));
+    const reportSettings = await getWeeklyReportSettings();
+    const [report, sightingResult] = await Promise.all([
+      generateWeeklyReport(suites, from, to, reportSettings.bkc, reportSettings.teamPlatformCounts),
+      fetchHsdesSightingCounts(reportSettings.hsdesLink)
+        .then((countsByDomain) => ({ countsByDomain, warning: "" }))
+        .catch((error: unknown) => ({
+          countsByDomain: null,
+          warning: error instanceof Error ? error.message : "Could not load HSDES sightings through Kerberos.",
+        })),
+    ]);
+    const backlogFailures = sightingResult.countsByDomain
+      ? report.backlogFailures.map((row) => ({
+          ...row,
+          attached: sightingResult.countsByDomain?.[canonicalizeSightingDomain(row.group) ?? ""] ?? 0,
+        }))
+      : report.backlogFailures;
+    return NextResponse.json({ ...report, backlogFailures, sightingWarning: sightingResult.warning });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not generate the report." }, { status: 502 });
   }

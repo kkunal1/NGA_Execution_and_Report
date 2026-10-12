@@ -287,7 +287,8 @@ export default function WeeklyReportBuilder() {
     const week = weekMatch ? `WW-${weekMatch[1]}` : `WW-${getIsoWorkWeekLabel(new Date(Date.parse(report.to) - 1)).slice(2)}`;
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const documentHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DMR-AP1 B0 Execution Weekly Report for ${week}</title></head><body style="margin:0;padding:24px 16px;min-height:100vh;box-sizing:border-box;background:#f3f6fa;font-family:Arial,sans-serif"><main style="width:100%;max-width:1200px;margin:0 auto">${clone.outerHTML}</main></body></html>`;
-    return { documentHtml, clipboardHtml: clone.outerHTML, week, timestamp, plainText: clone.innerText || clone.textContent || "" };
+    const clipboardHtml = `<html><body><!--StartFragment-->${clone.outerHTML}<!--EndFragment--></body></html>`;
+    return { documentHtml, clipboardHtml, clipboardFragment: clone.outerHTML, week, timestamp, plainText: clone.innerText || clone.textContent || "" };
   };
 
   const downloadHtml = () => {
@@ -305,21 +306,21 @@ export default function WeeklyReportBuilder() {
     setCopyStatus("");
     const prepared = createStyledReportDocument();
     if (!prepared) return;
+    if (copyHtmlWithSelection(prepared.clipboardFragment)) {
+      setCopyStatus("Report copied with formatting.");
+      return;
+    }
     if (navigator.clipboard?.write && typeof ClipboardItem !== "undefined") {
       try {
         await navigator.clipboard.write([new ClipboardItem({
-          "text/html": new Blob([prepared.documentHtml], { type: "text/html" }),
+          "text/html": new Blob([prepared.clipboardHtml], { type: "text/html" }),
           "text/plain": new Blob([prepared.plainText], { type: "text/plain" }),
         })]);
         setCopyStatus("Report copied with formatting.");
         return;
       } catch {
-        // Try the browser's selection-based rich-copy path below.
+        // Fall through to plain text if neither rich-copy method works.
       }
-    }
-    if (copyHtmlWithSelection(prepared.clipboardHtml)) {
-      setCopyStatus("Report copied with formatting.");
-      return;
     }
     if (navigator.clipboard?.writeText) {
       try {

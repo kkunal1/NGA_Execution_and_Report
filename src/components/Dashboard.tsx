@@ -109,7 +109,7 @@ export default function Dashboard() {
   const [executedTestlineFilter, setExecutedTestlineFilter] = useState("");
   const [executedStatusFilter, setExecutedStatusFilter] = useState<"" | "Passed" | "Failed">("");
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
-  const [dashboardSettings, setDashboardSettings] = useState({ executionStatusSplit: true, rawStateValues: true });
+  const [dashboardSettings, setDashboardSettings] = useState({ executionStatusSplit: true, rawStateValues: true, showManualAborts: true });
   const autoRefreshInFlight = useRef(false);
 
   const load = useCallback(async (runId?: string) => {
@@ -190,9 +190,9 @@ export default function Dashboard() {
       try {
         const response = await fetch("/api/settings/dashboard", { cache: "no-store" });
         if (!response.ok) return;
-        const data = (await response.json()) as { executionStatusSplit?: boolean; rawStateValues?: boolean };
+        const data = (await response.json()) as { executionStatusSplit?: boolean; rawStateValues?: boolean; showManualAborts?: boolean };
         if (!cancelled && typeof data.executionStatusSplit === "boolean" && typeof data.rawStateValues === "boolean") {
-          setDashboardSettings({ executionStatusSplit: data.executionStatusSplit, rawStateValues: data.rawStateValues });
+          setDashboardSettings({ executionStatusSplit: data.executionStatusSplit, rawStateValues: data.rawStateValues, showManualAborts: data.showManualAborts !== false });
         }
       } catch {
         // Keep the charts enabled if shared settings are temporarily unavailable.
@@ -571,12 +571,16 @@ export default function Dashboard() {
     });
   }, [runHasSuite, domainResolvedAbortedRows, abortFrom, abortTo, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
 
-  const abortedDomains = useMemo(() => [...new Set(dateFilteredAbortedRows
+  const visibleAbortedRows = useMemo(
+    () => dashboardSettings.showManualAborts ? dateFilteredAbortedRows : dateFilteredAbortedRows.filter((row) => row.abortStep && row.abortStep !== "Aborted Manually"),
+    [dateFilteredAbortedRows, dashboardSettings.showManualAborts],
+  );
+  const abortedDomains = useMemo(() => [...new Set(visibleAbortedRows
     .map((row) => row.domain)
-    .filter((domain): domain is string => Boolean(domain)))].sort(), [dateFilteredAbortedRows]);
+    .filter((domain): domain is string => Boolean(domain)))].sort(), [visibleAbortedRows]);
   const filteredAbortedRows = useMemo(
-    () => abortDomainFilter ? dateFilteredAbortedRows.filter((row) => row.domain === abortDomainFilter) : dateFilteredAbortedRows,
-    [dateFilteredAbortedRows, abortDomainFilter],
+    () => abortDomainFilter ? visibleAbortedRows.filter((row) => row.domain === abortDomainFilter) : visibleAbortedRows,
+    [visibleAbortedRows, abortDomainFilter],
   );
 
   const abortedByStep = useMemo(() => {

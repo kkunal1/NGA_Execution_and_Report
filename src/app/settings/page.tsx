@@ -28,6 +28,7 @@ type GraphMailForm = {
 type DashboardSettings = {
   executionStatusSplit: boolean;
   rawStateValues: boolean;
+  showManualAborts: boolean;
   poolSystems: boolean;
   weeklyReport: boolean;
   weeklyReportMode: "dateRange" | "workWeek";
@@ -71,6 +72,7 @@ export default function SettingsPage() {
   const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>({
     executionStatusSplit: true,
     rawStateValues: true,
+    showManualAborts: true,
     poolSystems: false,
     weeklyReport: false,
     weeklyReportMode: "dateRange",
@@ -151,6 +153,7 @@ export default function SettingsPage() {
         setDashboardSettings({
           executionStatusSplit: data.executionStatusSplit,
           rawStateValues: data.rawStateValues,
+          showManualAborts: data.showManualAborts !== false,
           poolSystems: data.poolSystems,
           weeklyReport: data.weeklyReport === true,
           weeklyReportMode: data.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
@@ -529,6 +532,24 @@ export default function SettingsPage() {
         </button>
         {poolSettingsSaved && <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Pool system settings saved.</p>}
         {poolSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{poolSettingsError}</p>}
+      </section>
+
+      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="execution-report-setting-heading">
+        <h2 id="execution-report-setting-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Execution Report Setting</h2>
+        <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
+          <span>Show Aborted Manually in Aborted Tests</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={dashboardSettings.showManualAborts}
+            onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, showManualAborts: event.target.checked })}
+            className="h-5 w-5 accent-[var(--accent)]"
+          />
+        </label>
+        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
+          {dashboardSettingsSaved ? "Execution Report setting saved." : dashboardSettings.showManualAborts ? "Manual aborts are shown." : "Manual aborts are hidden from the table and total."}
+        </p>
+        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="dashboard-heading">

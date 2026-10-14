@@ -5,6 +5,7 @@ import { config } from "./config";
 export type DashboardSettings = {
   executionStatusSplit: boolean;
   rawStateValues: boolean;
+  showManualAborts: boolean;
   poolSystems: boolean;
   weeklyReport: boolean;
   weeklyReportMode: "dateRange" | "workWeek";
@@ -15,6 +16,7 @@ export type DashboardSettings = {
 export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
   executionStatusSplit: true,
   rawStateValues: true,
+  showManualAborts: true,
   poolSystems: false,
   weeklyReport: false,
   weeklyReportMode: "dateRange",
@@ -30,6 +32,7 @@ export async function getDashboardSettings(): Promise<DashboardSettings> {
     return {
       executionStatusSplit: saved.executionStatusSplit ?? DEFAULT_DASHBOARD_SETTINGS.executionStatusSplit,
       rawStateValues: saved.rawStateValues ?? DEFAULT_DASHBOARD_SETTINGS.rawStateValues,
+      showManualAborts: saved.showManualAborts ?? DEFAULT_DASHBOARD_SETTINGS.showManualAborts,
       poolSystems: saved.poolSystems ?? DEFAULT_DASHBOARD_SETTINGS.poolSystems,
       weeklyReport: saved.weeklyReport ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReport,
       weeklyReportMode: saved.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",

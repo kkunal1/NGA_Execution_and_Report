@@ -5,6 +5,7 @@ import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, fi
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
+import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
 import { poolMembershipFilter } from "../src/lib/pool-systems.ts";
 import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
@@ -24,6 +25,7 @@ assert.equal(normalizeAdminUsername("bad user"), null);
 assert.equal(isValidAdminPassword("long-enough-password"), true);
 assert.equal(isValidAdminPassword("abcd"), true);
 assert.equal(isValidAdminPassword("abc"), false);
+assert.equal(DEFAULT_DASHBOARD_SETTINGS.showManualAborts, true);
 assert.deepEqual(DEFAULT_POOL_NAMES, ["pv_dmr-ap-ap1-b0"]);
 assert.deepEqual(normalizePoolNames([" pv_dmr-ap-ap1-b0 ", "another_pool"]), ["pv_dmr-ap-ap1-b0", "another_pool"]);
 assert.equal(normalizePoolNames([]), null);

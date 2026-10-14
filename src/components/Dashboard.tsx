@@ -100,8 +100,8 @@ export default function Dashboard() {
   const [suiteDraft, setSuiteDraft] = useState("");
   const [provider, setProvider] = useState<DataProvider>("ngai");
   const [persisted, setPersisted] = useState(true);
-  const [abortFrom, setAbortFrom] = useState("");
-  const [abortTo, setAbortTo] = useState("");
+  const [abortFrom, setAbortFrom] = useState(() => new Date(Date.now() - 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+  const [abortTo, setAbortTo] = useState(() => new Date().toISOString().slice(0, 10));
   const [abortDomainFilter, setAbortDomainFilter] = useState("");
   const [testFrom, setTestFrom] = useState("");
   const [testTo, setTestTo] = useState("");
@@ -1045,7 +1045,7 @@ export default function Dashboard() {
                       }}
                       className="rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-sm font-medium text-[var(--text)] shadow-sm transition hover:opacity-80"
                     >
-                      Clear
+                      Show All Data
                     </button>
                   )}
                 </div>

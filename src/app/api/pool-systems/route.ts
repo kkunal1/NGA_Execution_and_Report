@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
-import { fetchPoolSystems, NGAI_POOL_NAME } from "@/lib/pool-systems";
+import { fetchPoolSystems } from "@/lib/pool-systems";
+import { getPoolSystemSettings } from "@/lib/pool-system-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -10,7 +11,8 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    return NextResponse.json({ poolName: NGAI_POOL_NAME, systems: await fetchPoolSystems() });
+    const { poolNames } = await getPoolSystemSettings();
+    return NextResponse.json({ poolNames, systems: await fetchPoolSystems(poolNames) });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not load pool systems." },

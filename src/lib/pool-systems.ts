@@ -1,9 +1,8 @@
 import { request as undiciRequest } from "undici";
 import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
+import { getPoolSystemSettings } from "./pool-system-settings";
 import { resolveDispatcher } from "./proxy";
-
-export const NGAI_POOL_NAME = "pv_dmr-ap-ap1-b0";
 
 export type PoolSystem = {
   id: string;
@@ -25,39 +24,26 @@ type SystemRecord = {
   };
 };
 
-function systemsUrl() {
+export function poolMembershipFilter(poolNames: string[], path: string): string {
+  const matches = poolNames.map((name) => `p/Pool/PoolName eq '${name.replace(/'/g, "''")}'`);
+  return `${path}/any(p: ${matches.join(" or ")})`;
+}
+
+function systemsUrl(poolNames: string[], skip: number) {
   const url = new URL(config.ngaiApiUrl);
   url.pathname = url.pathname.replace(/\/TestRunComposite\/?$/, "/System");
-  url.searchParams.set("$filter", `Station/LatestStationPool/any(p: p/Pool/PoolName eq '${NGAI_POOL_NAME}')`);
-  url.searchParams.set("$top", "100");
+  url.searchParams.set("$filter", poolMembershipFilter(poolNames, "Station/LatestStationPool"));
+  url.searchParams.set("$top", "1000");
+  if (skip > 0) url.searchParams.set("$skip", String(skip));
+  url.searchParams.set("$orderby", "SystemId");
   url.searchParams.set("$select", "SystemId,SystemName,SystemRevisionNumber");
   url.searchParams.set("$expand", "Station($select=ExecutionState,Notes;$expand=Config($select=ConfigName),Activity($select=ActivityName))");
   return url;
 }
 
-export async function fetchPoolSystems(): Promise<PoolSystem[]> {
-  const headers: Record<string, string> = { accept: "application/json" };
-  const apiToken = await getNgaiApiToken();
-  if (apiToken) headers["X-NGA-PAT"] = apiToken;
-  if (config.ngaiCookie) headers.cookie = config.ngaiCookie;
-
-  const response = await undiciRequest(systemsUrl(), {
-    method: "GET",
-    headers,
-    dispatcher: resolveDispatcher(),
-    headersTimeout: config.ngaiTimeoutMs,
-    bodyTimeout: config.ngaiTimeoutMs,
-  });
-  const body = await response.body.text();
-  if (response.statusCode === 401 || response.statusCode === 403) {
-    throw new Error("Intel NGAi rejected the pool systems request. Check the configured NGAi token or cookie.");
-  }
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    throw new Error(`Intel NGAi pool systems request failed (${response.statusCode}).`);
-  }
-
-  const payload = JSON.parse(body) as { value?: SystemRecord[] } | SystemRecord[];
-  const records = Array.isArray(payload) ? payload : payload.value ?? [];
+export async function fetchPoolSystems(poolNames?: string[]): Promise<PoolSystem[]> {
+  const names = poolNames ?? (await getPoolSystemSettings()).poolNames;
+  const records = await getAllRecords<SystemRecord>((skip) => systemsUrl(names, skip));
   return records
     .map((record) => ({
       id: typeof record.systemId === "string" ? record.systemId : "",
@@ -150,7 +136,7 @@ async function fetchSuiteConfigs(suiteName: string) {
 }
 
 // Stations count as covering both their primary config and current-revision secondary configs.
-async function fetchPoolCoveredConfigs() {
+async function fetchPoolCoveredConfigs(poolNames: string[]) {
   type StationRecord = {
     stationRevisionNumber?: number;
     config?: ConfigRef;
@@ -158,7 +144,7 @@ async function fetchPoolCoveredConfigs() {
   };
   const stations = await getAllRecords<StationRecord>((skip) => {
     const url = entityUrl("Station");
-    url.searchParams.set("$filter", `LatestStationPool/any(p: p/Pool/PoolName eq '${NGAI_POOL_NAME}')`);
+    url.searchParams.set("$filter", poolMembershipFilter(poolNames, "LatestStationPool"));
     url.searchParams.set("$top", "1000");
     if (skip > 0) url.searchParams.set("$skip", String(skip));
     url.searchParams.set("$select", "StationName,StationRevisionNumber");
@@ -179,10 +165,11 @@ async function fetchPoolCoveredConfigs() {
 }
 
 export async function fetchUncoveredConfigs(): Promise<UncoveredConfig[]> {
+  const { poolNames } = await getPoolSystemSettings();
   const [p1, p2, covered] = await Promise.all([
     fetchSuiteConfigs(B0_SUITES.P1),
     fetchSuiteConfigs(B0_SUITES.P2),
-    fetchPoolCoveredConfigs(),
+    fetchPoolCoveredConfigs(poolNames),
   ]);
   const byConfig = new Map<string, UncoveredConfig>();
   const add = (line: { config: string; domain: string }, suite: "p1" | "p2") => {

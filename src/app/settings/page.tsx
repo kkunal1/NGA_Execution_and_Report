@@ -63,6 +63,11 @@ export default function SettingsPage() {
   const [refreshInterval, setRefreshInterval] = useState("60");
   const [refreshSaved, setRefreshSaved] = useState(false);
   const [refreshError, setRefreshError] = useState("");
+  const [poolNames, setPoolNames] = useState("");
+  const [poolSettingsLoading, setPoolSettingsLoading] = useState(true);
+  const [poolSettingsBusy, setPoolSettingsBusy] = useState(false);
+  const [poolSettingsSaved, setPoolSettingsSaved] = useState(false);
+  const [poolSettingsError, setPoolSettingsError] = useState("");
   const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>({
     executionStatusSplit: true,
     rawStateValues: true,
@@ -131,6 +136,14 @@ export default function SettingsPage() {
         setRefreshInterval(String(data.intervalSeconds ?? 60));
       })
       .catch((error: unknown) => setRefreshError(error instanceof Error ? error.message : "Could not load refresh settings."));
+    void fetch("/api/settings/pool-systems", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { poolNames?: string[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not load pool system settings.");
+        setPoolNames((data.poolNames ?? []).join("\n"));
+      })
+      .catch((error: unknown) => setPoolSettingsError(error instanceof Error ? error.message : "Could not load pool system settings."))
+      .finally(() => setPoolSettingsLoading(false));
     void fetch("/api/settings/dashboard", { cache: "no-store" })
       .then(async (response) => {
         const data = (await response.json()) as DashboardSettings & { error?: string };
@@ -246,6 +259,27 @@ export default function SettingsPage() {
       window.setTimeout(() => setRefreshSaved(false), 2500);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "Could not save refresh settings.");
+    }
+  };
+
+  const savePoolSettings = async () => {
+    setPoolSettingsBusy(true);
+    setPoolSettingsSaved(false);
+    setPoolSettingsError("");
+    try {
+      const response = await fetch("/api/settings/pool-systems", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ poolNames: poolNames.split(/[,\r\n]+/).map((name) => name.trim()).filter(Boolean) }),
+      });
+      const data = (await response.json()) as { poolNames?: string[]; error?: string };
+      if (!response.ok || !data.poolNames) throw new Error(data.error || "Could not save pool system settings.");
+      setPoolNames(data.poolNames.join("\n"));
+      setPoolSettingsSaved(true);
+    } catch (error) {
+      setPoolSettingsError(error instanceof Error ? error.message : "Could not save pool system settings.");
+    } finally {
+      setPoolSettingsBusy(false);
     }
   };
 
@@ -474,6 +508,27 @@ export default function SettingsPage() {
           {refreshSaved ? "Refresh interval saved." : `Current interval: ${refreshInterval || "0"} seconds`}
         </p>
         {refreshError && <p className="mt-2 text-sm text-red-600" role="alert">{refreshError}</p>}
+      </section>
+
+      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="pool-system-heading">
+        <h2 id="pool-system-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Pool System Setting</h2>
+        <label className="mt-4 block text-sm font-medium text-[var(--text)]" htmlFor="pool-system-names">Pool names
+          <textarea
+            id="pool-system-names"
+            rows={3}
+            value={poolNames}
+            onChange={(event) => { setPoolNames(event.target.value); setPoolSettingsSaved(false); }}
+            disabled={poolSettingsLoading || poolSettingsBusy}
+            placeholder="pv_dmr-ap-ap1-b0"
+            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)]"
+          />
+        </label>
+        <p className="mt-1 text-xs text-[var(--text-muted)]">Enter one pool per line, or separate names with commas.</p>
+        <button type="button" onClick={() => void savePoolSettings()} disabled={poolSettingsLoading || poolSettingsBusy} className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)] disabled:opacity-50">
+          {poolSettingsBusy ? "Saving…" : "Save pools"}
+        </button>
+        {poolSettingsSaved && <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Pool system settings saved.</p>}
+        {poolSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{poolSettingsError}</p>}
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="dashboard-heading">

@@ -16,6 +16,7 @@ export function splitConfig(config: string) {
 
 export default function PoolSystemsTable() {
   const [systems, setSystems] = useState<PoolSystem[]>([]);
+  const [poolNames, setPoolNames] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [configFilter, setConfigFilter] = useState("");
@@ -68,10 +69,11 @@ export default function PoolSystemsTable() {
     const load = async () => {
       try {
         const response = await fetch("/api/pool-systems", { cache: "no-store" });
-        const data = (await response.json()) as { systems?: PoolSystem[]; error?: string };
+        const data = (await response.json()) as { systems?: PoolSystem[]; poolNames?: string[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not load pool systems.");
         if (!cancelled) {
           setSystems(data.systems ?? []);
+          setPoolNames(data.poolNames ?? []);
           setError(null);
         }
       } catch (cause) {
@@ -94,7 +96,7 @@ export default function PoolSystemsTable() {
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
         <div>
           <h1 className="text-lg font-semibold text-[var(--text)]">B0 Pool Systems</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">Systems currently added to pv_dmr-ap-ap1-b0</p>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Systems currently added to {poolNames.length ? poolNames.join(", ") : "selected pools"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm font-semibold tabular-nums">
           {hasFilters && (

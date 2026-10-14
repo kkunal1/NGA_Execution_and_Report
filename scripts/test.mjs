@@ -5,6 +5,8 @@ import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, fi
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
+import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
+import { poolMembershipFilter } from "../src/lib/pool-systems.ts";
 import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
 import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
@@ -22,6 +24,13 @@ assert.equal(normalizeAdminUsername("bad user"), null);
 assert.equal(isValidAdminPassword("long-enough-password"), true);
 assert.equal(isValidAdminPassword("abcd"), true);
 assert.equal(isValidAdminPassword("abc"), false);
+assert.deepEqual(DEFAULT_POOL_NAMES, ["pv_dmr-ap-ap1-b0"]);
+assert.deepEqual(normalizePoolNames([" pv_dmr-ap-ap1-b0 ", "another_pool"]), ["pv_dmr-ap-ap1-b0", "another_pool"]);
+assert.equal(normalizePoolNames([]), null);
+assert.equal(normalizePoolNames(["test-pool", "TEST-POOL"]), null);
+assert.equal(normalizePoolNames(["invalid'pool"]), null);
+assert.equal(poolMembershipFilter(["pv_dmr-ap-ap1-b0", "extra_pool"], "Station/LatestStationPool"),
+  "Station/LatestStationPool/any(p: p/Pool/PoolName eq 'pv_dmr-ap-ap1-b0' or p/Pool/PoolName eq 'extra_pool')");
 const encryptedToken = encryptNgaiToken("sample-pat", encryptionKey);
 assert.notEqual(encryptedToken.ciphertext, "sample-pat");
 assert.equal(decryptNgaiToken(encryptedToken, encryptionKey), "sample-pat");

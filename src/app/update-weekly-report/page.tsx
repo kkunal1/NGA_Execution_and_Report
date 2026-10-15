@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
-import type { TeamPlatformCount, WeeklyReportLink } from "@/lib/weekly-report-settings";
+import type { CpuBaseLabels, TeamPlatformCount, WeeklyReportLink } from "@/lib/weekly-report-settings";
 
 type EditableTeamPlatformCount = { id: string; team: string; x1: string; x4: string; extraCounts: string[] };
 type EditableCpuColumn = { id: string; label: string };
@@ -16,6 +16,8 @@ export default function UpdateWeeklyReportPage() {
   const [bkc, setBkc] = useState("BKC#40");
   const [teamPlatformCounts, setTeamPlatformCounts] = useState<EditableTeamPlatformCount[]>([]);
   const [cpuColumns, setCpuColumns] = useState<EditableCpuColumn[]>([]);
+  const [cpuBaseLabels, setCpuBaseLabels] = useState<CpuBaseLabels>({ team: "Team", x1: "X1", x4: "X4" });
+  const [editingBaseLabel, setEditingBaseLabel] = useState<keyof CpuBaseLabels | null>(null);
   const [cpuBreakdownTitle, setCpuBreakdownTitle] = useState("DMR X1 and X4 CPU breakdown");
   const [cpuTitleEditing, setCpuTitleEditing] = useState(false);
   const [hsdesLink, setHsdesLink] = useState("");
@@ -33,6 +35,7 @@ export default function UpdateWeeklyReportPage() {
           bkc?: string;
           teamPlatformCounts?: TeamPlatformCount[];
           cpuColumns?: string[];
+          cpuBaseLabels?: CpuBaseLabels;
           cpuBreakdownTitle?: string;
           hsdesLink?: string;
           links?: WeeklyReportLink[];
@@ -42,6 +45,7 @@ export default function UpdateWeeklyReportPage() {
         if (!cancelled) {
           if (result.bkc) setBkc(result.bkc);
           setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
+          setCpuBaseLabels(result.cpuBaseLabels ?? { team: "Team", x1: "X1", x4: "X4" });
           setCpuBreakdownTitle(result.cpuBreakdownTitle ?? "DMR X1 and X4 CPU breakdown");
           setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: createRowId(), team: row.team, x1: String(row.x1), x4: String(row.x4), extraCounts: (row.extraCounts ?? []).map(String) })));
           setHsdesLink(result.hsdesLink ?? "");
@@ -70,6 +74,7 @@ export default function UpdateWeeklyReportPage() {
           bkc,
           teamPlatformCounts: teamPlatformCounts.map((row) => ({ team: row.team, x1: Number(row.x1), x4: Number(row.x4), extraCounts: row.extraCounts.map(Number) })),
           cpuColumns: cpuColumns.map((column) => column.label),
+          cpuBaseLabels,
           cpuBreakdownTitle,
           hsdesLink,
           links: links.map((link) => ({ label: link.label, url: link.url })),
@@ -79,6 +84,7 @@ export default function UpdateWeeklyReportPage() {
         bkc?: string;
         teamPlatformCounts?: TeamPlatformCount[];
         cpuColumns?: string[];
+        cpuBaseLabels?: CpuBaseLabels;
         cpuBreakdownTitle?: string;
         hsdesLink?: string;
         links?: WeeklyReportLink[];
@@ -87,6 +93,8 @@ export default function UpdateWeeklyReportPage() {
       if (!response.ok) throw new Error(result.error || "Could not save the BKC value.");
       setBkc(result.bkc ?? bkc.trim());
       setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
+      setCpuBaseLabels(result.cpuBaseLabels ?? cpuBaseLabels);
+      setEditingBaseLabel(null);
       setCpuBreakdownTitle(result.cpuBreakdownTitle ?? cpuBreakdownTitle.trim());
       setCpuTitleEditing(false);
       setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: createRowId(), team: row.team, x1: String(row.x1), x4: String(row.x4), extraCounts: (row.extraCounts ?? []).map(String) })));
@@ -214,7 +222,33 @@ export default function UpdateWeeklyReportPage() {
             <table className="w-full min-w-[520px] border-collapse text-left text-sm">
               <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]">
                 <tr>
-                  <th className="px-3 py-2">Team</th><th className="px-3 py-2">X1</th><th className="px-3 py-2">X4</th>
+                  {(["team", "x1", "x4"] as const).map((columnKey) => (
+                    <th key={columnKey} className="px-3 py-2">
+                      <div className="flex items-center gap-1">
+                        {editingBaseLabel === columnKey ? (
+                          <input
+                            autoFocus
+                            required
+                            maxLength={40}
+                            value={cpuBaseLabels[columnKey]}
+                            onChange={(event) => { setCpuBaseLabels((current) => ({ ...current, [columnKey]: event.target.value })); setSaved(false); }}
+                            aria-label={`Edit ${columnKey === "team" ? "Team" : columnKey.toUpperCase()} column name`}
+                            className="h-9 w-28 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]"
+                          />
+                        ) : <span className="break-words">{cpuBaseLabels[columnKey]}</span>}
+                        <button
+                          type="button"
+                          onClick={() => setEditingBaseLabel((current) => current === columnKey ? null : columnKey)}
+                          disabled={loading || saving || (editingBaseLabel === columnKey && !cpuBaseLabels[columnKey].trim())}
+                          aria-label={editingBaseLabel === columnKey ? `Finish editing ${columnKey} column` : `Edit ${columnKey} column`}
+                          title={editingBaseLabel === columnKey ? "Finish editing" : "Edit column"}
+                          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--surface)] hover:text-[var(--text)] disabled:opacity-50"
+                        >
+                          {editingBaseLabel === columnKey ? <Check className="h-4 w-4" aria-hidden="true" /> : <Pencil className="h-4 w-4" aria-hidden="true" />}
+                        </button>
+                      </div>
+                    </th>
+                  ))}
                   {cpuColumns.map((column, columnIndex) => (
                     <th key={column.id} className="px-3 py-2">
                       <div className="flex items-center gap-1">
@@ -229,9 +263,9 @@ export default function UpdateWeeklyReportPage() {
               <tbody>
                 {teamPlatformCounts.map((row, index) => (
                   <tr key={row.id} className="border-t border-[var(--border)]">
-                    <td className="px-3 py-2"><input required maxLength={60} value={row.team} onChange={(event) => updateTeam(index, "team", event.target.value)} aria-label={`Team ${index + 1}`} className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>
-                    <td className="px-3 py-2"><input required type="number" min="0" max="1000000" step="1" value={row.x1} onChange={(event) => updateTeam(index, "x1", event.target.value)} aria-label={`${row.team || `Team ${index + 1}`} X1 count`} className="h-9 w-24 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>
-                    <td className="px-3 py-2"><input required type="number" min="0" max="1000000" step="1" value={row.x4} onChange={(event) => updateTeam(index, "x4", event.target.value)} aria-label={`${row.team || `Team ${index + 1}`} X4 count`} className="h-9 w-24 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>
+                    <td className="px-3 py-2"><input required maxLength={60} value={row.team} onChange={(event) => updateTeam(index, "team", event.target.value)} aria-label={`${cpuBaseLabels.team} ${index + 1}`} className="h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>
+                    <td className="px-3 py-2"><input required type="number" min="0" max="1000000" step="1" value={row.x1} onChange={(event) => updateTeam(index, "x1", event.target.value)} aria-label={`${row.team || `Team ${index + 1}`} ${cpuBaseLabels.x1} count`} className="h-9 w-24 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>
+                    <td className="px-3 py-2"><input required type="number" min="0" max="1000000" step="1" value={row.x4} onChange={(event) => updateTeam(index, "x4", event.target.value)} aria-label={`${row.team || `Team ${index + 1}`} ${cpuBaseLabels.x4} count`} className="h-9 w-24 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>
                     {cpuColumns.map((column, columnIndex) => <td key={column.id} className="px-3 py-2"><input required type="number" min="0" max="1000000" step="1" value={row.extraCounts[columnIndex] ?? "0"} onChange={(event) => updateExtraCount(index, columnIndex, event.target.value)} aria-label={`${row.team || `Team ${index + 1}`} ${column.label || `column ${columnIndex + 1}`} count`} className="h-9 w-24 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" /></td>)}
                     <td className="px-3 py-2"><button type="button" disabled={loading || saving || teamPlatformCounts.length <= 1} onClick={() => { setTeamPlatformCounts((current) => current.filter((_, rowIndex) => rowIndex !== index)); setSaved(false); }} aria-label={`Remove ${row.team || `team ${index + 1}`}`} title="Remove team" className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
                   </tr>

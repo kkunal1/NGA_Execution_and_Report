@@ -187,6 +187,7 @@ export default function WeeklyReportBuilder() {
             ...cachedReport,
             links: Array.isArray(cachedReport.links) ? cachedReport.links : DEFAULT_WEEKLY_REPORT_LINKS,
             cpuColumns: Array.isArray(cachedReport.cpuColumns) ? cachedReport.cpuColumns : [],
+            cpuBaseLabels: cachedReport.cpuBaseLabels ?? { team: "Team", x1: "X1", x4: "X4" },
             cpuBreakdownTitle: cachedReport.cpuBreakdownTitle || "DMR X1 and X4 CPU breakdown",
             hsdesIssues: Array.isArray(cachedReport.hsdesIssues) ? cachedReport.hsdesIssues : [],
             agedHsdesIssues: cachedAgedIssues,
@@ -456,6 +457,7 @@ export default function WeeklyReportBuilder() {
     .sort(([left], [right]) => left.localeCompare(right));
   const teamPlatformCounts = report?.teamPlatformCounts ?? [];
   const cpuColumns = Array.isArray(report?.cpuColumns) ? report.cpuColumns : [];
+  const cpuBaseLabels = report?.cpuBaseLabels ?? { team: "Team", x1: "X1", x4: "X4" };
   const teamPlatformTotals = teamPlatformCounts.reduce((totals, row) => ({
     x1: totals.x1 + row.x1,
     x4: totals.x4 + row.x4,
@@ -615,7 +617,7 @@ export default function WeeklyReportBuilder() {
           <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
             <table className="w-full min-w-[480px] border-collapse text-left text-sm">
               <thead className="bg-[#204e76] text-xs font-semibold text-white">
-                <tr><th className="px-3 py-2.5">Team</th><th className="px-3 py-2.5">X1</th><th className="px-3 py-2.5">X4</th>{cpuColumns.map((column) => <th key={column} className="px-3 py-2.5">{column}</th>)}<th className="px-3 py-2.5">Total</th></tr>
+                <tr><th className="px-3 py-2.5">{cpuBaseLabels.team}</th><th className="px-3 py-2.5">{cpuBaseLabels.x1}</th><th className="px-3 py-2.5">{cpuBaseLabels.x4}</th>{cpuColumns.map((column) => <th key={column} className="px-3 py-2.5">{column}</th>)}<th className="px-3 py-2.5">Total</th></tr>
               </thead>
               <tbody className="divide-y divide-[#cfdae5]">
                 {teamPlatformCounts.map((row) => (

@@ -5,9 +5,11 @@ import { config } from "./config";
 export const DEFAULT_WEEKLY_REPORT_BKC = "BKC#40";
 export const DEFAULT_WEEKLY_REPORT_HSDES_LINK = "https://hsdes.intel.com/appstore/generalapps/#/pages/community/15010407190?queryId=16032003391&articleId=16031656538";
 export const DEFAULT_CPU_BREAKDOWN_TITLE = "DMR X1 and X4 CPU breakdown";
+export const DEFAULT_CPU_BASE_LABELS = { team: "Team", x1: "X1", x4: "X4" };
+export type CpuBaseLabels = { team: string; x1: string; x4: string };
 export type TeamPlatformCount = { team: string; x1: number; x4: number; extraCounts?: number[] };
 export type WeeklyReportLink = { label: string; url: string };
-export type WeeklyReportSettings = { bkc: string; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[] };
+export type WeeklyReportSettings = { bkc: string; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBaseLabels: CpuBaseLabels; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[] };
 export const DEFAULT_TEAM_PLATFORM_COUNTS: TeamPlatformCount[] = [
   { team: "PV.BKC", x1: 6, x4: 2 },
   { team: "DM", x1: 2, x4: 0 },
@@ -110,6 +112,7 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
       bkc: normalizeWeeklyReportBkc(saved.bkc) ?? DEFAULT_WEEKLY_REPORT_BKC,
       teamPlatformCounts: normalizeTeamPlatformCounts(saved.teamPlatformCounts, cpuColumns) ?? DEFAULT_TEAM_PLATFORM_COUNTS.map((row) => cpuColumns.length ? { ...row, extraCounts: cpuColumns.map(() => 0) } : { ...row }),
       cpuColumns,
+      cpuBaseLabels: normalizeCpuBaseLabels(saved.cpuBaseLabels) ?? { ...DEFAULT_CPU_BASE_LABELS },
       cpuBreakdownTitle: normalizeCpuBreakdownTitle(saved.cpuBreakdownTitle) ?? DEFAULT_CPU_BREAKDOWN_TITLE,
       hsdesLink: normalizeWeeklyReportHsdesLink(saved.hsdesLink) ?? DEFAULT_WEEKLY_REPORT_HSDES_LINK,
       links: normalizeWeeklyReportLinks(saved.links) ?? DEFAULT_WEEKLY_REPORT_LINKS.map((link) => ({ ...link })),
@@ -120,6 +123,7 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
       bkc: DEFAULT_WEEKLY_REPORT_BKC,
       teamPlatformCounts: DEFAULT_TEAM_PLATFORM_COUNTS.map((row) => ({ ...row })),
       cpuColumns: [],
+      cpuBaseLabels: { ...DEFAULT_CPU_BASE_LABELS },
       cpuBreakdownTitle: DEFAULT_CPU_BREAKDOWN_TITLE,
       hsdesLink: DEFAULT_WEEKLY_REPORT_HSDES_LINK,
       links: DEFAULT_WEEKLY_REPORT_LINKS.map((link) => ({ ...link })),
@@ -127,21 +131,34 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
   }
 }
 
-export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown): Promise<WeeklyReportSettings> {
+export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS): Promise<WeeklyReportSettings> {
   const bkc = normalizeWeeklyReportBkc(bkcValue);
   const cpuColumns = normalizeCpuColumns(columnsValue);
+  const cpuBaseLabels = normalizeCpuBaseLabels(baseLabelsValue);
   const cpuBreakdownTitle = normalizeCpuBreakdownTitle(titleValue);
   const teamPlatformCounts = cpuColumns && normalizeTeamPlatformCounts(countsValue, cpuColumns);
   const hsdesLink = normalizeWeeklyReportHsdesLink(hsdesLinkValue);
   const links = normalizeWeeklyReportLinks(linksValue);
   if (!bkc) throw new TypeError("Enter a BKC value such as BKC#40 or BKC#WW41.");
   if (!cpuColumns) throw new TypeError("Enter up to 10 unique CPU column names (not Team, X1, X4, or Total).");
+  if (!cpuBaseLabels || cpuColumns.some((column) => Object.values(cpuBaseLabels).some((label) => label.toLowerCase() === column.toLowerCase()))) {
+    throw new TypeError("Enter unique Team, X1, and X4 column labels of up to 40 characters.");
+  }
   if (!cpuBreakdownTitle) throw new TypeError("Enter a CPU breakdown title of up to 120 characters.");
   if (!teamPlatformCounts) throw new TypeError("Enter one to 20 unique teams with whole-number X1 and X4 counts from 0 to 1,000,000.");
   if (!hsdesLink) throw new TypeError("Enter an HSDES General Apps link containing a numeric queryId.");
   if (!links) throw new TypeError("Enter up to 20 report links with a label and valid HTTPS URL.");
   await mkdir(config.dataDir, { recursive: true });
-  const settings = { bkc, teamPlatformCounts, cpuColumns, cpuBreakdownTitle, hsdesLink, links };
+  const settings = { bkc, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, hsdesLink, links };
   await writeFile(settingsPath, JSON.stringify(settings, null, 2), { encoding: "utf8", mode: 0o600 });
   return settings;
+}
+
+export function normalizeCpuBaseLabels(value: unknown): CpuBaseLabels | null {
+  if (!value || typeof value !== "object") return null;
+  const labels = value as Record<string, unknown>;
+  const values = [labels.team, labels.x1, labels.x4];
+  if (values.some((label) => typeof label !== "string" || !label.trim() || label.trim().length > 40)) return null;
+  const [team, x1, x4] = values.map((label) => (label as string).trim());
+  return new Set([team.toLowerCase(), x1.toLowerCase(), x4.toLowerCase(), "total"]).size === 4 ? { team, x1, x4 } : null;
 }

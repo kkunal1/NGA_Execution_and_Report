@@ -186,6 +186,8 @@ export default function WeeklyReportBuilder() {
           setReport({
             ...cachedReport,
             links: Array.isArray(cachedReport.links) ? cachedReport.links : DEFAULT_WEEKLY_REPORT_LINKS,
+            cpuColumns: Array.isArray(cachedReport.cpuColumns) ? cachedReport.cpuColumns : [],
+            cpuBreakdownTitle: cachedReport.cpuBreakdownTitle || "DMR X1 and X4 CPU breakdown",
             hsdesIssues: Array.isArray(cachedReport.hsdesIssues) ? cachedReport.hsdesIssues : [],
             agedHsdesIssues: cachedAgedIssues,
           });
@@ -453,7 +455,13 @@ export default function WeeklyReportBuilder() {
   }, new Map<string, typeof agedHsdesIssues>()).entries()]
     .sort(([left], [right]) => left.localeCompare(right));
   const teamPlatformCounts = report?.teamPlatformCounts ?? [];
-  const teamPlatformTotals = teamPlatformCounts.reduce((totals, row) => ({ x1: totals.x1 + row.x1, x4: totals.x4 + row.x4 }), { x1: 0, x4: 0 });
+  const cpuColumns = Array.isArray(report?.cpuColumns) ? report.cpuColumns : [];
+  const teamPlatformTotals = teamPlatformCounts.reduce((totals, row) => ({
+    x1: totals.x1 + row.x1,
+    x4: totals.x4 + row.x4,
+    extraCounts: totals.extraCounts.map((count, index) => count + (row.extraCounts?.[index] ?? 0)),
+  }), { x1: 0, x4: 0, extraCounts: cpuColumns.map(() => 0) });
+  const cpuTotal = teamPlatformTotals.x1 + teamPlatformTotals.x4 + teamPlatformTotals.extraCounts.reduce((sum, count) => sum + count, 0);
   const createButton = (
     <button type="submit" disabled={busy || !modeReady} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-60">
       <FileText className="h-4 w-4" aria-hidden="true" />{busy ? "Creating…" : "Create report"}
@@ -603,11 +611,11 @@ export default function WeeklyReportBuilder() {
           ) : (
             <p className="mt-3 text-sm text-[#647e94]">No HSDES issues were opened more than 30 days ago.</p>
           )}
-          <h4 className="mt-5 text-sm font-bold text-[#204e76]">DMR X1 and X4 CPU breakdown</h4>
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">{report.cpuBreakdownTitle || "DMR X1 and X4 CPU breakdown"}</h4>
           <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
             <table className="w-full min-w-[480px] border-collapse text-left text-sm">
               <thead className="bg-[#204e76] text-xs font-semibold text-white">
-                <tr><th className="px-3 py-2.5">Team</th><th className="px-3 py-2.5">X1</th><th className="px-3 py-2.5">X4</th><th className="px-3 py-2.5">Total</th></tr>
+                <tr><th className="px-3 py-2.5">Team</th><th className="px-3 py-2.5">X1</th><th className="px-3 py-2.5">X4</th>{cpuColumns.map((column) => <th key={column} className="px-3 py-2.5">{column}</th>)}<th className="px-3 py-2.5">Total</th></tr>
               </thead>
               <tbody className="divide-y divide-[#cfdae5]">
                 {teamPlatformCounts.map((row) => (
@@ -615,12 +623,13 @@ export default function WeeklyReportBuilder() {
                     <th className="px-3 py-2 font-semibold text-[#244c70]">{row.team}</th>
                     <td className="px-3 py-2 tabular-nums">{row.x1.toLocaleString()}</td>
                     <td className="px-3 py-2 tabular-nums">{row.x4.toLocaleString()}</td>
-                    <td className="px-3 py-2 font-semibold tabular-nums">{(row.x1 + row.x4).toLocaleString()}</td>
+                    {cpuColumns.map((column, index) => <td key={column} className="px-3 py-2 tabular-nums">{(row.extraCounts?.[index] ?? 0).toLocaleString()}</td>)}
+                    <td className="px-3 py-2 font-semibold tabular-nums">{(row.x1 + row.x4 + (row.extraCounts ?? []).reduce((sum, count) => sum + count, 0)).toLocaleString()}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot className="border-t-2 border-[#94aec6] bg-[#dce8f4] font-bold text-[#173f60]">
-                <tr><th className="px-3 py-2 text-left">Total</th><td className="px-3 py-2 tabular-nums">{teamPlatformTotals.x1.toLocaleString()}</td><td className="px-3 py-2 tabular-nums">{teamPlatformTotals.x4.toLocaleString()}</td><td className="px-3 py-2 tabular-nums">{(teamPlatformTotals.x1 + teamPlatformTotals.x4).toLocaleString()}</td></tr>
+                <tr><th className="px-3 py-2 text-left">Total</th><td className="px-3 py-2 tabular-nums">{teamPlatformTotals.x1.toLocaleString()}</td><td className="px-3 py-2 tabular-nums">{teamPlatformTotals.x4.toLocaleString()}</td>{teamPlatformTotals.extraCounts.map((count, index) => <td key={cpuColumns[index]} className="px-3 py-2 tabular-nums">{count.toLocaleString()}</td>)}<td className="px-3 py-2 tabular-nums">{cpuTotal.toLocaleString()}</td></tr>
               </tfoot>
             </table>
           </div>

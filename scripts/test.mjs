@@ -8,7 +8,7 @@ import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-u
 import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
 import { poolMembershipFilter } from "../src/lib/pool-systems.ts";
-import { DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
+import { DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
 import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
@@ -225,10 +225,20 @@ const weeklyReport = summarizeWeeklyReport(
 );
 assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2 });
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
+assert.equal(weeklyReport.cpuBreakdownTitle, DEFAULT_CPU_BREAKDOWN_TITLE);
 assert.deepEqual(weeklyReport.teamPlatformCounts, DEFAULT_TEAM_PLATFORM_COUNTS);
+assert.deepEqual(weeklyReport.cpuColumns, []);
+const reportWithColumn = summarizeWeeklyReport(["suite"], new Date("2026-10-01T00:00:00Z"), new Date("2026-10-08T00:00:00Z"), [], [], [], "BKC#40", [{ team: "Team A", x1: 2, x4: 3, extraCounts: [4] }], [], ["X2"], "CPU totals");
+assert.deepEqual(reportWithColumn.cpuColumns, ["X2"]);
+assert.equal(reportWithColumn.cpuBreakdownTitle, "CPU totals");
+assert.deepEqual(reportWithColumn.teamPlatformCounts[0].extraCounts, [4]);
 assert.deepEqual(weeklyReport.links, customReportLinks);
 assert.deepEqual(DEFAULT_WEEKLY_REPORT_LINKS, [customReportLinks[0]]);
 assert.equal(DEFAULT_WEEKLY_REPORT_BKC, "BKC#40");
+assert.equal(DEFAULT_CPU_BREAKDOWN_TITLE, "DMR X1 and X4 CPU breakdown");
+assert.equal(normalizeCpuBreakdownTitle("  CPU totals  "), "CPU totals");
+assert.equal(normalizeCpuBreakdownTitle(" "), null);
+assert.equal(normalizeCpuBreakdownTitle("First\nSecond"), null);
 assert.deepEqual(DEFAULT_TEAM_PLATFORM_COUNTS, [
   { team: "PV.BKC", x1: 6, x4: 2 },
   { team: "DM", x1: 2, x4: 0 },
@@ -306,6 +316,11 @@ assert.equal(pageStarts.length, 21);
 assert.equal(pageStarts[0], 1);
 assert.equal(pageStarts.at(-1), 20001);
 assert.deepEqual(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3 }]), [{ team: "Team A", x1: 2, x4: 3 }]);
+assert.deepEqual(normalizeCpuColumns([" X2 ", "X8"]), ["X2", "X8"]);
+assert.equal(normalizeCpuColumns(["x1"]), null);
+assert.equal(normalizeCpuColumns(["X2", "x2"]), null);
+assert.deepEqual(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3, extraCounts: [4, 5] }], ["X2", "X8"]), [{ team: "Team A", x1: 2, x4: 3, extraCounts: [4, 5] }]);
+assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3, extraCounts: [4] }], ["X2", "X8"]), null);
 assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: -1, x4: 0 }]), null);
 assert.equal(normalizeTeamPlatformCounts([{ team: "Team A", x1: 0, x4: 0 }, { team: "team a", x1: 1, x4: 1 }]), null);
 const reportHtml = renderReportHtml({

@@ -955,7 +955,7 @@ export default function Dashboard() {
                         <td className="px-3 py-2 font-medium text-[var(--text)]">{formatValidationGroupName(d.domain)}</td>
                         <td className="px-3 py-2 tabular-nums">{d.tests}</td>
                         <td className="px-3 py-2 tabular-nums text-green-600">{d.passed}</td>
-                        <td className="px-3 py-2 tabular-nums">{d.passRatePct}%</td>
+                        <td className={`px-3 py-2 tabular-nums ${d.passRatePct >= 80 ? "font-bold text-emerald-600" : "font-normal text-orange-400"}`}>{d.passRatePct}%</td>
                         <td className="px-3 py-2 tabular-nums text-red-600">{d.failed}</td>
                         <td className="px-3 py-2 tabular-nums">
                           <div className="flex items-center gap-2.5">

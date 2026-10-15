@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Copy, Download, FileText, Trash2 } from "lucide-react";
+import { CalendarDays, Copy, Download, FileText, FolderOpen, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
 import { getIsoWorkWeekLabel, getWorkWeeks } from "@/lib/work-weeks";
 
@@ -158,12 +158,15 @@ export default function WeeklyReportBuilder() {
   const [mode, setMode] = useState<"dateRange" | "workWeek">("dateRange");
   const [modeReady, setModeReady] = useState(false);
   const [selectedWeek, setSelectedWeek] = useState("");
+  const [savedWeeks, setSavedWeeks] = useState<string[]>([]);
+  const [weekNow, setWeekNow] = useState(() => new Date());
   const [suiteInput, setSuiteInput] = useState("");
   const [report, setReport] = useState<WeeklyReport | null>(null);
   const [generatedWeek, setGeneratedWeek] = useState<string | null>(null);
   const [reportReady, setReportReady] = useState(false);
   const reportElementRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadingSaved, setLoadingSaved] = useState(false);
   const [hsdesDetailsLoading, setHsdesDetailsLoading] = useState(false);
   const [hsdesDetailsError, setHsdesDetailsError] = useState("");
   const [hsdesDomainFilter, setHsdesDomainFilter] = useState("all");
@@ -254,8 +257,37 @@ export default function WeeklyReportBuilder() {
     return () => { cancelled = true; };
   }, []);
 
-  const workWeeks = getWorkWeeks();
-  const activeWeek = workWeeks.weeks.find((option) => option.label === selectedWeek) ?? workWeeks.weeks[0];
+  useEffect(() => {
+    if (mode !== "workWeek" || !modeReady) return;
+    let cancelled = false;
+    void fetch("/api/weekly-report/saved", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { weeks?: string[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not list saved Weekly Reports.");
+        if (!cancelled) setSavedWeeks(data.weeks ?? []);
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not list saved Weekly Reports.");
+      });
+    return () => { cancelled = true; };
+  }, [mode, modeReady]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const next = getWorkWeeks();
+      setWeekNow((current) => {
+        const previous = getWorkWeeks(current);
+        return previous.year === next.year && previous.weeks[0].label === next.weeks[0].label ? current : new Date();
+      });
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  const workWeeks = getWorkWeeks(weekNow);
+  const currentWeekKey = `${workWeeks.year}-${workWeeks.weeks[0].label}`;
+  const availableWeekKeys = [...new Set([...workWeeks.weeks.map((week) => `${workWeeks.year}-${week.label}`), ...savedWeeks])].sort().reverse();
+  const selectedWeekKey = availableWeekKeys.includes(selectedWeek) ? selectedWeek : currentWeekKey;
+  const activeWeek = workWeeks.weeks.find((week) => `${workWeeks.year}-${week.label}` === selectedWeekKey) ?? workWeeks.weeks[0];
 
   const createStyledReportDocument = () => {
     const article = reportElementRef.current;
@@ -385,6 +417,10 @@ export default function WeeklyReportBuilder() {
   const create = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    if (mode === "workWeek" && selectedWeekKey !== currentWeekKey) {
+      setError("Only the current work week can be created. Load a saved report for past weeks.");
+      return;
+    }
     const from = mode === "dateRange" ? new Date(Date.parse(`${fromDate}T${fromTime}:00Z`) - offsetMs) : activeWeek.from;
     const to = mode === "dateRange" ? new Date(Date.parse(`${toDate}T${toTime}:00Z`) - offsetMs + 60_000) : activeWeek.to;
     if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
@@ -400,7 +436,8 @@ export default function WeeklyReportBuilder() {
       });
       const result = (await response.json()) as WeeklyReport & { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not create the report.");
-      const nextGeneratedWeek = mode === "workWeek" ? `${workWeeks.year}${activeWeek.label}` : null;
+      const nextGeneratedWeek = mode === "workWeek" ? currentWeekKey.replace("-", "") : null;
+      if (mode === "workWeek") setSavedWeeks((current) => [...new Set([...current, currentWeekKey])].sort().reverse());
       setHsdesDetailsLoading(false);
       setHsdesDetailsError("");
       setCopyStatus("");
@@ -415,6 +452,30 @@ export default function WeeklyReportBuilder() {
       setError(cause instanceof Error ? cause.message : "Could not create the report.");
     } finally {
       setBusy(false);
+    }
+  };
+
+  const loadSavedReport = async () => {
+    setLoadingSaved(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/weekly-report/saved?key=${encodeURIComponent(selectedWeekKey)}`, { cache: "no-store" });
+      const data = (await response.json()) as { report?: WeeklyReport; error?: string };
+      if (!response.ok || !data.report) throw new Error(data.error || "Could not load the saved Weekly Report.");
+      setReport(data.report);
+      setGeneratedWeek(selectedWeekKey.replace("-", ""));
+      setHsdesDetailsError("");
+      setHsdesDetailsLoading(false);
+      setCopyStatus("");
+      try {
+        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: data.report, generatedWeek: selectedWeekKey.replace("-", "") }));
+      } catch {
+        setError("Report loaded, but this browser could not save it for navigation.");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not load the saved Weekly Report.");
+    } finally {
+      setLoadingSaved(false);
     }
   };
 
@@ -466,8 +527,13 @@ export default function WeeklyReportBuilder() {
   }), { x1: 0, x4: 0, extraCounts: cpuColumns.map(() => 0) });
   const cpuTotal = teamPlatformTotals.x1 + teamPlatformTotals.x4 + teamPlatformTotals.extraCounts.reduce((sum, count) => sum + count, 0);
   const createButton = (
-    <button type="submit" disabled={busy || !modeReady} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-60">
+    <button type="submit" disabled={busy || loadingSaved || !modeReady} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-60">
       <FileText className="h-4 w-4" aria-hidden="true" />{busy ? "Creating…" : "Create report"}
+    </button>
+  );
+  const loadReportButton = (
+    <button type="button" onClick={() => void loadSavedReport()} disabled={busy || loadingSaved || !modeReady} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-60">
+      <FolderOpen className="h-4 w-4" aria-hidden="true" />{loadingSaved ? "Loading…" : "Load Report"}
     </button>
   );
   const downloadButton = report && (
@@ -514,11 +580,12 @@ export default function WeeklyReportBuilder() {
         ) : (
           <div className="flex flex-wrap items-end gap-3">
           <label className="w-40 text-xs font-semibold text-[var(--text-muted)]">Work Week ({workWeeks.year})
-            <select value={activeWeek.label} onChange={(event) => setSelectedWeek(event.target.value)} className={`mt-1 ${control}`}>
-              {workWeeks.weeks.map((week) => <option key={week.label} value={week.label}>{week.label}</option>)}
+            <select value={selectedWeekKey} onChange={(event) => setSelectedWeek(event.target.value)} className={`mt-1 ${control}`}>
+              {availableWeekKeys.map((key) => <option key={key} value={key}>{key.startsWith(`${workWeeks.year}-`) ? key.slice(5) : `${key.slice(0, 4)} ${key.slice(5)}`}</option>)}
             </select>
           </label>
-            {createButton}
+            {selectedWeekKey === currentWeekKey && createButton}
+            {loadReportButton}
             {downloadButton}
             {clearReportButton}
             {copyReportButton}

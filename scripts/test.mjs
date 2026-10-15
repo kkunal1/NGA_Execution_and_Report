@@ -17,6 +17,7 @@ import { buildReportFilename } from "../src/lib/report-filename.ts";
 import { renderReportHtml } from "../src/lib/report-html.ts";
 import { visibleReportSections } from "../src/lib/report-sections.ts";
 import { getWorkWeeks } from "../src/lib/work-weeks.ts";
+import { isWorkWeekKey } from "../src/lib/saved-weekly-reports.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
 assert.equal(normalizeAdminUsername("new.admin"), "new.admin");
@@ -372,6 +373,10 @@ assert.equal(bucketSummary.bucketizedWithoutHsd, 4);
 assert.equal(bucketSummary.byDomain[0].bucketizedWithHsd + bucketSummary.byDomain[0].bucketizedWithoutHsd, bucketSummary.byDomain[0].bucketized);
 
 const octoberWeeks = getWorkWeeks(new Date("2026-10-08T06:00:00Z"));
+assert.equal(isWorkWeekKey("2026-WW42"), true);
+assert.equal(isWorkWeekKey("2027-WW01"), true);
+assert.equal(isWorkWeekKey("2026-WW00"), false);
+assert.equal(isWorkWeekKey("../2026-WW42"), false);
 assert.equal(octoberWeeks.year, 2026);
 assert.equal(octoberWeeks.weeks[0].label, "WW41");
 assert.equal(octoberWeeks.weeks[0].from.toISOString(), "2026-10-04T18:30:00.000Z");

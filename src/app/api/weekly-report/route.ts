@@ -5,6 +5,7 @@ import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
 import { canonicalizeSightingDomain, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
 import { B0_SUITES } from "@/lib/pool-systems";
 import { generateWeeklyReport } from "@/lib/weekly-report";
+import { saveWeeklyReport } from "@/lib/saved-weekly-reports";
 import { getWorkWeeks } from "@/lib/work-weeks";
 
 export const runtime = "nodejs";
@@ -34,9 +35,12 @@ export async function POST(req: Request) {
     }
     let from: Date;
     let to: Date;
+    let weekKey: string | null = null;
     if (weeklyReportMode === "workWeek") {
-      const week = getWorkWeeks().weeks.find((option) => option.label === body.week);
-      if (!week) return NextResponse.json({ error: "Select an available work week." }, { status: 400 });
+      const workWeeks = getWorkWeeks();
+      const week = workWeeks.weeks[0];
+      if (body.week !== week.label) return NextResponse.json({ error: "Only the current work week can be created. Load a saved report for past weeks." }, { status: 400 });
+      weekKey = `${workWeeks.year}-${week.label}`;
       ({ from, to } = week);
     } else {
       if (typeof body.from !== "string" || typeof body.to !== "string" ||
@@ -76,7 +80,9 @@ export async function POST(req: Request) {
           attached: sightingResult.countsByDomain?.[canonicalizeSightingDomain(row.group) ?? ""] ?? 0,
         }))
       : report.backlogFailures;
-    return NextResponse.json({ ...report, backlogFailures, hsdesIssues: sightingResult.issues, agedHsdesIssues: sightingResult.agedIssues, sightingWarning: sightingResult.warning });
+    const completedReport = { ...report, backlogFailures, hsdesIssues: sightingResult.issues, agedHsdesIssues: sightingResult.agedIssues, sightingWarning: sightingResult.warning };
+    if (weekKey) await saveWeeklyReport(weekKey, completedReport);
+    return NextResponse.json(completedReport);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not generate the report." }, { status: 502 });
   }

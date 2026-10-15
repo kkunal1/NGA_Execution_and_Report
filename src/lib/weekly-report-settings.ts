@@ -49,7 +49,7 @@ export function normalizeWeeklyReportHsdesLink(value: unknown): string | null {
 
 export function normalizeCpuColumns(value: unknown): string[] | null {
   if (!Array.isArray(value) || value.length > 10) return null;
-  const seen = new Set(["team", "x1", "x4", "total"]);
+  const seen = new Set(["team", "x1", "x4"]);
   const columns: string[] = [];
   for (const item of value) {
     if (typeof item !== "string") return null;
@@ -140,7 +140,7 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
   const hsdesLink = normalizeWeeklyReportHsdesLink(hsdesLinkValue);
   const links = normalizeWeeklyReportLinks(linksValue);
   if (!bkc) throw new TypeError("Enter a BKC value such as BKC#40 or BKC#WW41.");
-  if (!cpuColumns) throw new TypeError("Enter up to 10 unique CPU column names (not Team, X1, X4, or Total).");
+  if (!cpuColumns) throw new TypeError("Enter up to 10 unique CPU column names (not Team, X1, or X4).");
   if (!cpuBaseLabels || cpuColumns.some((column) => Object.values(cpuBaseLabels).some((label) => label.toLowerCase() === column.toLowerCase()))) {
     throw new TypeError("Enter unique Team, X1, and X4 column labels of up to 40 characters.");
   }

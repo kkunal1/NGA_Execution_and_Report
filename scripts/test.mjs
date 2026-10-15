@@ -322,6 +322,15 @@ assert.equal(pageStarts[0], 1);
 assert.equal(pageStarts.at(-1), 20001);
 assert.deepEqual(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3 }]), [{ team: "Team A", x1: 2, x4: 3 }]);
 assert.deepEqual(normalizeCpuColumns([" X2 ", "X8"]), ["X2", "X8"]);
+assert.deepEqual(normalizeCpuColumns(["X4-B1", "Total"]), ["X4-B1", "Total"]);
+assert.equal(normalizeCpuColumns(["Total", "total"]), null);
+assert.deepEqual(normalizeTeamPlatformCounts([
+  { team: "BKC", x1: 6, x4: 0, extraCounts: [2, 8] },
+  { team: "All Teams", x1: 35, x4: 16, extraCounts: [71, 122] },
+], ["X4-B1", "Total"]), [
+  { team: "BKC", x1: 6, x4: 0, extraCounts: [2, 8] },
+  { team: "All Teams", x1: 35, x4: 16, extraCounts: [71, 122] },
+]);
 assert.equal(normalizeCpuColumns(["x1"]), null);
 assert.equal(normalizeCpuColumns(["X2", "x2"]), null);
 assert.deepEqual(normalizeTeamPlatformCounts([{ team: "Team A", x1: 2, x4: 3, extraCounts: [4, 5] }], ["X2", "X8"]), [{ team: "Team A", x1: 2, x4: 3, extraCounts: [4, 5] }]);

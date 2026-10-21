@@ -238,6 +238,46 @@ export default function WeeklyReportBuilder() {
     return () => { cancelled = true; };
   }, []);
 
+  const missingHsdTitleIds = (report?.hsdFailureSummaries ?? [])
+    .filter((summary) => summary.failedRuns >= 5 && !report?.hsdFailureTitles?.[summary.hsdId])
+    .map((summary) => summary.hsdId);
+  const missingHsdTitleKey = missingHsdTitleIds.join("|");
+
+  useEffect(() => {
+    if (!report || !missingHsdTitleIds.length) return;
+    let cancelled = false;
+    const query = new URLSearchParams();
+    missingHsdTitleIds.forEach((id) => query.append("hsdId", id));
+    setHsdesDetailsLoading(true);
+    setHsdesDetailsError("");
+    void fetch(`/api/weekly-report?${query.toString()}`, { cache: "no-store" })
+      .then(async (response) => {
+        const result = (await response.json()) as { hsdFailureTitles?: Record<string, string>; error?: string };
+        if (!response.ok) throw new Error(result.error || "Could not retrieve HSD titles.");
+        if (!result.hsdFailureTitles || missingHsdTitleIds.some((id) => !result.hsdFailureTitles?.[id])) {
+          throw new Error("HSDES did not return titles for every HSD in this report.");
+        }
+        return result.hsdFailureTitles;
+      })
+      .then((titles) => {
+        if (cancelled) return;
+        const refreshedReport = { ...report, hsdFailureTitles: { ...report.hsdFailureTitles, ...titles } };
+        setReport(refreshedReport);
+        try {
+          window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek }));
+        } catch {
+          // Keep fetched titles visible even if the browser cannot cache them.
+        }
+      })
+      .catch((cause: unknown) => {
+        if (!cancelled) setHsdesDetailsError(cause instanceof Error ? cause.message : "Could not retrieve HSD titles.");
+      })
+      .finally(() => {
+        if (!cancelled) setHsdesDetailsLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [report, missingHsdTitleKey, generatedWeek]);
+
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/settings/dashboard", { cache: "no-store" })
@@ -508,14 +548,11 @@ export default function WeeklyReportBuilder() {
   const filteredHsdesIssues = activeHsdesDomain === "all"
     ? hsdesIssues
     : hsdesIssues.filter((issue) => issue.domain === activeHsdesDomain);
-  const agedHsdesIssues = Array.isArray(report?.agedHsdesIssues) ? report.agedHsdesIssues : [];
-  const agedIssuesByDomain = [...agedHsdesIssues.reduce((groups, issue) => {
-    const issues = groups.get(issue.domain) ?? [];
-    issues.push(issue);
-    groups.set(issue.domain, issues);
-    return groups;
-  }, new Map<string, typeof agedHsdesIssues>()).entries()]
-    .sort(([left], [right]) => left.localeCompare(right));
+  const hasHsdFailureSummaries = Array.isArray(report?.hsdFailureSummaries);
+  const hsdFailureSummaries = hasHsdFailureSummaries
+    ? report.hsdFailureSummaries.filter((summary) => summary.failedRuns >= 5)
+    : [];
+  const hsdesIssueById = new Map(hsdesIssues.map((issue) => [issue.id, issue]));
   const teamPlatformCounts = report?.teamPlatformCounts ?? [];
   const cpuColumns = Array.isArray(report?.cpuColumns) ? report.cpuColumns : [];
   const hasCustomTotal = cpuColumns.some((column) => column.toLowerCase() === "total");
@@ -656,31 +693,6 @@ export default function WeeklyReportBuilder() {
             {reportLinks.map((link) => <li key={`${link.label}-${link.url}`}><a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">{link.label}</a></li>)}
             {!reportLinks.length && <li className="text-[#647e94]">No links configured.</li>}
           </ul>
-          <h4 className="mt-5 text-sm font-bold text-[#204e76]">HSDES Issues Opened More Than 30 Days Ago</h4>
-          {report.sightingWarning ? (
-            <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES issue list unavailable: {report.sightingWarning}</p>
-          ) : agedIssuesByDomain.length ? (
-            <div className="mt-3 space-y-2 text-sm leading-relaxed text-[#253646]">
-              <p><strong>{agedHsdesIssues.length}</strong> HSDES issues were opened more than 30 days ago.</p>
-              <ul className="list-disc space-y-1 pl-5">
-                {agedIssuesByDomain.map(([domain, issues]) => (
-                  <li key={domain}>
-                    <strong>{formatValidationGroup(domain)}:</strong>
-                    <ul className="mt-1 list-disc space-y-0.5 pl-5">
-                      {issues.map((issue) => (
-                        <li key={issue.id}>
-                        <a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a>
-                          {` “${issue.title || "Untitled"}” `}<strong>({issue.status}, {issue.daysOpen} days)</strong>
-                        </li>
-                      ))}
-                    </ul>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-[#647e94]">No HSDES issues were opened more than 30 days ago.</p>
-          )}
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">{report.cpuBreakdownTitle || "DMR X1 and X4 CPU breakdown"}</h4>
           <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
             <table className="w-full min-w-[480px] border-collapse text-left text-sm">
@@ -703,6 +715,35 @@ export default function WeeklyReportBuilder() {
               </tfoot>}
             </table>
           </div>
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">HSDs with 5 or More Failed Runs</h4>
+          {report.sightingWarning && <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES titles may be unavailable: {report.sightingWarning}</p>}
+          {hsdFailureSummaries.length ? (
+            <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
+              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+                <thead className="bg-[#204e76] text-xs font-semibold text-white">
+                  <tr><th className="w-36 px-3 py-2.5">HSD</th><th className="w-28 px-3 py-2.5 text-right">Failed Tests</th><th className="w-48 px-3 py-2.5">Domain</th><th className="px-3 py-2.5">Title</th></tr>
+                </thead>
+                <tbody className="divide-y divide-[#cfdae5]">
+                  {hsdFailureSummaries.map((summary) => {
+                    const issue = hsdesIssueById.get(summary.hsdId);
+                    const domain = summary.domains.length === 1
+                      ? formatValidationGroup(summary.domains[0].domain)
+                      : summary.domains.map(({ domain: name, failedRuns }) => `${formatValidationGroup(name)} (${failedRuns})`).join(", ");
+                    return (
+                      <tr key={summary.hsdId} className="even:bg-[#edf3f9]">
+                        <td className="break-all px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/article/${encodeURIComponent(summary.hsdId)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{summary.hsdId}</a></td>
+                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#bb3846]">{summary.failedRuns}</td>
+                        <td className="px-3 py-2">{domain}</td>
+                        <td className="break-words px-3 py-2">{report.hsdFailureTitles?.[summary.hsdId] || issue?.title || "Loading title…"}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="mt-3 text-sm text-[#647e94]">{hasHsdFailureSummaries ? "No HSDs have 5 or more failed runs." : "Create a new report to calculate HSD failure counts for this saved report."}</p>
+          )}
         </section>
 
         <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />

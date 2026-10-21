@@ -18,6 +18,7 @@ type Failure = {
   sightingId?: string | null;
   subState?: string | null;
   description?: string | null;
+  bucket?: { bucketName?: string | null } | null;
   testStep?: { testStepName?: string | null } | null;
 };
 
@@ -45,6 +46,12 @@ export type FailureRow = {
   stages: Record<Stage, number>;
   total: number;
   attached: number;
+};
+
+export type HsdFailureSummary = {
+  hsdId: string;
+  failedRuns: number;
+  domains: { domain: string; failedRuns: number }[];
 };
 
 export type StageDetail = {
@@ -76,6 +83,7 @@ export type WeeklyReport = {
   failedLines: number;
   windowFailures: FailureRow[];
   backlogFailures: FailureRow[];
+  hsdFailureSummaries: HsdFailureSummary[];
   prebootAbortCounts: Record<string, number>;
   runningBkc: string;
   teamPlatformCounts: TeamPlatformCount[];
@@ -86,6 +94,7 @@ export type WeeklyReport = {
   sightingWarning?: string;
   hsdesIssues: HsdesIssue[];
   agedHsdesIssues: AgedHsdesIssue[];
+  hsdFailureTitles?: Record<string, string>;
   stageDetails: StageDetail[];
 };
 
@@ -161,6 +170,28 @@ function failureRows(runs: Run[]): FailureRow[] {
   return [...grouped.values()].sort((a, b) => b.total - a.total || a.group.localeCompare(b.group));
 }
 
+function hsdFailureSummaries(runs: Run[]): HsdFailureSummary[] {
+  const counts = new Map<string, Map<string, number>>();
+  for (const run of runs) {
+    if (bucketOf(run.state ?? "", run.testLine?.goStatus ?? "") !== "Failed") continue;
+    const domain = run.validationGroup?.testGroupName || "Unknown";
+    const hsdIds = new Set((run.failure ?? []).flatMap((failure) => failure.bucket?.bucketName?.match(/\d{10,}/g) ?? []));
+    for (const hsdId of hsdIds) {
+      const domainCounts = counts.get(hsdId) ?? new Map<string, number>();
+      domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+      counts.set(hsdId, domainCounts);
+    }
+  }
+  return [...counts.entries()]
+    .map(([hsdId, domainCounts]) => {
+      const domains = [...domainCounts.entries()]
+        .map(([domain, failedRuns]) => ({ domain, failedRuns }))
+        .sort((a, b) => b.failedRuns - a.failedRuns || a.domain.localeCompare(b.domain));
+      return { hsdId, failedRuns: domains.reduce((total, domain) => total + domain.failedRuns, 0), domains };
+    })
+    .sort((a, b) => b.failedRuns - a.failedRuns || a.hsdId.localeCompare(b.hsdId));
+}
+
 function detailsFor(runs: Run[]): StageDetail[] {
   const grouped = new Map<string, StageDetail>();
   for (const run of runs) {
@@ -223,6 +254,7 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     failedLines: linesInWindow.filter((run) => run.state === "Failed").length,
     windowFailures: failureRows(linesInWindow),
     backlogFailures: failureRows(latestValid),
+    hsdFailureSummaries: hsdFailureSummaries(latestValid),
     prebootAbortCounts: prebootAbortCounts(abortedRuns),
     runningBkc,
     teamPlatformCounts: teamPlatformCounts.map((row) => ({ ...row, ...(row.extraCounts ? { extraCounts: [...row.extraCounts] } : {}) })),
@@ -245,7 +277,7 @@ export async function generateWeeklyReport(suites: string[], from: Date, to: Dat
     const filter = suiteFilter(suite);
     const lineFilter = `TestSuite/TestSuiteName eq '${escaped(suite)}'`;
     const runSelect = "TestRunId,TestLineId,State,RerunIndex,TestEndDateTime,IsTriageFlag";
-    const runExpand = "ValidationGroup($select=TestGroupName),TestLine($select=TestLineName,GoStatus;$expand=Config($select=ConfigName)),Failure($select=FailureId,StageName,SightingId,SubState;$expand=TestStep($select=TestStepName))";
+    const runExpand = "ValidationGroup($select=TestGroupName),TestLine($select=TestLineName,GoStatus;$expand=Config($select=ConfigName)),Failure($select=FailureId,StageName,SightingId,SubState;$expand=Bucket($select=BucketName),TestStep($select=TestStepName))";
     const abortedFilter = `State eq 'Aborted' and ${filter}`;
     const abortedExpand = "ValidationGroup($select=TestGroupName),AutoDisablingTestStep($select=TestStepName)";
     return Promise.all([

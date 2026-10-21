@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
 import { getDashboardSettings } from "@/lib/dashboard-settings";
 import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
-import { canonicalizeSightingDomain, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
+import { canonicalizeSightingDomain, fetchHsdesArticleTitles, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
 import { B0_SUITES } from "@/lib/pool-systems";
 import { generateWeeklyReport } from "@/lib/weekly-report";
 import { saveWeeklyReport } from "@/lib/saved-weekly-reports";
@@ -17,6 +17,10 @@ export async function GET(req: Request) {
 
   try {
     const reportSettings = await getWeeklyReportSettings();
+    const hsdIds = new URL(req.url).searchParams.getAll("hsdId");
+    if (hsdIds.length) {
+      return NextResponse.json({ hsdFailureTitles: await fetchHsdesArticleTitles(hsdIds) });
+    }
     return NextResponse.json(await fetchHsdesIssueData(reportSettings.hsdesLink));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load HSDES issue details." }, { status: 502 });
@@ -80,7 +84,9 @@ export async function POST(req: Request) {
           attached: sightingResult.countsByDomain?.[canonicalizeSightingDomain(row.group) ?? ""] ?? 0,
         }))
       : report.backlogFailures;
-    const completedReport = { ...report, backlogFailures, hsdesIssues: sightingResult.issues, agedHsdesIssues: sightingResult.agedIssues, sightingWarning: sightingResult.warning };
+      const hsdIds = report.hsdFailureSummaries.filter((summary) => summary.failedRuns >= 6).map((summary) => summary.hsdId);
+      const hsdFailureTitles = await fetchHsdesArticleTitles(hsdIds);
+      const completedReport = { ...report, backlogFailures, hsdesIssues: sightingResult.issues, agedHsdesIssues: sightingResult.agedIssues, hsdFailureTitles, sightingWarning: sightingResult.warning };
     if (weekKey) await saveWeeklyReport(weekKey, completedReport);
     return NextResponse.json(completedReport);
   } catch (error) {

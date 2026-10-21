@@ -9,7 +9,7 @@ import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
 import { poolMembershipFilter } from "../src/lib/pool-systems.ts";
 import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
-import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
+import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleTitle, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
@@ -224,6 +224,25 @@ const weeklyReport = summarizeWeeklyReport(
   DEFAULT_TEAM_PLATFORM_COUNTS,
   customReportLinks,
 );
+const hsdFailureRuns = [
+  ...Array.from({ length: 6 }, (_, index) => ({
+    state: "Failed",
+    validationGroup: { testGroupName: index === 5 ? "pv_ras" : "pv_security" },
+    failure: [
+      { bucket: { bucketName: "hsd_15020010517" } },
+      ...(index === 0 ? [{ bucket: { bucketName: "hsd_15020010517" } }] : []),
+    ],
+  })),
+  { state: "Failed", validationGroup: { testGroupName: "pv_ras" }, failure: [{ bucket: { bucketName: "hsd_14028767291" } }] },
+  { state: "Passed", validationGroup: { testGroupName: "pv_security" }, failure: [{ bucket: { bucketName: "hsd_22023475638" } }] },
+];
+const hsdSummary = summarizeWeeklyReport(
+  ["suite"], new Date("2026-10-01T00:00:00Z"), new Date("2026-10-08T00:00:00Z"), [], hsdFailureRuns,
+);
+assert.deepEqual(hsdSummary.hsdFailureSummaries, [
+  { hsdId: "15020010517", failedRuns: 6, domains: [{ domain: "pv_security", failedRuns: 5 }, { domain: "pv_ras", failedRuns: 1 }] },
+  { hsdId: "14028767291", failedRuns: 1, domains: [{ domain: "pv_ras", failedRuns: 1 }] },
+]);
 assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2 });
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.cpuBaseLabels, DEFAULT_CPU_BASE_LABELS);
@@ -310,6 +329,8 @@ assert.deepEqual(extractHsdesIssues(allIssueRecords).map(({ id, title, domain })
   { id: "recent-pm", title: "Recently opened PM issue", domain: "pv_power_management" },
   { id: "aged-security", title: "Aged security issue", domain: "pv_security" },
 ]);
+assert.equal(extractHsdesArticleTitle({ data: [{ title: "Direct HSD article title" }] }), "Direct HSD article title");
+assert.equal(extractHsdesArticleTitle({ data: [{ title: " " }] }), null);
 assert.deepEqual(extractHsdesIssuesOlderThan(allIssueRecords).map(({ id }) => id), ["aged-security"]);
 const pagedIssueRecords = Array.from({ length: 20001 }, (_, index) => ({ id: `paged-${index + 1}` }));
 const pageStarts = [];

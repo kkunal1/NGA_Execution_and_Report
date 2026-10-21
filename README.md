@@ -40,6 +40,9 @@ see the same captured data.
 For a LAN-bound production server, build first and then run `npm run start:lan`. Configure
 the admin credentials on the host before starting it. Do not use `npm run dev:lan` for a
 shared deployment; development mode is not intended to be exposed to a network.
+To have the production server restart every 12 hours on Windows, run
+`npm run start:lan:12h` instead. This sets `NODE_OPTIONS=--use-system-ca` for each server
+start; build first as usual, and stop the supervisor with Ctrl+C.
 
 ## Usage
 

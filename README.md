@@ -120,6 +120,20 @@ certificate file may still produce `UNABLE_TO_VERIFY_LEAF_SIGNATURE`.
 
 Do not disable TLS verification with `NODE_TLS_REJECT_UNAUTHORIZED=0`.
 
+## Automatic Daily Weekly Reports
+
+In production, the Node server generates the previous calendar day's Weekly Report
+after 12:05 AM IST and saves it under `data/weekly-reports/YYYY-MM-DD.json`. The
+Weekly Report page lists saved days as ISO week/day labels such as `WW43.1`; users
+can load an archived report and download that selected report as HTML. Automatic
+reports use the configured report layout and the default B0 P1 and P2 suites.
+
+The scheduler runs in the production Node process. Keep one app instance running and
+use persistent shared `data/` storage so every user of the same deployment sees the
+same archive. The server must have NGAi access configured. HSDES enrichment is
+included when available; if it is unavailable, the report is still saved with a
+warning. The development server does not run this scheduler.
+
 ## Scheduled Graph Email
 
 An admin can configure a daily Microsoft Graph email in Settings. The report includes

@@ -3,13 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, Copy, Download, FileText, FolderOpen, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
-import { getIsoWorkWeekLabel, getWorkWeeks } from "@/lib/work-weeks";
+import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 
-const offsetMs = 330 * 60_000;
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
-const DEFAULT_WEEKLY_REPORT_LINKS = [{ label: "PV VV Exec Summary Dashboard", url: "https://xve-dashboards.intel.com/dmr-ap/execution-summary" }];
-const today = () => new Date(Date.now() + offsetMs).toISOString().slice(0, 10);
-const sevenDaysAgo = () => new Date(Date.now() + offsetMs - 6 * 86_400_000).toISOString().slice(0, 10);
 const percentage = (count: number, total: number) => total ? `${(count / total * 100).toFixed(1)}%` : "0%";
 const reportPercentage = (count: number, total: number) => percentage(count, total).replace(/\.0%$/, "%");
 const timeLabel = (value: string) => new Intl.DateTimeFormat("en-IN", {
@@ -24,6 +20,17 @@ const formatValidationGroup = (group: string) => group.replace(/^pv_/i, "").spli
   .filter(Boolean)
   .map((word) => groupWords[word.toLowerCase()] ?? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
   .join(" ");
+
+function reportOptionLabel(key: string) {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(key)) {
+    const dateYear = key.slice(0, 4);
+    const currentYear = getISTDateKey().slice(0, 4);
+    const label = getDailyReportLabel(key);
+    return dateYear === currentYear ? label : `${dateYear} ${label}`;
+  }
+  const match = key.match(/^(\d{4})-(WW\d{2})$/);
+  return match ? `${match[2]} (weekly archive)` : key;
+}
 
 function copyHtmlWithSelection(html: string): boolean {
   const container = document.createElement("div");
@@ -151,18 +158,13 @@ function Breakdown({ title, rows, prebootAbortCounts, highlightFailureBreakdown 
 }
 
 export default function WeeklyReportBuilder() {
-  const [fromDate, setFromDate] = useState(sevenDaysAgo);
-  const [toDate, setToDate] = useState(today);
-  const [fromTime, setFromTime] = useState("00:00");
-  const [toTime, setToTime] = useState("23:59");
-  const [mode, setMode] = useState<"dateRange" | "workWeek">("dateRange");
-  const [modeReady, setModeReady] = useState(false);
-  const [selectedWeek, setSelectedWeek] = useState("");
-  const [savedWeeks, setSavedWeeks] = useState<string[]>([]);
-  const [weekNow, setWeekNow] = useState(() => new Date());
-  const [suiteInput, setSuiteInput] = useState("");
+  const [selectedReportKey, setSelectedReportKey] = useState("");
+  const selectedReportKeyRef = useRef("");
+  const [savedReportKeys, setSavedReportKeys] = useState<string[]>([]);
+  const [availableReportKeys, setAvailableReportKeys] = useState<string[]>([]);
+  const [todayReportKey, setTodayReportKey] = useState(() => getISTDateKey());
   const [report, setReport] = useState<WeeklyReport | null>(null);
-  const [generatedWeek, setGeneratedWeek] = useState<string | null>(null);
+  const [reportLabel, setReportLabel] = useState<string | null>(null);
   const [reportReady, setReportReady] = useState(false);
   const reportElementRef = useRef<HTMLElement | null>(null);
   const [busy, setBusy] = useState(false);
@@ -173,70 +175,7 @@ export default function WeeklyReportBuilder() {
   const [copyStatus, setCopyStatus] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    let cancelled = false;
-    try {
-      const saved = window.sessionStorage.getItem(WEEKLY_REPORT_STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved) as { report?: WeeklyReport; generatedWeek?: string | null };
-        if (parsed.report && Array.isArray(parsed.report.suites) && typeof parsed.report.from === "string" && typeof parsed.report.to === "string") {
-          const cachedReport = parsed.report;
-          const cachedAgedIssues = Array.isArray(cachedReport.agedHsdesIssues) ? cachedReport.agedHsdesIssues : [];
-          const hasSavedIssueCounts = Array.isArray(cachedReport.backlogFailures) && cachedReport.backlogFailures.some((row) => row.attached > 0);
-          const needsHsdesRefresh = !Array.isArray(cachedReport.hsdesIssues) ||
-            (cachedReport.hsdesIssues.length === 0 && (cachedAgedIssues.length > 0 || hasSavedIssueCounts));
-          const cachedGeneratedWeek = typeof parsed.generatedWeek === "string" ? parsed.generatedWeek : null;
-          setReport({
-            ...cachedReport,
-            links: Array.isArray(cachedReport.links) ? cachedReport.links : DEFAULT_WEEKLY_REPORT_LINKS,
-            cpuColumns: Array.isArray(cachedReport.cpuColumns) ? cachedReport.cpuColumns : [],
-            cpuBaseLabels: cachedReport.cpuBaseLabels ?? { team: "Team", x1: "X1", x4: "X4" },
-            cpuBreakdownTitle: cachedReport.cpuBreakdownTitle || "DMR X1 and X4 CPU breakdown",
-            hsdesIssues: Array.isArray(cachedReport.hsdesIssues) ? cachedReport.hsdesIssues : [],
-            agedHsdesIssues: cachedAgedIssues,
-          });
-          setGeneratedWeek(cachedGeneratedWeek);
-          if (needsHsdesRefresh) {
-            setHsdesDetailsLoading(true);
-            void fetch("/api/weekly-report", { cache: "no-store" })
-              .then(async (response) => {
-                const result = (await response.json()) as Partial<Pick<WeeklyReport, "hsdesIssues" | "agedHsdesIssues">> & { error?: string };
-                if (!response.ok) throw new Error(result.error || "Could not refresh the saved report's HSDES details.");
-                if (!Array.isArray(result.hsdesIssues) || !Array.isArray(result.agedHsdesIssues)) {
-                  throw new Error("The server did not return the full HSDES issue list. Restart or update the app, then reload this report.");
-                }
-                return result as Pick<WeeklyReport, "hsdesIssues" | "agedHsdesIssues">;
-              })
-              .then((details) => {
-                if (cancelled) return;
-                const refreshedReport = { ...cachedReport, ...details };
-                setReport(refreshedReport);
-                try {
-                  window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek: cachedGeneratedWeek }));
-                } catch {
-                  // Keep the refreshed details visible even if the browser cannot cache them.
-                }
-              })
-              .catch((cause: unknown) => {
-                if (!cancelled) setHsdesDetailsError(cause instanceof Error ? cause.message : "Could not refresh the saved report's HSDES details.");
-              })
-              .finally(() => {
-                if (!cancelled) setHsdesDetailsLoading(false);
-              });
-          }
-        }
-      }
-    } catch {
-      try {
-        window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY);
-      } catch {
-        // Storage may be unavailable in restricted browser contexts.
-      }
-    } finally {
-      setReportReady(true);
-    }
-    return () => { cancelled = true; };
-  }, []);
+  useEffect(() => setReportReady(true), []);
 
   const missingHsdTitleIds = (report?.hsdFailureSummaries ?? [])
     .filter((summary) => summary.failedRuns >= 5 && !report?.hsdFailureTitles?.[summary.hsdId])
@@ -264,7 +203,7 @@ export default function WeeklyReportBuilder() {
         const refreshedReport = { ...report, hsdFailureTitles: { ...report.hsdFailureTitles, ...titles } };
         setReport(refreshedReport);
         try {
-          window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek }));
+          window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek: reportLabel }));
         } catch {
           // Keep fetched titles visible even if the browser cannot cache them.
         }
@@ -276,58 +215,48 @@ export default function WeeklyReportBuilder() {
         if (!cancelled) setHsdesDetailsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [report, missingHsdTitleKey, generatedWeek]);
+  }, [report, missingHsdTitleKey, reportLabel]);
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/settings/dashboard", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Could not load Weekly Report settings.");
-        return response.json() as Promise<{ weeklyReportMode?: string }>;
-      })
-      .then((settings) => {
-        if (!cancelled) {
-          setMode(settings.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange");
-          setModeReady(true);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load Weekly Report settings.");
-      });
-    return () => { cancelled = true; };
-  }, []);
-
-  useEffect(() => {
-    if (mode !== "workWeek" || !modeReady) return;
-    let cancelled = false;
-    void fetch("/api/weekly-report/saved", { cache: "no-store" })
-      .then(async (response) => {
-        const data = (await response.json()) as { weeks?: string[]; error?: string };
+    let previousToday = getISTDateKey();
+    const refreshSavedReports = async () => {
+      try {
+        const response = await fetch("/api/weekly-report/saved", { cache: "no-store" });
+        const data = (await response.json()) as { reports?: string[]; savedReports?: string[]; today?: string; error?: string };
         if (!response.ok) throw new Error(data.error || "Could not list saved Weekly Reports.");
-        if (!cancelled) setSavedWeeks(data.weeks ?? []);
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not list saved Weekly Reports.");
-      });
-    return () => { cancelled = true; };
-  }, [mode, modeReady]);
-
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      const next = getWorkWeeks();
-      setWeekNow((current) => {
-        const previous = getWorkWeeks(current);
-        return previous.year === next.year && previous.weeks[0].label === next.weeks[0].label ? current : new Date();
-      });
-    }, 60_000);
-    return () => window.clearInterval(timer);
+        if (cancelled) return;
+        const today = data.today ?? getISTDateKey();
+        const reportKeys = data.reports ?? [today];
+        const savedKeys = data.savedReports ?? reportKeys.filter((key) => key !== today);
+        if (today !== previousToday && selectedReportKeyRef.current === previousToday) {
+          setReport(null);
+          setReportLabel(null);
+          try { window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY); } catch { /* Ignore unavailable browser storage. */ }
+        }
+        setTodayReportKey(today);
+        setAvailableReportKeys(reportKeys);
+        setSavedReportKeys(savedKeys);
+        const current = selectedReportKeyRef.current;
+        const nextSelected = !current || current === previousToday || !reportKeys.includes(current) ? today : current;
+        selectedReportKeyRef.current = nextSelected;
+        setSelectedReportKey(nextSelected);
+        previousToday = today;
+        setReportReady(true);
+      } catch (cause) {
+        if (!cancelled) {
+          setError(cause instanceof Error ? cause.message : "Could not list saved Weekly Reports.");
+          setReportReady(true);
+        }
+      }
+    };
+    void refreshSavedReports();
+    const timer = window.setInterval(() => void refreshSavedReports(), 60_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
-
-  const workWeeks = getWorkWeeks(weekNow);
-  const currentWeekKey = `${workWeeks.year}-${workWeeks.weeks[0].label}`;
-  const availableWeekKeys = [...new Set([...workWeeks.weeks.map((week) => `${workWeeks.year}-${week.label}`), ...savedWeeks])].sort().reverse();
-  const selectedWeekKey = availableWeekKeys.includes(selectedWeek) ? selectedWeek : currentWeekKey;
-  const activeWeek = workWeeks.weeks.find((week) => `${workWeeks.year}-${week.label}` === selectedWeekKey) ?? workWeeks.weeks[0];
 
   const createStyledReportDocument = () => {
     const article = reportElementRef.current;
@@ -401,8 +330,9 @@ export default function WeeklyReportBuilder() {
       if (values.length > 1) values[1].before(document.createTextNode(" "));
     });
 
-    const weekMatch = generatedWeek?.match(/WW(\d{2})$/);
-    const week = weekMatch ? `WW-${weekMatch[1]}` : `WW-${getIsoWorkWeekLabel(new Date(Date.parse(report.to) - 1)).slice(2)}`;
+    const weekMatch = reportLabel?.match(/WW(\d{2}(?:\.\d+)?)/);
+    const reportPeriod = weekMatch?.[1] ?? getDailyReportLabel(getISTDateKey(new Date(Date.parse(report.to) - 1))).slice(2);
+    const week = `WW-${reportPeriod}`;
     const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
     const documentHtml = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>DMR-AP1 B0 Execution Weekly Report for ${week}</title></head><body style="margin:0;padding:24px 16px;min-height:100vh;box-sizing:border-box;background:#f3f6fa;font-family:Arial,sans-serif"><main style="width:100%;max-width:1200px;margin:0 auto">${clone.outerHTML}</main></body></html>`;
     const clipboardHtml = `<html><body><!--StartFragment-->${clone.outerHTML}<!--EndFragment--></body></html>`;
@@ -454,61 +384,22 @@ export default function WeeklyReportBuilder() {
       : "Could not copy the report. Check clipboard permission and try again.");
   };
 
-  const create = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError("");
-    if (mode === "workWeek" && selectedWeekKey !== currentWeekKey) {
-      setError("Only the current work week can be created. Load a saved report for past weeks.");
-      return;
-    }
-    const from = mode === "dateRange" ? new Date(Date.parse(`${fromDate}T${fromTime}:00Z`) - offsetMs) : activeWeek.from;
-    const to = mode === "dateRange" ? new Date(Date.parse(`${toDate}T${toTime}:00Z`) - offsetMs + 60_000) : activeWeek.to;
-    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from >= to) {
-      setError("Choose an end date and time after the start.");
-      return;
-    }
-    const suites = [...new Set(suiteInput.split(/\r?\n/).map((name) => name.trim()).filter(Boolean))];
-    setBusy(true);
-    try {
-      const response = await fetch("/api/weekly-report", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode, from: mode === "dateRange" ? from.toISOString() : undefined, to: mode === "dateRange" ? to.toISOString() : undefined, week: mode === "workWeek" ? activeWeek.label : undefined, suites: suites.length ? suites : undefined }),
-      });
-      const result = (await response.json()) as WeeklyReport & { error?: string };
-      if (!response.ok) throw new Error(result.error || "Could not create the report.");
-      const nextGeneratedWeek = mode === "workWeek" ? currentWeekKey.replace("-", "") : null;
-      if (mode === "workWeek") setSavedWeeks((current) => [...new Set([...current, currentWeekKey])].sort().reverse());
-      setHsdesDetailsLoading(false);
-      setHsdesDetailsError("");
-      setCopyStatus("");
-      setReport(result);
-      setGeneratedWeek(nextGeneratedWeek);
-      try {
-        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: result, generatedWeek: nextGeneratedWeek }));
-      } catch {
-        setError("Report created, but this browser could not save it for navigation.");
-      }
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create the report.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const loadSavedReport = async () => {
+    if (!selectedReportKey) return;
     setLoadingSaved(true);
     setError("");
     try {
-      const response = await fetch(`/api/weekly-report/saved?key=${encodeURIComponent(selectedWeekKey)}`, { cache: "no-store" });
+      const response = await fetch(`/api/weekly-report/saved?key=${encodeURIComponent(selectedReportKey)}`, { cache: "no-store" });
       const data = (await response.json()) as { report?: WeeklyReport; error?: string };
       if (!response.ok || !data.report) throw new Error(data.error || "Could not load the saved Weekly Report.");
       setReport(data.report);
-      setGeneratedWeek(selectedWeekKey.replace("-", ""));
+      const nextReportLabel = reportOptionLabel(selectedReportKey);
+      setReportLabel(nextReportLabel);
       setHsdesDetailsError("");
       setHsdesDetailsLoading(false);
       setCopyStatus("");
       try {
-        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: data.report, generatedWeek: selectedWeekKey.replace("-", "") }));
+        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: data.report, generatedWeek: nextReportLabel }));
       } catch {
         setError("Report loaded, but this browser could not save it for navigation.");
       }
@@ -519,9 +410,39 @@ export default function WeeklyReportBuilder() {
     }
   };
 
+  const createCurrentReport = async () => {
+    if (selectedReportKey !== todayReportKey) return;
+    setBusy(true);
+    setError("");
+    setCopyStatus("");
+    try {
+      const response = await fetch("/api/weekly-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "currentDayPreview" }),
+      });
+      const result = (await response.json()) as WeeklyReport & { error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not create the current-day report.");
+      const nextReportLabel = reportOptionLabel(todayReportKey);
+      setReport(result);
+      setReportLabel(nextReportLabel);
+      setHsdesDetailsError("");
+      setHsdesDetailsLoading(false);
+      try {
+        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: result, generatedWeek: nextReportLabel }));
+      } catch {
+        setError("Report created, but this browser could not cache it for navigation.");
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not create the current-day report.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const clearReport = () => {
     setReport(null);
-    setGeneratedWeek(null);
+    setReportLabel(null);
     setHsdesDetailsLoading(false);
     setHsdesDetailsError("");
     setCopyStatus("");
@@ -535,7 +456,7 @@ export default function WeeklyReportBuilder() {
 
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
-  const reportLinks = Array.isArray(report?.links) ? report.links : DEFAULT_WEEKLY_REPORT_LINKS;
+  const reportLinks = Array.isArray(report?.links) ? report.links : [];
   const hsdesIssues = Array.isArray(report?.hsdesIssues) ? report.hsdesIssues : [];
   const hsdesIssuesByDomain = [...hsdesIssues.reduce((groups, issue) => {
     const issues = groups.get(issue.domain) ?? [];
@@ -563,13 +484,15 @@ export default function WeeklyReportBuilder() {
     extraCounts: totals.extraCounts.map((count, index) => count + (row.extraCounts?.[index] ?? 0)),
   }), { x1: 0, x4: 0, extraCounts: cpuColumns.map(() => 0) });
   const cpuTotal = teamPlatformTotals.x1 + teamPlatformTotals.x4 + teamPlatformTotals.extraCounts.reduce((sum, count) => sum + count, 0);
-  const createButton = (
-    <button type="submit" disabled={busy || loadingSaved || !modeReady} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-60">
-      <FileText className="h-4 w-4" aria-hidden="true" />{busy ? "Creating…" : "Create report"}
+  const selectedReportIsSaved = savedReportKeys.includes(selectedReportKey);
+  const isCurrentDaySelected = selectedReportKey === todayReportKey;
+  const createReportButton = (
+    <button type="button" onClick={() => void createCurrentReport()} disabled={busy || loadingSaved || !isCurrentDaySelected} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-60">
+      <FileText className="h-4 w-4" aria-hidden="true" />{busy ? "Creating…" : "Create Report"}
     </button>
   );
   const loadReportButton = (
-    <button type="button" onClick={() => void loadSavedReport()} disabled={busy || loadingSaved || !modeReady} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-60">
+    <button type="button" onClick={() => void loadSavedReport()} disabled={!selectedReportIsSaved || loadingSaved || isCurrentDaySelected} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-60">
       <FolderOpen className="h-4 w-4" aria-hidden="true" />{loadingSaved ? "Loading…" : "Load Report"}
     </button>
   );
@@ -584,7 +507,7 @@ export default function WeeklyReportBuilder() {
     </button>
   );
   const copyReportButton = report && (
-    <button type="button" onClick={() => void copyReport()} disabled={busy || hsdesDetailsLoading} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:cursor-not-allowed disabled:opacity-60">
+    <button type="button" onClick={() => void copyReport()} disabled={hsdesDetailsLoading} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:cursor-not-allowed disabled:opacity-60">
       <Copy className="h-4 w-4" aria-hidden="true" />Copy Report
     </button>
   );
@@ -594,55 +517,46 @@ export default function WeeklyReportBuilder() {
         <CalendarDays className="h-5 w-5 text-[var(--accent)]" aria-hidden="true" />
         <h1 className="text-lg font-semibold">Weekly Report</h1>
       </div>
-      <form onSubmit={(event) => void create(event)} className="border-y border-[var(--border)] bg-[var(--surface)] px-4 py-4">
-        {mode === "dateRange" ? (
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="min-w-36 flex-1 text-xs font-semibold text-[var(--text-muted)]">From (IST)
-              <input required type="date" value={fromDate} max={toDate} onChange={(event) => setFromDate(event.target.value)} className={`mt-1 ${control}`} />
+      <section className="border-y border-[var(--border)] bg-[var(--surface)] px-4 py-4">
+        <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
+          <div className="w-full max-w-xs shrink-0">
+            <label className="block text-xs font-semibold text-[var(--text-muted)]">Saved daily report
+              <select
+                value={selectedReportKey}
+                onChange={(event) => {
+                  selectedReportKeyRef.current = event.target.value;
+                  setSelectedReportKey(event.target.value);
+                  setReport(null);
+                  setReportLabel(null);
+                  setHsdesDetailsError("");
+                  setCopyStatus("");
+                  try { window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY); } catch { /* Ignore unavailable browser storage. */ }
+                }}
+                className={`mt-1 ${control}`}
+              >
+                {availableReportKeys.map((key) => <option key={key} value={key}>{reportOptionLabel(key)}</option>)}
+              </select>
             </label>
-            <label className="w-32 text-xs font-semibold text-[var(--text-muted)]">Time
-              <input required type="time" value={fromTime} onChange={(event) => setFromTime(event.target.value)} className={`mt-1 ${control}`} />
-            </label>
-            <label className="min-w-36 flex-1 text-xs font-semibold text-[var(--text-muted)]">To (IST)
-              <input required type="date" value={toDate} min={fromDate} onChange={(event) => setToDate(event.target.value)} className={`mt-1 ${control}`} />
-            </label>
-            <label className="w-32 text-xs font-semibold text-[var(--text-muted)]">Time
-              <input required type="time" value={toTime} onChange={(event) => setToTime(event.target.value)} className={`mt-1 ${control}`} />
-            </label>
-            {createButton}
-            {downloadButton}
-            {clearReportButton}
-            {copyReportButton}
           </div>
-        ) : (
-          <div className="flex flex-wrap items-end gap-3">
-          <label className="w-40 text-xs font-semibold text-[var(--text-muted)]">Work Week ({workWeeks.year})
-            <select value={selectedWeekKey} onChange={(event) => setSelectedWeek(event.target.value)} className={`mt-1 ${control}`}>
-              {availableWeekKeys.map((key) => <option key={key} value={key}>{key.startsWith(`${workWeeks.year}-`) ? key.slice(5) : `${key.slice(0, 4)} ${key.slice(5)}`}</option>)}
-            </select>
-          </label>
-            {selectedWeekKey === currentWeekKey && createButton}
+          <div className="flex flex-wrap items-center gap-3 pt-5">
+            {createReportButton}
             {loadReportButton}
             {downloadButton}
             {clearReportButton}
             {copyReportButton}
           </div>
-        )}
-        <details className="mt-3 text-xs text-[var(--text-muted)]">
-          <summary className="cursor-pointer">Suites: B0 P1 + P2</summary>
-          <label className="mt-2 block max-w-3xl">Custom NGAi suite names (one per line; leave empty for B0 P1 + P2)
-            <textarea value={suiteInput} onChange={(event) => setSuiteInput(event.target.value)} rows={2} className={`mt-1 ${control}`} />
-          </label>
-        </details>
+        </div>
+        {isCurrentDaySelected && <p className="mt-2 overflow-x-auto whitespace-nowrap text-xs text-[var(--text-muted)]" role="status">Create a current report now; the final day report is auto-saved tomorrow after 12:05 AM IST.</p>}
+        {loadingSaved && <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Loading saved reports…</p>}
         {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
         {copyStatus && <p role="status" className={`mt-3 text-sm ${copyStatus.startsWith("Could not") ? "text-red-600" : "text-[var(--text-muted)]"}`}>{copyStatus}</p>}
-      </form>
+      </section>
 
-      {!report && !busy && reportReady && <p className="py-12 text-center text-sm text-[var(--text-muted)]">No report generated yet.</p>}
+      {!report && !loadingSaved && reportReady && <p className="py-12 text-center text-sm text-[var(--text-muted)]">{isCurrentDaySelected ? "Create a report to see today’s data so far." : "Select a saved day and load its report."}</p>}
       {report && <article ref={reportElementRef} className="mt-6 border border-[#c1d3e2] bg-white text-[#253646] shadow-sm">
         <header className="border-l-4 border-[#204e76] px-5 py-5 sm:px-7">
           <p className="text-base font-semibold text-[#204e76]">
-            {generatedWeek && <>{generatedWeek} · </>}
+            {reportLabel && <>{reportLabel} · </>}
             {timeLabel(report.from)} – {timeLabel(new Date(Date.parse(report.to) - 1).toISOString())} IST
           </p>
           <p className="mt-4 border-l-[3px] border-[#d7a02b] bg-[#fff6d6] px-3 py-2 text-sm leading-relaxed text-[#594416]">

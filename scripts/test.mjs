@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
+import { renderWeeklyReportEmailHtml } from "../src/lib/weekly-report-email.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
 import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
@@ -16,8 +17,8 @@ import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto
 import { buildReportFilename } from "../src/lib/report-filename.ts";
 import { renderReportHtml } from "../src/lib/report-html.ts";
 import { visibleReportSections } from "../src/lib/report-sections.ts";
-import { getWorkWeeks } from "../src/lib/work-weeks.ts";
-import { isWorkWeekKey } from "../src/lib/saved-weekly-reports.ts";
+import { getDailyReportLabel, getISTDayRange, getWorkWeeks } from "../src/lib/work-weeks.ts";
+import { isDailyReportDate, isSavedReportKey, isWorkWeekKey } from "../src/lib/saved-weekly-reports.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
 assert.equal(normalizeAdminUsername("new.admin"), "new.admin");
@@ -244,6 +245,15 @@ assert.deepEqual(hsdSummary.hsdFailureSummaries, [
   { hsdId: "14028767291", failedRuns: 1, domains: [{ domain: "pv_ras", failedRuns: 1 }] },
 ]);
 assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2 });
+const weeklyEmailHtml = renderWeeklyReportEmailHtml({
+  ...weeklyReport,
+  suites: ["<script>alert('x')</script>"],
+  links: [{ label: "Unsafe link", url: "javascript:alert(1)" }],
+});
+assert.ok(weeklyEmailHtml.includes("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;"), "email report escapes user-controlled text");
+assert.ok(!weeklyEmailHtml.includes("<script>alert"), "email report does not render user text as markup");
+assert.ok(!weeklyEmailHtml.includes("href=\"javascript:"), "email report excludes unsafe link protocols");
+assert.ok(weeklyEmailHtml.includes("Overall Validation Group Failure Breakdown"));
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.cpuBaseLabels, DEFAULT_CPU_BASE_LABELS);
 assert.equal(weeklyReport.cpuBreakdownTitle, DEFAULT_CPU_BREAKDOWN_TITLE);
@@ -394,10 +404,19 @@ assert.equal(bucketSummary.bucketizedWithoutHsd, 4);
 assert.equal(bucketSummary.byDomain[0].bucketizedWithHsd + bucketSummary.byDomain[0].bucketizedWithoutHsd, bucketSummary.byDomain[0].bucketized);
 
 const octoberWeeks = getWorkWeeks(new Date("2026-10-08T06:00:00Z"));
+const mondayRange = getISTDayRange("2026-10-19");
 assert.equal(isWorkWeekKey("2026-WW42"), true);
 assert.equal(isWorkWeekKey("2027-WW01"), true);
 assert.equal(isWorkWeekKey("2026-WW00"), false);
 assert.equal(isWorkWeekKey("../2026-WW42"), false);
+assert.equal(isDailyReportDate("2026-10-19"), true);
+assert.equal(isDailyReportDate("2026-02-30"), false);
+assert.equal(isSavedReportKey("2026-10-19"), true);
+assert.equal(getDailyReportLabel("2026-10-19"), "WW43.1");
+assert.equal(getDailyReportLabel("2026-10-24"), "WW43.6");
+assert.equal(getDailyReportLabel("2026-10-25"), "WW43.7");
+assert.equal(mondayRange.from.toISOString(), "2026-10-18T18:30:00.000Z");
+assert.equal(mondayRange.to.toISOString(), "2026-10-19T18:30:00.000Z");
 assert.equal(octoberWeeks.year, 2026);
 assert.equal(octoberWeeks.weeks[0].label, "WW41");
 assert.equal(octoberWeeks.weeks[0].from.toISOString(), "2026-10-04T18:30:00.000Z");

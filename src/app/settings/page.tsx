@@ -1,10 +1,46 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { FileText, Send } from "lucide-react";
 import { DATA_PROVIDERS, DATA_PROVIDER_KEY, NGAI_PROXY_KEY, NGAI_VPN_KEY, type DataProvider } from "@/lib/provider";
 import { THEMES, THEME_KEY, isThemeId, type ThemeId } from "@/lib/theme";
 
 const THEME_OPTIONS = Object.entries(THEMES) as [ThemeId, (typeof THEMES)[ThemeId]][];
+const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
+
+type WeeklyReportMailCache = {
+  report: Record<string, unknown>;
+  from: string;
+  to: string;
+  suites: string[];
+  planned: number;
+  latestPassed: number;
+  latestFailed: number;
+};
+
+function readWeeklyReportMailCache(): WeeklyReportMailCache | null {
+  try {
+    const stored = window.sessionStorage.getItem(WEEKLY_REPORT_STORAGE_KEY);
+    if (!stored) return null;
+    const value = JSON.parse(stored) as { report?: unknown };
+    if (typeof value.report !== "object" || value.report === null || Array.isArray(value.report)) return null;
+    const report = value.report as Record<string, unknown>;
+    if (typeof report.from !== "string" || typeof report.to !== "string" ||
+      !Array.isArray(report.suites) || !report.suites.every((suite) => typeof suite === "string") ||
+      typeof report.planned !== "number" || typeof report.latestPassed !== "number" || typeof report.latestFailed !== "number") return null;
+    return {
+      report,
+      from: report.from,
+      to: report.to,
+      suites: report.suites,
+      planned: report.planned,
+      latestPassed: report.latestPassed,
+      latestFailed: report.latestFailed,
+    };
+  } catch {
+    return null;
+  }
+}
 
 type NgaiTokenStatus = {
   encryptionConfigured: boolean;
@@ -105,8 +141,22 @@ export default function SettingsPage() {
   const [mailBusy, setMailBusy] = useState(false);
   const [mailMessage, setMailMessage] = useState("");
   const [mailError, setMailError] = useState("");
+  const [weeklyMailSummary, setWeeklyMailSummary] = useState<Omit<WeeklyReportMailCache, "report"> | null>(null);
+  const [weeklyMailMessage, setWeeklyMailMessage] = useState("");
+  const [weeklyMailError, setWeeklyMailError] = useState("");
+  const [smtpRecipient, setSmtpRecipient] = useState("krishna.kunal@intel.com");
+  const [smtpPassword, setSmtpPassword] = useState("");
 
   useEffect(() => {
+    const cachedWeeklyReport = readWeeklyReportMailCache();
+    setWeeklyMailSummary(cachedWeeklyReport ? {
+      from: cachedWeeklyReport.from,
+      to: cachedWeeklyReport.to,
+      suites: cachedWeeklyReport.suites,
+      planned: cachedWeeklyReport.planned,
+      latestPassed: cachedWeeklyReport.latestPassed,
+      latestFailed: cachedWeeklyReport.latestFailed,
+    } : null);
     const stored = window.localStorage.getItem(DATA_PROVIDER_KEY);
     if (stored === "sso" || stored === "ngai") setProvider(stored);
     const storedVpn = window.localStorage.getItem(NGAI_VPN_KEY);
@@ -332,6 +382,30 @@ export default function SettingsPage() {
       setMailMessage(`Test report sent to ${data.sentTo}. Attachment: ${data.filename}`);
     } catch (error) {
       setMailError(error instanceof Error ? error.message : "Test email failed.");
+    } finally {
+      setMailBusy(false);
+    }
+  };
+
+  const sendWeeklyReportMail = async () => {
+    setMailBusy(true);
+    setWeeklyMailError("");
+    setWeeklyMailMessage("");
+    try {
+      const cached = readWeeklyReportMailCache();
+      if (!cached) throw new Error("Create or load a Weekly Report first, then return here to send it.");
+      if (!smtpPassword.trim()) throw new Error("Enter your Intel mail password before sending.");
+      const response = await fetch("/api/settings/mail/weekly-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ report: cached.report, password: smtpPassword, recipient: smtpRecipient }),
+      });
+      const data = (await response.json()) as { error?: string; sentTo?: string; filename?: string };
+      if (!response.ok) throw new Error(data.error || "Weekly Report email failed.");
+      setSmtpPassword("");
+      setWeeklyMailMessage(`Weekly Report sent to ${data.sentTo}. Attachment: ${data.filename}`);
+    } catch (error) {
+      setWeeklyMailError(error instanceof Error ? error.message : "Weekly Report email failed.");
     } finally {
       setMailBusy(false);
     }
@@ -583,29 +657,8 @@ export default function SettingsPage() {
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="weekly-report-settings-heading">
-        <h2 id="weekly-report-settings-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Weekly Report Settings</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {([[
-            "dateRange", "Date Range",
-          ], [
-            "workWeek", "Work Week (WW)",
-          ]] as const).map(([mode, label]) => (
-            <label key={mode} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={dashboardSettings.weeklyReportMode === mode}
-                onChange={() => void saveDashboardSettings({ ...dashboardSettings, weeklyReportMode: mode })}
-                className="h-5 w-5 accent-[var(--accent)]"
-              />
-            </label>
-          ))}
-        </div>
-        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {dashboardSettings.weeklyReportMode === "workWeek" ? "Work Week is active; Date Range is off." : "Date Range is active; Work Week is off."}
-        </p>
-        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
+        <h2 id="weekly-report-settings-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Daily Report Archive</h2>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">The server generates the previous day&apos;s report at 12:05 AM IST and saves it centrally. Automatic reports use the B0 P1 and P2 suites.</p>
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="add-admin-heading">
@@ -694,59 +747,94 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="mail-heading">
-        <h2 id="mail-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Scheduled Graph email</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">
-          Sends all configured suites as an HTML attachment daily at the selected local time. Requires an IT-approved Entra app with Microsoft Graph Mail.Send application permission and admin consent.
-        </p>
-        <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-[var(--text)]">
-            Tenant ID
-            <input value={graphMail.tenantId} onChange={(event) => updateGraphMail("tenantId", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
-          </label>
-          <label className="block text-sm font-medium text-[var(--text)]">
-            App registration Client ID
-            <input value={graphMail.clientId} onChange={(event) => updateGraphMail("clientId", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
-          </label>
-          <label className="block text-sm font-medium text-[var(--text)]">
-            Sender mailbox
-            <input type="email" value={graphMail.senderEmail} onChange={(event) => updateGraphMail("senderEmail", event.target.value)} placeholder="nga-reports@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
-          </label>
+      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="weekly-mail-heading">
+        <div className="flex items-center gap-2">
+          <FileText className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
+          <h2 id="weekly-mail-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Mail settings</h2>
+        </div>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Send your current Weekly Report using your Intel SMTP account. The password is used only for this send and is not saved by the app.</p>
+        <div className="mt-4 grid max-w-3xl gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium text-[var(--text)]">
             Recipient
-            <input type="email" value={graphMail.recipientEmail} onChange={(event) => updateGraphMail("recipientEmail", event.target.value)} placeholder="abcd@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+            <input type="email" value={smtpRecipient} onChange={(event) => setSmtpRecipient(event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="email" />
           </label>
           <label className="block text-sm font-medium text-[var(--text)]">
-            Daily send time
-            <input type="time" value={graphMail.sendAt} onChange={(event) => updateGraphMail("sendAt", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
-          </label>
-          <label className="block text-sm font-medium text-[var(--text)]">
-            Timezone (IANA)
-            <input value={graphMail.timeZone} onChange={(event) => updateGraphMail("timeZone", event.target.value)} placeholder="Asia/Kolkata" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
-          </label>
-          <label className="block text-sm font-medium text-[var(--text)] sm:col-span-2">
-            Microsoft Graph client secret
-            <input type="password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} placeholder={graphMail.clientSecretConfigured ? "Saved encrypted; leave blank to keep current secret" : "Enter client secret"} autoComplete="new-password" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+            Intel mail password
+            <input type="password" value={smtpPassword} onChange={(event) => setSmtpPassword(event.target.value)} placeholder="Enter password to send" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
           </label>
         </div>
-        <label className="mt-4 inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--text)]">
-          <input type="checkbox" checked={graphMail.enabled} onChange={(event) => updateGraphMail("enabled", event.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
-          Enable daily scheduled email
-        </label>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button type="button" onClick={() => void saveGraphMailSettings()} disabled={mailBusy} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)] disabled:opacity-50">
-            Save mail settings
+        <p className="mt-3 text-xs text-[var(--text-muted)]">Sender: krishna.kunal@intel.com · Secure SMTP with TLS</p>
+        {weeklyMailSummary ? (
+          <p className="mt-3 text-sm text-[var(--text)]">
+            Report ready: {new Date(weeklyMailSummary.from).toLocaleDateString()} – {new Date(weeklyMailSummary.to).toLocaleDateString()} · {weeklyMailSummary.suites.length} suite{weeklyMailSummary.suites.length === 1 ? "" : "s"} · {weeklyMailSummary.latestPassed} passed · {weeklyMailSummary.latestFailed} failed
+          </p>
+        ) : (
+          <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Create or load a Weekly Report first.</p>
+        )}
+        <div className="mt-4 flex flex-wrap items-center gap-4">
+          <button type="button" onClick={() => void sendWeeklyReportMail()} disabled={mailBusy || !weeklyMailSummary || !smtpPassword.trim() || !smtpRecipient.trim()} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-50">
+            <Send className="h-4 w-4" aria-hidden="true" />{mailBusy ? "Sending…" : "Send Weekly Report"}
           </button>
-          <button type="button" onClick={() => void sendTestMail()} disabled={mailBusy || !graphMail.clientSecretConfigured} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text)] disabled:opacity-50">
-            Send test email
-          </button>
+          {weeklyMailError && <p className="text-sm text-red-600" role="alert">{weeklyMailError}</p>}
+          {weeklyMailMessage && <p className="text-sm text-emerald-700" role="status" aria-live="polite">{weeklyMailMessage}</p>}
         </div>
-        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {mailMessage || (graphMail.enabled ? `Enabled · daily at ${graphMail.sendAt} (${graphMail.timeZone})` : "Scheduled email is disabled.")}
-          {graphMail.lastSentAt && ` · Last sent ${new Date(graphMail.lastSentAt).toLocaleString()}`}
-        </p>
-        {(mailError || graphMail.lastError) && <p className="mt-2 text-sm text-red-600" role="alert">{mailError || graphMail.lastError}</p>}
       </section>
+
+      <details className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="mail-heading">
+        <summary id="mail-heading" className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Advanced: scheduled Microsoft Graph email</summary>
+        <div className="mt-4">
+          <p className="mt-2 text-sm text-[var(--text-muted)]">
+            Sends all configured suites as an HTML attachment daily at the selected local time. Requires an IT-approved Entra app with Microsoft Graph Mail.Send application permission and admin consent.
+          </p>
+          <div className="mt-4 grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-medium text-[var(--text)]">
+              Tenant ID
+              <input value={graphMail.tenantId} onChange={(event) => updateGraphMail("tenantId", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
+            </label>
+            <label className="block text-sm font-medium text-[var(--text)]">
+              App registration Client ID
+              <input value={graphMail.clientId} onChange={(event) => updateGraphMail("clientId", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
+            </label>
+            <label className="block text-sm font-medium text-[var(--text)]">
+              Sender mailbox
+              <input type="email" value={graphMail.senderEmail} onChange={(event) => updateGraphMail("senderEmail", event.target.value)} placeholder="nga-reports@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-[var(--text)]">
+              Recipient
+              <input type="email" value={graphMail.recipientEmail} onChange={(event) => updateGraphMail("recipientEmail", event.target.value)} placeholder="abcd@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-[var(--text)]">
+              Daily send time
+              <input type="time" value={graphMail.sendAt} onChange={(event) => updateGraphMail("sendAt", event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-[var(--text)]">
+              Timezone (IANA)
+              <input value={graphMail.timeZone} onChange={(event) => updateGraphMail("timeZone", event.target.value)} placeholder="Asia/Kolkata" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+            </label>
+            <label className="block text-sm font-medium text-[var(--text)] sm:col-span-2">
+              Microsoft Graph client secret
+              <input type="password" value={clientSecret} onChange={(event) => setClientSecret(event.target.value)} placeholder={graphMail.clientSecretConfigured ? "Saved encrypted; leave blank to keep current secret" : "Enter client secret"} autoComplete="new-password" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" />
+            </label>
+          </div>
+          <label className="mt-4 inline-flex cursor-pointer items-center gap-2 text-sm font-medium text-[var(--text)]">
+            <input type="checkbox" checked={graphMail.enabled} onChange={(event) => updateGraphMail("enabled", event.target.checked)} className="h-4 w-4 accent-[var(--accent)]" />
+            Enable daily scheduled email
+          </label>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button type="button" onClick={() => void saveGraphMailSettings()} disabled={mailBusy} className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)] disabled:opacity-50">
+              Save mail settings
+            </button>
+            <button type="button" onClick={() => void sendTestMail()} disabled={mailBusy || !graphMail.clientSecretConfigured} className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text)] disabled:opacity-50">
+              Send test email
+            </button>
+          </div>
+          <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
+            {mailMessage || (graphMail.enabled ? `Enabled · daily at ${graphMail.sendAt} (${graphMail.timeZone})` : "Scheduled email is disabled.")}
+            {graphMail.lastSentAt && ` · Last sent ${new Date(graphMail.lastSentAt).toLocaleString()}`}
+          </p>
+          {(mailError || graphMail.lastError) && <p className="mt-2 text-sm text-red-600" role="alert">{mailError || graphMail.lastError}</p>}
+        </div>
+      </details>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="network-heading">
         <h2 id="network-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Intel NGAi network</h2>

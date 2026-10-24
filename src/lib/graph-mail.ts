@@ -35,6 +35,46 @@ async function getAccessToken(settings: GraphMailSettings & { clientSecret: stri
   return result.access_token;
 }
 
+async function sendHtmlAttachment(
+  settings: GraphMailSettings & { clientSecret: string },
+  subject: string,
+  messageHtml: string,
+  filename: string,
+  attachmentHtml: string,
+) {
+  if (Buffer.byteLength(attachmentHtml, "utf8") > 2_000_000) {
+    throw new Error("The report is too large to email as an attachment. Reduce the report size and try again.");
+  }
+  const accessToken = await getAccessToken(settings);
+  const graphBase = process.env.GRAPH_API_BASE_URL?.replace(/\/$/, "") ?? "https://graph.microsoft.com/v1.0";
+  const url = `${graphBase}/users/${encodeURIComponent(settings.senderEmail)}/sendMail`;
+  const response = await undiciRequest(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
+    body: JSON.stringify({
+      message: {
+        subject,
+        body: { contentType: "HTML", content: messageHtml },
+        toRecipients: [{ emailAddress: { address: settings.recipientEmail } }],
+        attachments: [{
+          "@odata.type": "#microsoft.graph.fileAttachment",
+          name: filename,
+          contentType: "text/html",
+          contentBytes: Buffer.from(attachmentHtml, "utf8").toString("base64"),
+        }],
+      },
+      saveToSentItems: true,
+    }),
+    headersTimeout: 20_000,
+    bodyTimeout: 20_000,
+  });
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    const errorText = (await response.body.text()).slice(0, 1000);
+    throw new Error(`Microsoft Graph sendMail failed (${response.statusCode})${errorText ? `: ${errorText}` : ""}`);
+  }
+  await response.body.dump();
+}
+
 export async function sendLatestGraphReport(
   settings: GraphMailSettings & { clientSecret: string },
   testMessage = false,
@@ -55,33 +95,6 @@ export async function sendLatestGraphReport(
   const sentAt = new Date().toLocaleString("en-US", { timeZone: settings.timeZone, dateStyle: "medium", timeStyle: "short" });
   const suiteList = normalizeSuiteNames(run.meta.filter.value).map(escapeHtml).join(", ");
   const messageHtml = `<p>${testMessage ? "This is a test email from NGA Execution Tracker." : "Your scheduled NGA execution report is attached."}</p><p><b>Suites:</b> ${suiteList}</p><p><b>Tests:</b> ${run.summary.tests} &nbsp; <b>Passed:</b> ${run.summary.passed} &nbsp; <b>Failed:</b> ${run.summary.failed} &nbsp; <b>Blocked:</b> ${run.summary.blocked}</p><p><b>Snapshot captured:</b> ${escapeHtml(sentAt)}</p>`;
-  const accessToken = await getAccessToken(settings);
-  const graphBase = process.env.GRAPH_API_BASE_URL?.replace(/\/$/, "") ?? "https://graph.microsoft.com/v1.0";
-  const url = `${graphBase}/users/${encodeURIComponent(settings.senderEmail)}/sendMail`;
-  const response = await undiciRequest(url, {
-    method: "POST",
-    headers: { authorization: `Bearer ${accessToken}`, "content-type": "application/json" },
-    body: JSON.stringify({
-      message: {
-        subject: `${testMessage ? "[Test] " : ""}NGA execution report - ${sentAt}`,
-        body: { contentType: "HTML", content: messageHtml },
-        toRecipients: [{ emailAddress: { address: settings.recipientEmail } }],
-        attachments: [{
-          "@odata.type": "#microsoft.graph.fileAttachment",
-          name: filename,
-          contentType: "text/html",
-          contentBytes: Buffer.from(html, "utf8").toString("base64"),
-        }],
-      },
-      saveToSentItems: true,
-    }),
-    headersTimeout: 20_000,
-    bodyTimeout: 20_000,
-  });
-  if (response.statusCode < 200 || response.statusCode >= 300) {
-    const errorText = (await response.body.text()).slice(0, 1000);
-    throw new Error(`Microsoft Graph sendMail failed (${response.statusCode})${errorText ? `: ${errorText}` : ""}`);
-  }
-  await response.body.dump();
+  await sendHtmlAttachment(settings, `${testMessage ? "[Test] " : ""}NGA execution report - ${sentAt}`, messageHtml, filename, html);
   return { sentTo: settings.recipientEmail, filename, runId: run.meta.runId };
 }

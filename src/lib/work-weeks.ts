@@ -2,6 +2,29 @@ const DAY_MS = 86_400_000;
 const WEEK_MS = 7 * DAY_MS;
 const IST_OFFSET_MS = 330 * 60_000;
 
+export function getISTDateKey(date = new Date()) {
+  return new Date(date.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10);
+}
+
+export function getISTDayRange(dateKey: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) throw new TypeError("Select a valid report date.");
+  const day = new Date(`${dateKey}T00:00:00.000Z`);
+  if (Number.isNaN(day.getTime()) || day.toISOString().slice(0, 10) !== dateKey) {
+    throw new TypeError("Select a valid report date.");
+  }
+  const from = new Date(day.getTime() - IST_OFFSET_MS);
+  return { from, to: new Date(from.getTime() + DAY_MS) };
+}
+
+export function getDailyReportLabel(dateKey: string) {
+  const date = new Date(`${dateKey}T12:00:00.000Z`);
+  if (Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== dateKey) {
+    throw new TypeError("Select a valid report date.");
+  }
+  const day = new Date(`${dateKey}T00:00:00.000Z`).getUTCDay() || 7;
+  return `${getIsoWorkWeekLabel(date)}.${day}`;
+}
+
 function mondayOf(day: number) {
   return day - ((new Date(day).getUTCDay() + 6) % 7) * DAY_MS;
 }

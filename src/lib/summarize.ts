@@ -47,12 +47,17 @@ function countBuckets(rows: TestRow[]) {
 }
 
 function countBucketized(rows: TestRow[]) {
-  const bucketized = rows.filter((row) => row.bucket === "Failed" && row.bucketName);
-  const bucketizedWithHsd = bucketized.filter((row) => /\d{10,}/.test(row.bucketName ?? "")).length;
+  const bucketized = rows.filter((row) => row.bucket === "Failed");
+  const hasHsdId = (row: TestRow) => /\d{10,}/.test(row.bucketName?.trim() ?? "");
+  const bucketizedWithHsd = bucketized.filter(hasHsdId).length;
+  const bucketizedUnderTriage = bucketized.filter((row) => Boolean(row.bucketName?.trim()) && !hasHsdId(row)).length;
+  const bucketizedNoHsd = bucketized.filter((row) => !row.bucketName?.trim()).length;
   return {
     bucketized: bucketized.length,
     bucketizedWithHsd,
-    bucketizedWithoutHsd: bucketized.length - bucketizedWithHsd,
+    bucketizedUnderTriage,
+    bucketizedNoHsd,
+    bucketizedWithoutHsd: bucketizedUnderTriage,
   };
 }
 

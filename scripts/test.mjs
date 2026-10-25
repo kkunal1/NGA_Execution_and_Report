@@ -398,10 +398,12 @@ const bucketRows = bucketNames.map((bucketName, index) => ({
   ...rows[0], id: `bucket-${index}`, bucket: "Failed", state: "Failed", domain: "pv_security", bucketName,
 }));
 const bucketSummary = summarize([...bucketRows, { ...rows[0], id: "unbucketed", bucket: "Failed", domain: "pv_security" }]);
-assert.equal(bucketSummary.bucketized, 9);
+assert.equal(bucketSummary.bucketized, 10);
 assert.equal(bucketSummary.bucketizedWithHsd, 5);
-assert.equal(bucketSummary.bucketizedWithoutHsd, 4);
-assert.equal(bucketSummary.byDomain[0].bucketizedWithHsd + bucketSummary.byDomain[0].bucketizedWithoutHsd, bucketSummary.byDomain[0].bucketized);
+assert.equal(bucketSummary.bucketizedUnderTriage, 4);
+assert.equal(bucketSummary.bucketizedNoHsd, 1);
+assert.equal(bucketSummary.bucketizedWithoutHsd, bucketSummary.bucketizedUnderTriage);
+assert.equal(bucketSummary.byDomain[0].bucketizedWithHsd + bucketSummary.byDomain[0].bucketizedUnderTriage + bucketSummary.byDomain[0].bucketizedNoHsd, bucketSummary.byDomain[0].bucketized);
 
 const octoberWeeks = getWorkWeeks(new Date("2026-10-08T06:00:00Z"));
 const mondayRange = getISTDayRange("2026-10-19");

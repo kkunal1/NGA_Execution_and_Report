@@ -2,12 +2,21 @@ import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { config } from "./config";
+import { summarize } from "./summarize";
 import type { RunResult } from "./types";
 
 const LATEST = "latest.json";
 const ABORTED_LATEST = "aborted-latest.json";
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 const RUN_FILE = /^(?:\d{17}|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
+
+function refreshLegacyBucketSummary(run: RunResult): RunResult {
+  const summary = run.summary as RunResult["summary"] & { bucketizedNoHsd?: number };
+  if (typeof summary.bucketizedNoHsd === "number" && summary.byDomain.every((domain) => typeof domain.bucketizedNoHsd === "number")) {
+    return run;
+  }
+  return { ...run, summary: summarize(run.rows) };
+}
 
 export type AbortedSnapshot = { suiteNames: string[]; rows: import("./types").TestRow[]; fetchedAt: string };
 
@@ -70,7 +79,7 @@ export async function saveAbortedSnapshot(suiteNames: string[], rows: import("./
 export async function loadLatest(): Promise<RunResult | null> {
   try {
     const body = await fs.readFile(path.join(config.dataDir, LATEST), "utf8");
-    return JSON.parse(body) as RunResult;
+    return refreshLegacyBucketSummary(JSON.parse(body) as RunResult);
   } catch {
     return null;
   }
@@ -94,7 +103,7 @@ export async function loadRun(runId: string): Promise<RunResult | null> {
   if (!SAFE_ID.test(runId)) return null;
   try {
     const body = await fs.readFile(path.join(config.dataDir, `${runId}.json`), "utf8");
-    return JSON.parse(body) as RunResult;
+    return refreshLegacyBucketSummary(JSON.parse(body) as RunResult);
   } catch {
     return null;
   }

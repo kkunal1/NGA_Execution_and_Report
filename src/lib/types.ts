@@ -38,6 +38,8 @@ export type Summary = {
   failed: number;
   bucketized: number;
   bucketizedWithHsd: number;
+  bucketizedUnderTriage: number;
+  bucketizedNoHsd: number;
   bucketizedWithoutHsd: number;
   blocked: number;
   inProgress: number;
@@ -66,6 +68,8 @@ export type Summary = {
     failed: number;
     bucketized: number;
     bucketizedWithHsd: number;
+    bucketizedUnderTriage: number;
+    bucketizedNoHsd: number;
     bucketizedWithoutHsd: number;
     blocked: number;
     inProgress: number;

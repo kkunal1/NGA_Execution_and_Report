@@ -1,6 +1,6 @@
 import { createTransport } from "nodemailer";
 import type { WeeklyReport } from "./weekly-report";
-import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSubject } from "./weekly-report-email";
+import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSignatureText, weeklyReportEmailSubject } from "./weekly-report-email";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REPORT_COPY_EMAIL = "krishna.kunal@intel.com";
@@ -49,7 +49,7 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
       to: recipients,
       cc,
       subject,
-      text: `Weekly Report for ${from} to ${toDate}. Recipients: ${recipients.join(", ")}. Suites: ${report.suites.join(", ")}. Attempted: ${attempted}; passed: ${report.latestPassed}; failed: ${report.latestFailed}. The formatted report is included below and attached.`,
+      text: `Weekly Report for ${from} to ${toDate}. Recipients: ${recipients.join(", ")}. Suites: ${report.suites.join(", ")}. Attempted: ${attempted}; passed: ${report.latestPassed}; failed: ${report.latestFailed}. The formatted report is included below and attached.${weeklyReportEmailSignatureText}`,
       html: reportHtml,
       attachments: [{
         filename,

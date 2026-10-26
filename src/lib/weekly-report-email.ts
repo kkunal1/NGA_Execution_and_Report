@@ -14,6 +14,8 @@ export function weeklyReportEmailFilename(report: WeeklyReport) {
   return `${weeklyReportEmailSubject(report)}.html`;
 }
 
+export const weeklyReportEmailSignatureText = "\n\n\nRegards,\nKrishna Kunal";
+
 function escapeHtml(value: string) {
   return value.replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char] ?? char);
 }
@@ -27,7 +29,7 @@ function cell(value: string | number, header = false, darkHeader = false) {
 }
 
 function table(headers: string[], rows: (string | number)[][], darkHeader = true) {
-  return `<div style="overflow-x:auto;margin:10px 0 20px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${headers.map((header) => cell(header, true, darkHeader)).join("")}</tr></thead><tbody>${rows.length ? rows.map((row) => `<tr>${row.map((value) => cell(value)).join("")}</tr>`).join("") : `<tr>${cell("No data")}</tr>`}</tbody></table></div>`;
+  return `<div style="overflow-x:auto;margin:10px 0 20px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${headers.map((header) => cell(header, true, darkHeader)).join("")}</tr></thead><tbody>${rows.length ? rows.map((row, index) => `<tr style="background:${index % 2 ? "#edf3f9" : "#fff"}">${row.map((value) => cell(value)).join("")}</tr>`).join("") : `<tr>${cell("No data")}</tr>`}</tbody></table></div>`;
 }
 
 function breakdownCell(value: string | number, color: string, bold = false) {
@@ -46,7 +48,7 @@ function failureTable(title: string, rows: FailureRow[]) {
     ? escapeHtml(title)
     : `${escapeHtml(title.slice(0, breakdownIndex))}<span style="color:#dc2626">${escapeHtml(title.slice(breakdownIndex, breakdownIndex + breakdownText.length))}</span>${escapeHtml(title.slice(breakdownIndex + breakdownText.length))}`;
   const headers = ["Validation Group", "PreBoot", "PreTest", "Test", "PostTest", "Cleanup", "Total", "Sighting IDs Attached"];
-  const body = rows.map((row) => `<tr>${[
+  const body = rows.map((row, index) => `<tr style="background:${index % 2 ? "#edf3f9" : "#fff"}">${[
     breakdownCell(formatValidationGroupName(row.group), "#244c70", true),
     ...stages.map((stage) => breakdownCell(row.stages[stage] ?? 0, row.stages[stage] ? "#bb3846" : "#72869a", Boolean(row.stages[stage]))),
     breakdownCell(row.total, "#204e76", true),
@@ -188,5 +190,7 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport) {
   const visibleReportDocument = report.sectionVisibility?.overallFailureBreakdown === false
     ? removeTableSection(domainSummaryBeforeBreakdown, overallFailureHeading)
     : domainSummaryBeforeBreakdown;
-  return visibleReportDocument.replace(/<header\b[^>]*>[\s\S]*?<\/header>/, `${noteCallout}${statusSummary}`);
+  return visibleReportDocument
+    .replace(/<header\b[^>]*>[\s\S]*?<\/header>/, `${noteCallout}${statusSummary}`)
+    .replace("</main>", `<p style="margin:36px 0 0;font-size:13px;line-height:1.6">Regards,<br>Krishna Kunal</p></main>`);
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
 import type { CpuBaseLabels, TeamPlatformCount, WeeklyReportLink } from "@/lib/weekly-report-settings";
+import { DEFAULT_CPU_ALLOCATION_TITLE, displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 
 type EditableTeamPlatformCount = { id: string; team: string; x1: string; x4: string; extraCounts: string[] };
 type EditableCpuColumn = { id: string; label: string };
@@ -18,7 +19,7 @@ export default function UpdateWeeklyReportPage() {
   const [cpuColumns, setCpuColumns] = useState<EditableCpuColumn[]>([]);
   const [cpuBaseLabels, setCpuBaseLabels] = useState<CpuBaseLabels>({ team: "Team", x1: "X1", x4: "X4" });
   const [editingBaseLabel, setEditingBaseLabel] = useState<keyof CpuBaseLabels | null>(null);
-  const [cpuBreakdownTitle, setCpuBreakdownTitle] = useState("DMR X1 and X4 CPU breakdown");
+  const [cpuBreakdownTitle, setCpuBreakdownTitle] = useState(DEFAULT_CPU_ALLOCATION_TITLE);
   const [cpuTitleEditing, setCpuTitleEditing] = useState(false);
   const [hsdesLink, setHsdesLink] = useState("");
   const [links, setLinks] = useState<EditableWeeklyReportLink[]>([]);
@@ -46,7 +47,7 @@ export default function UpdateWeeklyReportPage() {
           if (result.bkc) setBkc(result.bkc);
           setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
           setCpuBaseLabels(result.cpuBaseLabels ?? { team: "Team", x1: "X1", x4: "X4" });
-          setCpuBreakdownTitle(result.cpuBreakdownTitle ?? "DMR X1 and X4 CPU breakdown");
+          setCpuBreakdownTitle(displayCpuAllocationTitle(result.cpuBreakdownTitle));
           setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: createRowId(), team: row.team, x1: String(row.x1), x4: String(row.x4), extraCounts: (row.extraCounts ?? []).map(String) })));
           setHsdesLink(result.hsdesLink ?? "");
           setLinks((result.links ?? []).map((link) => ({ ...link, id: createRowId() })));

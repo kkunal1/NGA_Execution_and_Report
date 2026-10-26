@@ -1,10 +1,11 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config";
+import { DEFAULT_CPU_ALLOCATION_TITLE, displayCpuAllocationTitle } from "./weekly-report-display";
 
 export const DEFAULT_WEEKLY_REPORT_BKC = "BKC#40";
 export const DEFAULT_WEEKLY_REPORT_HSDES_LINK = "https://hsdes.intel.com/appstore/generalapps/#/pages/community/15010407190?queryId=16032003391&articleId=16031656538";
-export const DEFAULT_CPU_BREAKDOWN_TITLE = "DMR X1 and X4 CPU breakdown";
+export const DEFAULT_CPU_BREAKDOWN_TITLE = DEFAULT_CPU_ALLOCATION_TITLE;
 export const DEFAULT_CPU_BASE_LABELS = { team: "Team", x1: "X1", x4: "X4" };
 export type CpuBaseLabels = { team: string; x1: string; x4: string };
 export type TeamPlatformCount = { team: string; x1: number; x4: number; extraCounts?: number[] };
@@ -31,7 +32,7 @@ export function normalizeWeeklyReportBkc(value: unknown): string | null {
 export function normalizeCpuBreakdownTitle(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const title = value.trim();
-  return title && title.length <= 120 && !/[\r\n]/.test(title) ? title : null;
+  return title && title.length <= 120 && !/[\r\n]/.test(title) ? displayCpuAllocationTitle(title) : null;
 }
 
 export function normalizeWeeklyReportHsdesLink(value: unknown): string | null {

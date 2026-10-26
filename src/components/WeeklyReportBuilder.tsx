@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, Copy, Download, FileText, FolderOpen, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
+import { displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
@@ -650,7 +651,7 @@ export default function WeeklyReportBuilder() {
             {reportLinks.map((link) => <li key={`${link.label}-${link.url}`}><a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">{link.label}</a></li>)}
             {!reportLinks.length && <li className="text-[#647e94]">No links configured.</li>}
           </ul>
-          <h4 className="mt-5 text-sm font-bold text-[#204e76]">{report.cpuBreakdownTitle || "DMR X1 and X4 CPU breakdown"}</h4>
+          <h4 className="mt-5 text-sm font-bold text-[#204e76]">{displayCpuAllocationTitle(report.cpuBreakdownTitle)}</h4>
           <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
             <table className="w-full min-w-[480px] border-collapse text-left text-sm">
               <thead className="bg-[#204e76] text-xs font-semibold text-white">

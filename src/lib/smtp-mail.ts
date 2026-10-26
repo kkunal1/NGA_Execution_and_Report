@@ -3,6 +3,7 @@ import type { WeeklyReport } from "./weekly-report";
 import { renderWeeklyReportEmailHtml, weeklyReportEmailSubject } from "./weekly-report-email";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const REPORT_COPY_EMAIL = "krishna.kunal@intel.com";
 
 export async function sendWeeklySmtpReport(senderEmail: string, password: string, recipient: string, report: WeeklyReport) {
   const sender = senderEmail.trim();
@@ -35,6 +36,7 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
     const result = await transporter.sendMail({
       from: sender,
       to,
+      cc: REPORT_COPY_EMAIL,
       subject: weeklyReportEmailSubject(report),
       text: `Weekly Report for ${from} to ${toDate}. Suites: ${report.suites.join(", ")}. Attempted: ${attempted}; passed: ${report.latestPassed}; failed: ${report.latestFailed}. The formatted report is included below and attached.`,
       html: reportHtml,

@@ -116,7 +116,10 @@ export default function WeeklyReportMailPanel() {
           <input type="password" value={smtpPassword} onChange={(event) => setSmtpPassword(event.target.value)} placeholder="Enter password to send" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
         </label>
       </div>
-      <p className="mt-3 text-xs text-[var(--text-muted)]">Sign in is attempted as the sender address using secure SMTP with TLS.</p>
+      <div className="mt-3 space-y-1 text-xs text-[var(--text-muted)]">
+        <p>Sign in is attempted as the sender address using secure SMTP with TLS.</p>
+        <p><span className="font-medium text-[var(--text)]">CC:</span> Krishna Kunal (krishna.kunal@intel.com)</p>
+      </div>
       {weeklyMailSummary ? (
         <p className="mt-3 text-sm text-[var(--text)]">
           Report ready for {weeklyMailSummary.reportLabel} · {weeklyMailSummary.suites.length} suites · {weeklyMailSummary.latestPassed} passed · {weeklyMailSummary.latestFailed} failed · {weeklyMailSummary.blockedLines} blocked · {weeklyMailSummary.latestNotRun} not run

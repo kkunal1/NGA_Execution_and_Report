@@ -5,6 +5,7 @@ import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, fi
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
 import { renderWeeklyReportEmailHtml, weeklyReportEmailSubject } from "../src/lib/weekly-report-email.ts";
+import { displayCpuAllocationTitle } from "../src/lib/weekly-report-display.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
 import { canAccessWeeklyReportFeature } from "../src/lib/weekly-report-access.ts";
 import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
@@ -294,9 +295,10 @@ assert.ok(weeklyEmailHtml.includes("Failure analysis and rerun in progress."));
 assert.ok(weeklyEmailHtml.includes("Execution is currently running with <strong>BKC#WW41</strong>."));
 assert.ok(!weeklyEmailHtml.includes("Failure Breakdown in Selected Window"));
 assert.ok(weeklyEmailHtml.includes("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>"));
+assert.ok(weeklyEmailHtml.includes(">DMR System Allocation Across Teams</h2>"));
 assert.ok(weeklyEmailHtml.includes("font-weight:600;color:#fff;background:#204e76;"), "failure breakdown header uses the web report's navy and white style");
 assert.ok(weeklyEmailHtml.indexOf(">Execution Summary</h2>") < weeklyEmailHtml.indexOf(">Links</h2>"));
-assert.ok(weeklyEmailHtml.indexOf(">Links</h2>") < weeklyEmailHtml.indexOf(">CPU Breakdown</h2>"));
+assert.ok(weeklyEmailHtml.indexOf(">Links</h2>") < weeklyEmailHtml.indexOf(">DMR System Allocation Across Teams</h2>"));
 assert.equal(weeklyEmailHtml.match(/>Links<\/h2>/g)?.length, 1, "email includes the links section only once");
 const emailWithMetricCards = renderWeeklyReportEmailHtml({
   ...weeklyReport,
@@ -311,10 +313,10 @@ assert.equal(emailWithMetricCards.match(/<td width="20%"/g)?.length, 5, "email s
 assert.ok(emailWithMetricCards.includes("Execution Attempted"));
 assert.ok(emailWithMetricCards.includes("1,091 <span style=\"font-size:12px;font-weight:600\">85.9%</span>"));
 assert.ok(emailWithMetricCards.includes("868 <span style=\"font-size:12px;font-weight:600\">68.3%</span>"));
-assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW43.6");
-assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW43.7");
-assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW44.1");
-assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW44.2");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW43.6");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW43.7");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW44.1");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW44.2");
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.cpuBaseLabels, DEFAULT_CPU_BASE_LABELS);
 assert.equal(weeklyReport.cpuBreakdownTitle, DEFAULT_CPU_BREAKDOWN_TITLE);
@@ -328,11 +330,13 @@ assert.deepEqual(reportWithColumn.teamPlatformCounts[0].extraCounts, [4]);
 assert.deepEqual(weeklyReport.links, customReportLinks);
 assert.deepEqual(DEFAULT_WEEKLY_REPORT_LINKS, [customReportLinks[0]]);
 assert.equal(DEFAULT_WEEKLY_REPORT_BKC, "BKC#40");
-assert.equal(DEFAULT_CPU_BREAKDOWN_TITLE, "DMR X1 and X4 CPU breakdown");
+assert.equal(DEFAULT_CPU_BREAKDOWN_TITLE, "DMR System Allocation Across Teams");
 assert.deepEqual(normalizeCpuBaseLabels({ team: " Teams ", x1: "B1-X1", x4: "B1-X4" }), { team: "Teams", x1: "B1-X1", x4: "B1-X4" });
 assert.equal(normalizeCpuBaseLabels({ team: "Teams", x1: "teams", x4: "B1-X4" }), null);
 assert.equal(normalizeCpuBaseLabels({ team: "Teams", x1: "", x4: "B1-X4" }), null);
 assert.equal(normalizeCpuBreakdownTitle("  CPU totals  "), "CPU totals");
+assert.equal(normalizeCpuBreakdownTitle("DMR CPU Allocation Across Teams"), "DMR System Allocation Across Teams");
+assert.equal(displayCpuAllocationTitle("DMR X1 and X4 CPU breakdown"), "DMR System Allocation Across Teams");
 assert.equal(normalizeCpuBreakdownTitle(" "), null);
 assert.equal(normalizeCpuBreakdownTitle("First\nSecond"), null);
 assert.deepEqual(DEFAULT_TEAM_PLATFORM_COUNTS, [

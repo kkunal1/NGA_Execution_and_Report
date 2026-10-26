@@ -25,7 +25,12 @@ function cell(value: string | number, header = false, darkHeader = false) {
   const weight = header
     ? darkHeader ? "font-weight:600;color:#fff;background:#204e76;" : "font-weight:600;color:#204e76;background:#eaf1f7;"
     : "";
-  return `<${tag} style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;white-space:pre-line;${weight}">${escapeHtml(String(value))}</${tag}>`;
+  const text = String(value);
+  const statusSeparator = text.indexOf("\nStatus: ");
+  const content = statusSeparator < 0
+    ? escapeHtml(text)
+    : `${escapeHtml(text.slice(0, statusSeparator))}<br><strong>Status: ${escapeHtml(text.slice(statusSeparator + 9))}</strong>`;
+  return `<${tag} style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;${weight}">${content}</${tag}>`;
 }
 
 function table(headers: string[], rows: (string | number)[][], darkHeader = true) {

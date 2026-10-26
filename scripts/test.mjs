@@ -297,10 +297,10 @@ assert.ok(!weeklyEmailHtml.includes('color:#60788e;font-size:12px">Generated '),
 assert.ok(weeklyEmailHtml.includes("DMR-AP1 B0 Execution Status Summary"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
 assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
-assert.ok(weeklyEmailHtml.includes("Status: Open"));
+assert.ok(weeklyEmailHtml.includes("<br><strong>Status: Open</strong>"));
 assert.ok(weeklyEmailHtml.endsWith("Regards,<br>Krishna Kunal</p></main></body></html>"));
 assert.equal(weeklyReportEmailSignatureText, "\n\n\nRegards,\nKrishna Kunal");
-assert.ok(weeklyEmailHtml.includes('<tr style="background:#edf3f9"><td style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;white-space:pre-line;">'), "standard email tables alternate row shading");
+assert.ok(weeklyEmailHtml.includes('<tr style="background:#edf3f9"><td style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;">'), "standard email tables alternate row shading");
 assert.ok(weeklyEmailHtml.includes('<tr style="background:#edf3f9"><td style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;color:#244c70;'), "failure tables alternate row shading");
 assert.ok(weeklyEmailHtml.indexOf("DOMAIN-WISE DATA") < weeklyEmailHtml.indexOf("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>"));
 assert.ok(weeklyEmailHtml.includes("color:#bb3846;"), "email failure-stage counts use the web report red");

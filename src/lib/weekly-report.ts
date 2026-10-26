@@ -295,7 +295,7 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     planned: latestValid.length,
     latestPassed: latestValid.filter((run) => latestBucket(run) === "Passed").length,
     latestFailed: latestValid.filter((run) => latestBucket(run) === "Failed").length,
-    latestRerunPendingRunning: latestValid.filter((run) => (run.rerunIndex ?? 0) > 0 && run.state?.trim().toLowerCase() === "pendingrunning").length,
+    latestRerunPendingRunning: latestValid.filter((run) => (run.rerunIndex ?? 0) > 0 && /^pending(running|gatekeepers?)$/.test(run.state?.trim().toLowerCase() ?? "")).length,
     blockedLines: latestValid.filter((run) => latestBucket(run) === "Blocked").length,
     latestInProgress: latestValid.filter((run) => latestBucket(run) === "In Progress").length,
     latestNotRun: latestValid.filter((run) => latestBucket(run) === "Not Run").length,

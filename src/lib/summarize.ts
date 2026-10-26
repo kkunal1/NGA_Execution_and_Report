@@ -123,7 +123,7 @@ export function summarize(rows: TestRow[]): Summary {
   return {
     tests: rows.length,
     executionAttempted: c.Passed + c.Failed + rows.filter((row) =>
-      row.rerunIndex != null && row.rerunIndex > 0 && row.state.trim().toLowerCase() === "pendingrunning",
+      row.rerunIndex != null && row.rerunIndex > 0 && /^pending(running|gatekeepers?)$/.test(row.state.trim().toLowerCase()),
     ).length,
     passed: c.Passed,
     failed: c.Failed,

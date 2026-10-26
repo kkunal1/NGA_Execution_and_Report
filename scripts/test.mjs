@@ -223,6 +223,11 @@ const attemptedSummary = summarize([
   { ...rows[2], id: "rerun-pending", bucket: "Not Run", state: "PendingRunning", rerunIndex: 2 },
 ]);
 assert.equal(attemptedSummary.executionAttempted, 3, "attempted includes pass + fail + PendingRunning reruns with index > 0");
+assert.equal(summarize([
+  { ...rows[0], bucket: "Passed", state: "Passed", rerunIndex: 0 },
+  { ...rows[2], id: "gk-first", bucket: "Not Run", state: "PendingGatekeepers", rerunIndex: 0 },
+  { ...rows[2], id: "gk-rerun", bucket: "Not Run", state: "PendingGatekeepers", rerunIndex: 1 },
+]).executionAttempted, 2, "attempted includes PendingGatekeepers reruns with index > 0");
 const customReportLinks = [
   { label: "PV VV Exec Summary Dashboard", url: "https://xve-dashboards.intel.com/dmr-ap/execution-summary" },
   { label: "DMR Query", url: "https://hsdes.intel.com/appstore/generalapps/#/pages/community/15010407190?queryId=16032003391" },

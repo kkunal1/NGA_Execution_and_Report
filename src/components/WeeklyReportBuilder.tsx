@@ -682,7 +682,7 @@ export default function WeeklyReportBuilder() {
               </div>
             ))}
           </div>
-          <p className="mt-2 text-xs text-[#60788e]">Execution Attempted includes {report.latestRerunPendingRunning} PendingRunning reruns (index &gt; 0); those tests also appear in the current Not run count.</p>
+          <p className="mt-2 text-xs text-[#60788e]">Execution Attempted includes {report.latestRerunPendingRunning} PendingRunning/PendingGatekeepers reruns (index &gt; 0); those tests also appear in the current Not run count.</p>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">DMR-AP1 B0 Execution Status Summary</h4>
           <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-[#253646]">
             <li><strong>{reportPercentage(attempted, report.planned)}</strong> tests have been attempted, with <strong className="text-[#087a50]">{reportPercentage(report.latestPassed, report.planned)} passed</strong>, <strong className="text-[#bb3846]">{reportPercentage(report.latestFailed, report.planned)} failed</strong> and <strong className="text-[#aa5420]">{reportPercentage(report.blockedLines, report.planned)} blocked</strong>.</li>

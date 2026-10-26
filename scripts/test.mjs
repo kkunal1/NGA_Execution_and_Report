@@ -278,6 +278,19 @@ assert.ok(weeklyEmailHtml.includes("font-weight:600;color:#fff;background:#204e7
 assert.ok(weeklyEmailHtml.indexOf(">Execution Summary</h2>") < weeklyEmailHtml.indexOf(">Links</h2>"));
 assert.ok(weeklyEmailHtml.indexOf(">Links</h2>") < weeklyEmailHtml.indexOf(">CPU Breakdown</h2>"));
 assert.equal(weeklyEmailHtml.match(/>Links<\/h2>/g)?.length, 1, "email includes the links section only once");
+const emailWithMetricCards = renderWeeklyReportEmailHtml({
+  ...weeklyReport,
+  planned: 1270,
+  latestPassed: 868,
+  latestFailed: 190,
+  latestRerunPendingRunning: 33,
+  blockedLines: 63,
+  latestNotRun: 147,
+});
+assert.equal(emailWithMetricCards.match(/<td width="20%"/g)?.length, 5, "email summary uses five equal-width metric cards");
+assert.ok(emailWithMetricCards.includes("Execution Attempted"));
+assert.ok(emailWithMetricCards.includes("1,091 <span style=\"font-size:12px;font-weight:600\">85.9%</span>"));
+assert.ok(emailWithMetricCards.includes("868 <span style=\"font-size:12px;font-weight:600\">68.3%</span>"));
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW43.6");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW43.7");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW44.1");

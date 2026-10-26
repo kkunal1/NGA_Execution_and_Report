@@ -3,7 +3,7 @@
 import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, FilePenLine, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { LayoutDashboard, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, FilePenLine, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight, Send } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
@@ -13,7 +13,6 @@ const NAV = [
   { href: "/", label: "Execution Report", icon: LayoutDashboard },
   { href: "/pool-systems", label: "B0 Pool Systems", icon: Server, visibilityKey: "poolSystems" as const },
   { href: "/weekly-report", label: "Weekly Report", icon: CalendarDays, visibilityKey: "weeklyReport" as const },
-  { href: "/update-weekly-report", label: "Update Weekly Report", icon: FilePenLine, adminOnly: true },
   { href: "/execution-time", label: "Check Execution Time", icon: Timer, visibilityKey: "executionTime" as const },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
@@ -70,6 +69,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [menuVisibility, setMenuVisibility] = useState<MenuVisibility>({ poolSystems: false, weeklyReport: false, executionTime: false, ngaiTestRunData: false });
+  const [weeklyReportExpanded, setWeeklyReportExpanded] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [refreshSchedule, setRefreshSchedule] = useState<RefreshSchedule>({ nextRefreshAt: null, intervalSeconds: 0 });
@@ -163,6 +163,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       router.replace("/");
     }
   }, [pathname, role, router]);
+
+  useEffect(() => {
+    if (pathname === "/weekly-report" || pathname.startsWith("/weekly-report/") || pathname === "/update-weekly-report") {
+      setWeeklyReportExpanded(true);
+    }
+  }, [pathname]);
 
   const signIn = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -286,7 +292,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || pathname === "/update-weekly-report")) {
+  if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || pathname === "/update-weekly-report" || pathname === "/weekly-report/send-email")) {
     return <div className="flex min-h-screen items-center justify-center bg-[var(--page-bg)] text-sm text-[var(--text-muted)]">Opening viewer dashboard…</div>;
   }
 
@@ -309,6 +315,44 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             if (item.adminOnly) return false;
             return !item.visibilityKey || menuVisibility[item.visibilityKey];
           }).map(({ href, label, icon: Icon }) => {
+            if (href === "/weekly-report") {
+              const active = pathname === href || pathname.startsWith("/weekly-report/") || pathname === "/update-weekly-report";
+              return (
+                <div key={href}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sidebarCollapsed) {
+                        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "0");
+                        setSidebarCollapsed(false);
+                      }
+                      setWeeklyReportExpanded((expanded) => !expanded);
+                    }}
+                    title={sidebarCollapsed ? label : undefined}
+                    aria-label={label}
+                    aria-expanded={weeklyReportExpanded}
+                    aria-controls="weekly-report-submenu"
+                    className={`flex w-full items-center gap-3 rounded-lg py-2.5 text-left text-sm font-medium transition ${sidebarCollapsed ? "justify-center px-2" : "px-3"} ${active ? "bg-[var(--accent)] text-[var(--accent-text)] shadow-sm" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!sidebarCollapsed && <><span className="min-w-0 flex-1 truncate">{label}</span>{weeklyReportExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}</>}
+                  </button>
+                  {weeklyReportExpanded && !sidebarCollapsed && (
+                    <div id="weekly-report-submenu" className="ml-4 mt-1 space-y-1 border-l border-white/15 pl-2">
+                      <Link href="/weekly-report" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/weekly-report" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
+                        <CalendarDays className="h-3.5 w-3.5 shrink-0" /><span>Daily/Weekly Report</span>
+                      </Link>
+                      {role === "admin" && <Link href="/update-weekly-report" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/update-weekly-report" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
+                        <FilePenLine className="h-3.5 w-3.5 shrink-0" /><span>Update Weekly Report</span>
+                      </Link>}
+                      {role === "admin" && <Link href="/weekly-report/send-email" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/weekly-report/send-email" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
+                        <Send className="h-3.5 w-3.5 shrink-0" /><span>Send Report Over Email</span>
+                      </Link>}
+                    </div>
+                  )}
+                </div>
+              );
+            }
             const active = pathname === href;
             return (
               <Link

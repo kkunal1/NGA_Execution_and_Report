@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
-import { renderWeeklyReportEmailHtml, weeklyReportEmailSubject } from "../src/lib/weekly-report-email.ts";
+import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSubject } from "../src/lib/weekly-report-email.ts";
 import { displayCpuAllocationTitle } from "../src/lib/weekly-report-display.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
 import { parseEmailAddressList } from "../src/lib/smtp-mail.ts";
@@ -317,6 +317,13 @@ assert.ok(!emailWithoutOptionalSections.includes("DMR System Allocation Across T
 assert.ok(!emailWithoutOptionalSections.includes("DOMAIN-WISE DATA"));
 assert.ok(!emailWithoutOptionalSections.includes("Overall Validation Group"));
 assert.ok(!emailWithoutOptionalSections.includes("HSDs with 5 or More Failed Runs"));
+const emailWithDomainRowsAndStaleVisibility = renderWeeklyReportEmailHtml({
+  ...weeklyReport,
+  domainSummary: domainSummaryReport.domainSummary,
+  sectionVisibility: { cpuAllocation: false, hsdFailureSummary: false, domainWise: false, overallFailureBreakdown: false },
+});
+assert.ok(emailWithDomainRowsAndStaleVisibility.includes("DOMAIN-WISE DATA"));
+assert.ok(emailWithDomainRowsAndStaleVisibility.includes("Security"));
 assert.ok(weeklyEmailHtml.indexOf("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>") < weeklyEmailHtml.indexOf("HSDs with 5 or More Failed Runs"));
 assert.ok(weeklyEmailHtml.includes(">DMR System Allocation Across Teams</h2>"));
 assert.ok(weeklyEmailHtml.includes("font-weight:600;color:#fff;background:#204e76;"), "failure breakdown header uses the web report's navy and white style");
@@ -340,6 +347,7 @@ assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW43.7");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW44.1");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW44.2");
+assert.equal(weeklyReportEmailFilename({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), `${weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" })}.html`);
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.cpuBaseLabels, DEFAULT_CPU_BASE_LABELS);
 assert.equal(weeklyReport.cpuBreakdownTitle, DEFAULT_CPU_BREAKDOWN_TITLE);

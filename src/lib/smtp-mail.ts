@@ -1,6 +1,6 @@
 import { createTransport } from "nodemailer";
 import type { WeeklyReport } from "./weekly-report";
-import { renderWeeklyReportEmailHtml, weeklyReportEmailSubject } from "./weekly-report-email";
+import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSubject } from "./weekly-report-email";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REPORT_COPY_EMAIL = "krishna.kunal@intel.com";
@@ -27,7 +27,8 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
 
   const from = report.from.slice(0, 10);
   const toDate = report.to.slice(0, 10);
-  const filename = `weekly-report-${from}-to-${toDate}.html`;
+  const subject = weeklyReportEmailSubject(report);
+  const filename = weeklyReportEmailFilename(report);
   const attempted = report.latestPassed + report.latestFailed + report.latestRerunPendingRunning;
   const reportHtml = renderWeeklyReportEmailHtml(report);
   const transporter = createTransport({
@@ -47,7 +48,7 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
       from: sender,
       to: recipients,
       cc,
-      subject: weeklyReportEmailSubject(report),
+      subject,
       text: `Weekly Report for ${from} to ${toDate}. Recipients: ${recipients.join(", ")}. Suites: ${report.suites.join(", ")}. Attempted: ${attempted}; passed: ${report.latestPassed}; failed: ${report.latestFailed}. The formatted report is included below and attached.`,
       html: reportHtml,
       attachments: [{

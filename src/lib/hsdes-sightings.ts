@@ -170,15 +170,25 @@ async function fetchHsdesQueryPage(baseUrl: URL, startAt: number, maxResults: nu
   }
 }
 
-export function extractHsdesArticleTitle(value: unknown): string | null {
+export type HsdesArticleDetails = { title: string; status: string };
+
+export function extractHsdesArticleDetails(value: unknown): HsdesArticleDetails | null {
   if (typeof value !== "object" || value === null) return null;
   const records = (value as { data?: unknown }).data;
   if (!Array.isArray(records) || typeof records[0] !== "object" || records[0] === null) return null;
-  const title = (records[0] as { title?: unknown }).title;
-  return typeof title === "string" && title.trim() ? title.trim() : null;
+  const record = records[0] as { title?: unknown; status?: unknown };
+  if (typeof record.title !== "string" || !record.title.trim()) return null;
+  return {
+    title: record.title.trim(),
+    status: typeof record.status === "string" && record.status.trim() ? record.status.trim() : "Unknown",
+  };
 }
 
-async function fetchHsdesArticleTitle(id: string): Promise<string> {
+export function extractHsdesArticleTitle(value: unknown): string | null {
+  return extractHsdesArticleDetails(value)?.title ?? null;
+}
+
+async function fetchHsdesArticleDetail(id: string): Promise<HsdesArticleDetails> {
   const curl = process.platform === "win32" ? "curl.exe" : "curl";
   const args = [
     "--negotiate", "--user", ":", "--silent", "--show-error", "--max-time", "60",
@@ -208,18 +218,23 @@ async function fetchHsdesArticleTitle(id: string): Promise<string> {
   } catch {
     throw new Error(`The HSD title lookup for ${id} returned invalid JSON.`);
   }
-  const title = extractHsdesArticleTitle(payload);
-  if (!title) throw new Error(`HSD ${id} did not return an article title.`);
-  return title;
+  const details = extractHsdesArticleDetails(payload);
+  if (!details) throw new Error(`HSD ${id} did not return article details.`);
+  return details;
+}
+
+export async function fetchHsdesArticleDetails(ids: string[]): Promise<Record<string, HsdesArticleDetails>> {
+  const uniqueIds = [...new Set(ids)];
+  if (uniqueIds.length > 25 || uniqueIds.some((id) => !/^\d{10,}$/.test(id))) {
+    throw new Error("HSD detail lookup requires up to 25 numeric article IDs.");
+  }
+  const details = await Promise.all(uniqueIds.map(async (id) => [id, await fetchHsdesArticleDetail(id)] as const));
+  return Object.fromEntries(details);
 }
 
 export async function fetchHsdesArticleTitles(ids: string[]): Promise<Record<string, string>> {
-  const uniqueIds = [...new Set(ids)];
-  if (uniqueIds.length > 25 || uniqueIds.some((id) => !/^\d{10,}$/.test(id))) {
-    throw new Error("HSD title lookup requires up to 25 numeric article IDs.");
-  }
-  const titles = await Promise.all(uniqueIds.map(async (id) => [id, await fetchHsdesArticleTitle(id)] as const));
-  return Object.fromEntries(titles);
+  const details = await fetchHsdesArticleDetails(ids);
+  return Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.title]));
 }
 
 export async function fetchHsdesIssueData(linkValue: string): Promise<{ countsByDomain: Record<string, number>; issues: HsdesIssue[]; agedIssues: AgedHsdesIssue[] }> {

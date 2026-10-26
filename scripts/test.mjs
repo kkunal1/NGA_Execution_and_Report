@@ -13,7 +13,7 @@ import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
 import { poolMembershipFilter } from "../src/lib/pool-systems.ts";
 import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
-import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleTitle, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
+import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
@@ -279,6 +279,7 @@ assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2
 const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   ...weeklyReport,
   hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
+  hsdFailureStatuses: { "15020010517": "Open" },
   domainSummary: domainSummaryReport.domainSummary,
   links: [
     { label: "<script>alert('x')</script>", url: "https://example.com" },
@@ -296,9 +297,10 @@ assert.ok(!weeklyEmailHtml.includes('color:#60788e;font-size:12px">Generated '),
 assert.ok(weeklyEmailHtml.includes("DMR-AP1 B0 Execution Status Summary"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
 assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
+assert.ok(weeklyEmailHtml.includes("Status: Open"));
 assert.ok(weeklyEmailHtml.endsWith("Regards,<br>Krishna Kunal</p></main></body></html>"));
 assert.equal(weeklyReportEmailSignatureText, "\n\n\nRegards,\nKrishna Kunal");
-assert.ok(weeklyEmailHtml.includes('<tr style="background:#edf3f9"><td style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;">'), "standard email tables alternate row shading");
+assert.ok(weeklyEmailHtml.includes('<tr style="background:#edf3f9"><td style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;white-space:pre-line;">'), "standard email tables alternate row shading");
 assert.ok(weeklyEmailHtml.includes('<tr style="background:#edf3f9"><td style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;color:#244c70;'), "failure tables alternate row shading");
 assert.ok(weeklyEmailHtml.indexOf("DOMAIN-WISE DATA") < weeklyEmailHtml.indexOf("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>"));
 assert.ok(weeklyEmailHtml.includes("color:#bb3846;"), "email failure-stage counts use the web report red");
@@ -441,6 +443,8 @@ assert.deepEqual(extractHsdesIssues(allIssueRecords).map(({ id, title, domain })
 ]);
 assert.equal(extractHsdesArticleTitle({ data: [{ title: "Direct HSD article title" }] }), "Direct HSD article title");
 assert.equal(extractHsdesArticleTitle({ data: [{ title: " " }] }), null);
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: " Direct HSD title ", status: " Open " }] }), { title: "Direct HSD title", status: "Open" });
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct HSD title" }] }), { title: "Direct HSD title", status: "Unknown" });
 assert.deepEqual(extractHsdesIssuesOlderThan(allIssueRecords).map(({ id }) => id), ["aged-security"]);
 const pagedIssueRecords = Array.from({ length: 20001 }, (_, index) => ({ id: `paged-${index + 1}` }));
 const pageStarts = [];

@@ -112,6 +112,7 @@ export type WeeklyReport = {
   hsdesIssues: HsdesIssue[];
   agedHsdesIssues: AgedHsdesIssue[];
   hsdFailureTitles?: Record<string, string>;
+  hsdFailureStatuses?: Record<string, string>;
   stageDetails: StageDetail[];
 };
 

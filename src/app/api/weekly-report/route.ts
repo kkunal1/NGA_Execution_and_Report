@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
 import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
-import { fetchHsdesArticleTitles, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
+import { fetchHsdesArticleDetails, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
 import { B0_SUITES } from "@/lib/pool-systems";
 import { generateCompleteWeeklyReport } from "@/lib/weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "@/lib/work-weeks";
@@ -17,7 +17,11 @@ export async function GET(req: Request) {
     const reportSettings = await getWeeklyReportSettings();
     const hsdIds = new URL(req.url).searchParams.getAll("hsdId");
     if (hsdIds.length) {
-      return NextResponse.json({ hsdFailureTitles: await fetchHsdesArticleTitles(hsdIds) });
+      const details = await fetchHsdesArticleDetails(hsdIds);
+      return NextResponse.json({
+        hsdFailureTitles: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.title])),
+        hsdFailureStatuses: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.status])),
+      });
     }
     return NextResponse.json(await fetchHsdesIssueData(reportSettings.hsdesLink));
   } catch (error) {

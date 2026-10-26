@@ -203,30 +203,34 @@ export default function WeeklyReportBuilder() {
     }
   }, []);
 
-  const missingHsdTitleIds = (report?.hsdFailureSummaries ?? [])
-    .filter((summary) => summary.failedRuns >= 5 && !report?.hsdFailureTitles?.[summary.hsdId])
+  const missingHsdDetailsIds = (report?.hsdFailureSummaries ?? [])
+    .filter((summary) => summary.failedRuns >= 5 && (!report?.hsdFailureTitles?.[summary.hsdId] || !report?.hsdFailureStatuses?.[summary.hsdId]))
     .map((summary) => summary.hsdId);
-  const missingHsdTitleKey = missingHsdTitleIds.join("|");
+  const missingHsdDetailsKey = missingHsdDetailsIds.join("|");
 
   useEffect(() => {
-    if (!report || !missingHsdTitleIds.length) return;
+    if (!report || !missingHsdDetailsIds.length) return;
     let cancelled = false;
     const query = new URLSearchParams();
-    missingHsdTitleIds.forEach((id) => query.append("hsdId", id));
+    missingHsdDetailsIds.forEach((id) => query.append("hsdId", id));
     setHsdesDetailsLoading(true);
     setHsdesDetailsError("");
     void fetch(`/api/weekly-report?${query.toString()}`, { cache: "no-store" })
       .then(async (response) => {
-        const result = (await response.json()) as { hsdFailureTitles?: Record<string, string>; error?: string };
-        if (!response.ok) throw new Error(result.error || "Could not retrieve HSD titles.");
-        if (!result.hsdFailureTitles || missingHsdTitleIds.some((id) => !result.hsdFailureTitles?.[id])) {
-          throw new Error("HSDES did not return titles for every HSD in this report.");
+        const result = (await response.json()) as { hsdFailureTitles?: Record<string, string>; hsdFailureStatuses?: Record<string, string>; error?: string };
+        if (!response.ok) throw new Error(result.error || "Could not retrieve HSD details.");
+        if (!result.hsdFailureTitles || !result.hsdFailureStatuses || missingHsdDetailsIds.some((id) => !result.hsdFailureTitles?.[id] || !result.hsdFailureStatuses?.[id])) {
+          throw new Error("HSDES did not return a title and status for every HSD in this report.");
         }
-        return result.hsdFailureTitles;
+        return { titles: result.hsdFailureTitles, statuses: result.hsdFailureStatuses };
       })
-      .then((titles) => {
+      .then(({ titles, statuses }) => {
         if (cancelled) return;
-        const refreshedReport = { ...report, hsdFailureTitles: { ...report.hsdFailureTitles, ...titles } };
+        const refreshedReport = {
+          ...report,
+          hsdFailureTitles: { ...report.hsdFailureTitles, ...titles },
+          hsdFailureStatuses: { ...report.hsdFailureStatuses, ...statuses },
+        };
         setReport(refreshedReport);
         try {
           window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek: reportLabel, selectedReportKey: selectedReportKeyRef.current }));
@@ -235,13 +239,13 @@ export default function WeeklyReportBuilder() {
         }
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setHsdesDetailsError(cause instanceof Error ? cause.message : "Could not retrieve HSD titles.");
+        if (!cancelled) setHsdesDetailsError(cause instanceof Error ? cause.message : "Could not retrieve HSD details.");
       })
       .finally(() => {
         if (!cancelled) setHsdesDetailsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [report, missingHsdTitleKey, reportLabel]);
+  }, [report, missingHsdDetailsKey, reportLabel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -579,7 +583,10 @@ export default function WeeklyReportBuilder() {
                     <td className="break-all px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/article/${encodeURIComponent(summary.hsdId)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{summary.hsdId}</a></td>
                     <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#bb3846]">{summary.failedRuns}</td>
                     <td className="px-3 py-2">{domain}</td>
-                    <td className="break-words px-3 py-2">{report.hsdFailureTitles?.[summary.hsdId] || issue?.title || "Loading title…"}</td>
+                    <td className="break-words px-3 py-2">
+                      {report.hsdFailureTitles?.[summary.hsdId] || issue?.title || "Loading title…"}
+                      <div className="mt-1 text-xs text-[#647e94]">Status: {report.hsdFailureStatuses?.[summary.hsdId] || issue?.status || (hsdesDetailsLoading ? "Loading…" : "Unknown")}</div>
+                    </td>
                   </tr>
                 );
               })}

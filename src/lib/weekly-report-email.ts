@@ -25,7 +25,7 @@ function cell(value: string | number, header = false, darkHeader = false) {
   const weight = header
     ? darkHeader ? "font-weight:600;color:#fff;background:#204e76;" : "font-weight:600;color:#204e76;background:#eaf1f7;"
     : "";
-  return `<${tag} style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;${weight}">${escapeHtml(String(value))}</${tag}>`;
+  return `<${tag} style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;white-space:pre-line;${weight}">${escapeHtml(String(value))}</${tag}>`;
 }
 
 function table(headers: string[], rows: (string | number)[][], darkHeader = true) {
@@ -127,11 +127,12 @@ function renderWeeklyReportEmailDocument(report: WeeklyReport) {
     if (!hasCustomTotal) values.push(row.x1 + row.x4 + (row.extraCounts ?? []).reduce((sum, count) => sum + count, 0));
     return values;
   });
+  const hsdIssueById = new Map((report.hsdesIssues ?? []).map((issue) => [issue.id, issue]));
   const hsdRows = (report.hsdFailureSummaries ?? []).filter((summary) => summary.failedRuns >= 5).map((summary) => [
     summary.hsdId,
     summary.failedRuns,
     summary.domains.map((domain) => formatValidationGroupName(domain.domain)).join(", "),
-    report.hsdFailureTitles?.[summary.hsdId] ?? "",
+    `${report.hsdFailureTitles?.[summary.hsdId] ?? hsdIssueById.get(summary.hsdId)?.title ?? ""}\nStatus: ${report.hsdFailureStatuses?.[summary.hsdId] ?? hsdIssueById.get(summary.hsdId)?.status ?? "Unknown"}`,
   ]);
   const issueRows = (report.hsdesIssues ?? []).map((issue) => [formatValidationGroupName(issue.domain), issue.id, issue.title || "Untitled", issue.status, issue.daysOpen]);
   const stageRows = (report.stageDetails ?? []).map((detail) => [detail.stage, formatValidationGroupName(detail.group), detail.config, detail.testLine, detail.step, detail.subState, detail.count]);

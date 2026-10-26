@@ -1,4 +1,4 @@
-import { canonicalizeSightingDomain, fetchHsdesArticleTitles, fetchHsdesIssueData } from "./hsdes-sightings";
+import { canonicalizeSightingDomain, fetchHsdesArticleDetails, fetchHsdesIssueData } from "./hsdes-sightings";
 import { generateWeeklyReport } from "./weekly-report";
 import { getWeeklyReportSettings } from "./weekly-report-settings";
 import { getDashboardSettings } from "./dashboard-settings";
@@ -26,8 +26,10 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
       }))
     : report.backlogFailures;
   const hsdFailureSummaries = sectionVisibility.hsdFailureSummary ? report.hsdFailureSummaries : [];
-  const hsdIds = hsdFailureSummaries.filter((summary) => summary.failedRuns >= 6).map((summary) => summary.hsdId);
-  const hsdFailureTitles = sectionVisibility.hsdFailureSummary ? await fetchHsdesArticleTitles(hsdIds) : {};
+  const hsdIds = hsdFailureSummaries.filter((summary) => summary.failedRuns >= 5).map((summary) => summary.hsdId);
+  const hsdArticleDetails = sectionVisibility.hsdFailureSummary ? await fetchHsdesArticleDetails(hsdIds) : {};
+  const hsdFailureTitles = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.title]));
+  const hsdFailureStatuses = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.status]));
   return {
     ...report,
     sectionVisibility,
@@ -39,6 +41,7 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
     hsdesIssues: sightingResult.issues,
     agedHsdesIssues: sightingResult.agedIssues,
     hsdFailureTitles,
+    hsdFailureStatuses,
     sightingWarning: sightingResult.warning,
   };
 }

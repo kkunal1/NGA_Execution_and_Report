@@ -7,7 +7,7 @@ const stages: Stage[] = ["Preboot", "PreTest", "Test", "PostTest", "Cleanup"];
 
 export function weeklyReportEmailSubject(report: WeeklyReport) {
   const reportDate = getISTDateKey(new Date(report.from));
-  return `DMR AP1 PV B0 Execution Weekly Status Report For ${getDailyReportLabel(reportDate)}`;
+  return `DMR AP1 PV B0 Execution Daily Status Report For ${getDailyReportLabel(reportDate)}`;
 }
 
 export function weeklyReportEmailFilename(report: WeeklyReport) {
@@ -181,6 +181,7 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport) {
   const hsdHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">HSDs with 5 or More Failed Runs</h2>`;
   const overallFailureHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Overall Validation Group <span style="color:#dc2626">Failure Breakdown</span></h2>`;
   let reportDocument = renderWeeklyReportEmailDocument(report)
+    .replace(/Weekly Execution Report/g, "Daily Execution Report")
     .replace(/<h2 style="[^"]*">Execution Summary<\/h2>[\s\S]*?(?=<h2 style="[^"]*">CPU Breakdown<\/h2>)/, executionSummary)
     .replace(oldCpuHeading, cpuHeading)
     .replace(/<h2 style="[^"]*">Links<\/h2>[\s\S]*?(?=<footer)/, "")

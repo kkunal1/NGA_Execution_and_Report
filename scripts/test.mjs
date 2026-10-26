@@ -295,6 +295,8 @@ assert.ok(weeklyEmailHtml.includes("padding:10px 14px;border-left:3px solid #d7a
 assert.ok(!weeklyEmailHtml.includes("Suites:</b>"), "email header omits the suite list");
 assert.ok(!weeklyEmailHtml.includes('color:#60788e;font-size:12px">Generated '), "email header omits the generated timestamp");
 assert.ok(weeklyEmailHtml.includes("DMR-AP1 B0 Execution Status Summary"));
+assert.ok(weeklyEmailHtml.includes("<title>Daily Execution Report</title>"));
+assert.ok(!weeklyEmailHtml.includes("Weekly Execution Report"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
 assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
 assert.ok(weeklyEmailHtml.includes("<br><strong>Status: Open</strong>"));
@@ -349,11 +351,11 @@ assert.equal(emailWithMetricCards.match(/<td width="20%"/g)?.length, 5, "email s
 assert.ok(emailWithMetricCards.includes("Execution Attempted"));
 assert.ok(emailWithMetricCards.includes("1,091 <span style=\"font-size:12px;font-weight:600\">85.9%</span>"));
 assert.ok(emailWithMetricCards.includes("868 <span style=\"font-size:12px;font-weight:600\">68.3%</span>"));
-assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW43.6");
-assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW43.7");
-assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW44.1");
-assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Weekly Status Report For WW44.2");
-assert.equal(weeklyReportEmailFilename({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), `${weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" })}.html`);
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW43.6");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW43.7");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW44.1");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW44.2");
+assert.equal(weeklyReportEmailFilename({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW44.2.html");
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.cpuBaseLabels, DEFAULT_CPU_BASE_LABELS);
 assert.equal(weeklyReport.cpuBreakdownTitle, DEFAULT_CPU_BREAKDOWN_TITLE);

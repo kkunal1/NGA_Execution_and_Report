@@ -8,6 +8,8 @@ export type DashboardSettings = {
   showManualAborts: boolean;
   poolSystems: boolean;
   weeklyReport: boolean;
+  weeklyReportUpdate: boolean;
+  weeklyReportEmail: boolean;
   weeklyReportMode: "dateRange" | "workWeek";
   executionTime: boolean;
   ngaiTestRunData: boolean;
@@ -19,6 +21,8 @@ export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
   showManualAborts: true,
   poolSystems: false,
   weeklyReport: false,
+  weeklyReportUpdate: false,
+  weeklyReportEmail: false,
   weeklyReportMode: "dateRange",
   executionTime: false,
   ngaiTestRunData: false,
@@ -35,6 +39,8 @@ export async function getDashboardSettings(): Promise<DashboardSettings> {
       showManualAborts: saved.showManualAborts ?? DEFAULT_DASHBOARD_SETTINGS.showManualAborts,
       poolSystems: saved.poolSystems ?? DEFAULT_DASHBOARD_SETTINGS.poolSystems,
       weeklyReport: saved.weeklyReport ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReport,
+      weeklyReportUpdate: saved.weeklyReportUpdate ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReportUpdate,
+      weeklyReportEmail: saved.weeklyReportEmail ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReportEmail,
       weeklyReportMode: saved.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
       executionTime: saved.executionTime ?? DEFAULT_DASHBOARD_SETTINGS.executionTime,
       ngaiTestRunData: saved.ngaiTestRunData ?? DEFAULT_DASHBOARD_SETTINGS.ngaiTestRunData,

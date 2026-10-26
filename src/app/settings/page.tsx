@@ -32,6 +32,8 @@ type DashboardSettings = {
   showManualAborts: boolean;
   poolSystems: boolean;
   weeklyReport: boolean;
+  weeklyReportUpdate: boolean;
+  weeklyReportEmail: boolean;
   weeklyReportMode: "dateRange" | "workWeek";
   executionTime: boolean;
   ngaiTestRunData: boolean;
@@ -76,6 +78,8 @@ export default function SettingsPage() {
     showManualAborts: true,
     poolSystems: false,
     weeklyReport: false,
+    weeklyReportUpdate: false,
+    weeklyReportEmail: false,
     weeklyReportMode: "dateRange",
     executionTime: false,
     ngaiTestRunData: false,
@@ -157,6 +161,8 @@ export default function SettingsPage() {
           showManualAborts: data.showManualAborts !== false,
           poolSystems: data.poolSystems,
           weeklyReport: data.weeklyReport === true,
+          weeklyReportUpdate: data.weeklyReportUpdate === true,
+          weeklyReportEmail: data.weeklyReportEmail === true,
           weeklyReportMode: data.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
           executionTime: data.executionTime,
           ngaiTestRunData: data.ngaiTestRunData,
@@ -555,13 +561,15 @@ export default function SettingsPage() {
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="dashboard-heading">
         <h2 id="dashboard-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Dashboard charts</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">Chart toggles apply to all signed-in users. Menu visibility toggles apply to viewers; administrators always see the menus.</p>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Chart toggles apply to all signed-in users. Viewer menu access is controlled here; administrators always have access.</p>
         <div className="mt-4 space-y-3">
           {([
             ["executionStatusSplit", "Execution status split"],
             ["rawStateValues", "Raw state values"],
             ["poolSystems", "B0 Pool Systems menu"],
             ["weeklyReport", "Daily/Weekly Report menu (root/viewer access)"],
+            ["weeklyReportUpdate", "Update Weekly Report submenu for root/viewers"],
+            ["weeklyReportEmail", "Send Report Over Email submenu for root/viewers"],
             ["executionTime", "Check Execution Time menu"],
             ["ngaiTestRunData", "NGA Test Run Data menu (admin only)"],
           ] as const).map(([key, label]) => (

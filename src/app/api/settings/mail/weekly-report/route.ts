@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/auth";
 import { sendWeeklySmtpReport } from "@/lib/smtp-mail";
+import { authorizeWeeklyReportFeature } from "@/lib/weekly-report-access";
 import type { WeeklyReport } from "@/lib/weekly-report";
 
 export const runtime = "nodejs";
@@ -19,21 +19,24 @@ function isWeeklyReport(value: unknown): value is WeeklyReport {
 }
 
 export async function POST(req: Request) {
-  const denied = await authorizeRequest(req, true);
+  const denied = await authorizeWeeklyReportFeature(req, "weeklyReportEmail");
   if (denied) return denied;
 
   try {
-    const body = (await req.json()) as { report?: unknown; password?: unknown; recipient?: unknown };
+    const body = (await req.json()) as { report?: unknown; sender?: unknown; password?: unknown; recipient?: unknown };
     if (!isWeeklyReport(body.report)) {
       return NextResponse.json({ error: "Create or load a valid Weekly Report before sending." }, { status: 400 });
     }
     if (typeof body.password !== "string" || !body.password.trim()) {
       return NextResponse.json({ error: "Enter your SMTP password before sending." }, { status: 400 });
     }
+    if (typeof body.sender !== "string") {
+      return NextResponse.json({ error: "Enter a sender email address." }, { status: 400 });
+    }
     if (typeof body.recipient !== "string") {
       return NextResponse.json({ error: "Enter a recipient email address." }, { status: 400 });
     }
-    const result = await sendWeeklySmtpReport(body.password, body.recipient, body.report);
+    const result = await sendWeeklySmtpReport(body.sender, body.password, body.recipient, body.report);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Weekly Report email failed." }, { status: 502 });

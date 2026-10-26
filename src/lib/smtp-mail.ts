@@ -2,14 +2,14 @@ import { createTransport } from "nodemailer";
 import type { WeeklyReport } from "./weekly-report";
 import { renderWeeklyReportEmailHtml, weeklyReportEmailSubject } from "./weekly-report-email";
 
-const DEFAULT_SENDER = "krishna.kunal@intel.com";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export async function sendWeeklySmtpReport(password: string, recipient: string, report: WeeklyReport) {
-  const sender = process.env.MAIL_SMTP_SENDER?.trim() || DEFAULT_SENDER;
+export async function sendWeeklySmtpReport(senderEmail: string, password: string, recipient: string, report: WeeklyReport) {
+  const sender = senderEmail.trim();
   const host = process.env.MAIL_SMTP_HOST?.trim() || "SMTPAUTH.INTEL.COM";
   const port = Number(process.env.MAIL_SMTP_PORT || 587);
   const to = recipient.trim();
+  if (!EMAIL_PATTERN.test(sender)) throw new Error("Enter a valid sender email address.");
   if (!password.trim()) throw new Error("Enter your SMTP password.");
   if (!EMAIL_PATTERN.test(to)) throw new Error("Enter a valid recipient email address.");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("MAIL_SMTP_PORT must be a valid port number.");

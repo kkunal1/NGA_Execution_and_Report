@@ -1,18 +1,18 @@
 import { NextResponse } from "next/server";
-import { authorizeRequest } from "@/lib/auth";
+import { authorizeWeeklyReportFeature } from "@/lib/weekly-report-access";
 import { getWeeklyReportSettings, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks, saveWeeklyReportSettings } from "@/lib/weekly-report-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const denied = await authorizeRequest(req, true);
+  const denied = await authorizeWeeklyReportFeature(req, "weeklyReportUpdate");
   if (denied) return denied;
   return NextResponse.json(await getWeeklyReportSettings());
 }
 
 export async function PUT(req: Request) {
-  const denied = await authorizeRequest(req, true);
+  const denied = await authorizeWeeklyReportFeature(req, "weeklyReportUpdate");
   if (denied) return denied;
   try {
     const body = (await req.json()) as { bkc?: unknown; teamPlatformCounts?: unknown; cpuColumns?: unknown; cpuBaseLabels?: unknown; cpuBreakdownTitle?: unknown; hsdesLink?: unknown; links?: unknown };

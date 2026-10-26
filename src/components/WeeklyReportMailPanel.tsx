@@ -52,7 +52,8 @@ export default function WeeklyReportMailPanel() {
   const [weeklyMailSummary, setWeeklyMailSummary] = useState<Omit<WeeklyReportMailCache, "report"> | null>(null);
   const [weeklyMailMessage, setWeeklyMailMessage] = useState("");
   const [weeklyMailError, setWeeklyMailError] = useState("");
-  const [smtpRecipient, setSmtpRecipient] = useState("krishna.kunal@intel.com");
+  const [smtpSender, setSmtpSender] = useState("");
+  const [smtpRecipient, setSmtpRecipient] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
   const [mailBusy, setMailBusy] = useState(false);
 
@@ -81,7 +82,7 @@ export default function WeeklyReportMailPanel() {
       const response = await fetch("/api/settings/mail/weekly-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ report: cached.report, password: smtpPassword, recipient: smtpRecipient }),
+        body: JSON.stringify({ report: cached.report, sender: smtpSender, password: smtpPassword, recipient: smtpRecipient }),
       });
       const data = (await response.json()) as { error?: string; sentTo?: string; filename?: string };
       if (!response.ok) throw new Error(data.error || "Weekly Report email failed.");
@@ -100,18 +101,22 @@ export default function WeeklyReportMailPanel() {
         <FileText className="h-4 w-4 text-[var(--accent)]" aria-hidden="true" />
         <h1 id="weekly-mail-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Mail settings</h1>
       </div>
-      <p className="mt-2 text-sm text-[var(--text-muted)]">Send your current Weekly Report using your Intel SMTP account. The password is used only for this send and is not saved by the app.</p>
+      <p className="mt-2 text-sm text-[var(--text-muted)]">Send your current Weekly Report using your own Intel SMTP account. Your password is used only for this send and is not saved by the app.</p>
       <div className="mt-4 grid max-w-3xl gap-4 sm:grid-cols-2">
         <label className="block text-sm font-medium text-[var(--text)]">
+          Sender email
+          <input type="email" value={smtpSender} onChange={(event) => setSmtpSender(event.target.value)} placeholder="name@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="email" />
+        </label>
+        <label className="block text-sm font-medium text-[var(--text)]">
           Recipient
-          <input type="email" value={smtpRecipient} onChange={(event) => setSmtpRecipient(event.target.value)} className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="email" />
+          <input type="email" value={smtpRecipient} onChange={(event) => setSmtpRecipient(event.target.value)} placeholder="recipient@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="email" />
         </label>
         <label className="block text-sm font-medium text-[var(--text)]">
           Intel mail password
           <input type="password" value={smtpPassword} onChange={(event) => setSmtpPassword(event.target.value)} placeholder="Enter password to send" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
         </label>
       </div>
-      <p className="mt-3 text-xs text-[var(--text-muted)]">Sender: krishna.kunal@intel.com · Secure SMTP with TLS</p>
+      <p className="mt-3 text-xs text-[var(--text-muted)]">Sign in is attempted as the sender address using secure SMTP with TLS.</p>
       {weeklyMailSummary ? (
         <p className="mt-3 text-sm text-[var(--text)]">
           Report ready for {weeklyMailSummary.reportLabel} · {weeklyMailSummary.suites.length} suites · {weeklyMailSummary.latestPassed} passed · {weeklyMailSummary.latestFailed} failed · {weeklyMailSummary.blockedLines} blocked · {weeklyMailSummary.latestNotRun} not run
@@ -120,7 +125,7 @@ export default function WeeklyReportMailPanel() {
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Create or load a Weekly Report first.</p>
       )}
       <div className="mt-4 flex flex-wrap items-center gap-4">
-        <button type="button" onClick={() => void sendWeeklyReportMail()} disabled={mailBusy || !weeklyMailSummary || !smtpPassword.trim() || !smtpRecipient.trim()} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-50">
+        <button type="button" onClick={() => void sendWeeklyReportMail()} disabled={mailBusy || !weeklyMailSummary || !smtpSender.trim() || !smtpPassword.trim() || !smtpRecipient.trim()} className="inline-flex h-10 shrink-0 items-center justify-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-50">
           <Send className="h-4 w-4" aria-hidden="true" />{mailBusy ? "Sending…" : "Send Weekly Report"}
         </button>
         {weeklyMailError && <p className="text-sm text-red-600" role="alert">{weeklyMailError}</p>}

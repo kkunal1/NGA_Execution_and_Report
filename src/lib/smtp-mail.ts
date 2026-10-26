@@ -9,12 +9,10 @@ export function parseEmailAddressList(value: string, fieldName: string, required
   const addresses = value.split(",").map((address) => address.trim()).filter(Boolean);
   if (required && !addresses.length) throw new Error(`Enter at least one ${fieldName} email address.`);
   if (addresses.length > 50) throw new Error(`Enter no more than 50 ${fieldName} email addresses.`);
-  const unique = new Map<string, string>();
   for (const address of addresses) {
     if (!EMAIL_PATTERN.test(address)) throw new Error(`Invalid ${fieldName} email address: ${address}`);
-    if (!unique.has(address.toLowerCase())) unique.set(address.toLowerCase(), address);
   }
-  return [...unique.values()];
+  return addresses;
 }
 
 export async function sendWeeklySmtpReport(senderEmail: string, password: string, recipientInput: string, ccInput: string, report: WeeklyReport) {
@@ -22,10 +20,7 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
   const host = process.env.MAIL_SMTP_HOST?.trim() || "SMTPAUTH.INTEL.COM";
   const port = Number(process.env.MAIL_SMTP_PORT || 587);
   const recipients = parseEmailAddressList(recipientInput, "recipient", true);
-  const recipientSet = new Set(recipients.map((address) => address.toLowerCase()));
-  const cc = [...new Map([REPORT_COPY_EMAIL, ...parseEmailAddressList(ccInput, "CC")]
-    .filter((address) => !recipientSet.has(address.toLowerCase()))
-    .map((address) => [address.toLowerCase(), address])).values()];
+  const cc = [REPORT_COPY_EMAIL, ...parseEmailAddressList(ccInput, "CC")];
   if (!EMAIL_PATTERN.test(sender)) throw new Error("Enter a valid sender email address.");
   if (!password.trim()) throw new Error("Enter your SMTP password.");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("MAIL_SMTP_PORT must be a valid port number.");

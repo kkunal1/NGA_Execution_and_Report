@@ -272,7 +272,7 @@ assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2
 const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   ...weeklyReport,
   hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
-  domainSummary: hsdSummary.domainSummary,
+  domainSummary: domainSummaryReport.domainSummary,
   links: [
     { label: "<script>alert('x')</script>", url: "https://example.com" },
     { label: "Unsafe link", url: "javascript:alert(1)" },
@@ -288,6 +288,7 @@ assert.ok(!weeklyEmailHtml.includes("Suites:</b>"), "email header omits the suit
 assert.ok(!weeklyEmailHtml.includes('color:#60788e;font-size:12px">Generated '), "email header omits the generated timestamp");
 assert.ok(weeklyEmailHtml.includes("DMR-AP1 B0 Execution Status Summary"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
+assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
 assert.ok(weeklyEmailHtml.indexOf("DOMAIN-WISE DATA") < weeklyEmailHtml.indexOf("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>"));
 assert.ok(weeklyEmailHtml.includes("color:#bb3846;"), "email failure-stage counts use the web report red");
 assert.ok(weeklyEmailHtml.includes("color:#087a78;"), "email sighting counts use the web report teal");

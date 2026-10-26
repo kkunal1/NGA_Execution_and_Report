@@ -113,7 +113,7 @@ export function renderReportHtml(
         <td class="num pass">${d.passed}</td>
         <td class="num">${d.passRatePct}%</td>
         <td class="num fail">${d.failed}</td>
-        <td class="num"><span class="bucketcell"><strong>${d.bucketized ?? 0}</strong><span class="bucketcounts"><span>HSD ${d.bucketizedWithHsd ?? 0}</span><span>Under Triage ${d.bucketizedUnderTriage ?? d.bucketizedWithoutHsd ?? 0}</span><span>Yet to Triage ${d.bucketizedNoHsd ?? 0}</span></span></span></td>
+        <td class="num"><span class="bucketcell"><strong>${d.bucketized ?? 0}</strong><span class="bucketcounts"><span>HSD Raised ${d.bucketizedWithHsd ?? 0}</span><span>Under Triage ${d.bucketizedUnderTriage ?? d.bucketizedWithoutHsd ?? 0}</span><span>Yet to Triage ${d.bucketizedNoHsd ?? 0}</span></span></span></td>
         <td class="num block">${d.blocked}</td>
         <td class="num">${d.notRun}</td>
       </tr>`,

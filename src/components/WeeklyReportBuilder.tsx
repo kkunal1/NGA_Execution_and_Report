@@ -734,7 +734,7 @@ export default function WeeklyReportBuilder() {
                         <div className="flex items-center gap-2.5">
                           <span className="font-semibold">{row.bucketized.toLocaleString()}</span>
                           <span className="flex flex-col whitespace-nowrap text-[11px] leading-4">
-                            <span className="text-sky-600">HSD {row.bucketizedWithHsd}</span>
+                            <span className="text-sky-600">HSD Raised {row.bucketizedWithHsd}</span>
                             <span className="text-orange-500">Under Triage {row.bucketizedUnderTriage}</span>
                             <span className="text-[var(--text-muted)]">Yet to Triage {row.bucketizedNoHsd}</span>
                           </span>
@@ -755,7 +755,7 @@ export default function WeeklyReportBuilder() {
                       <div className="flex items-center gap-2.5">
                         <span>{domainTotals.bucketized.toLocaleString()}</span>
                         <span className="flex flex-col whitespace-nowrap text-[11px] leading-4 font-normal">
-                          <span className="text-sky-700">HSD {domainTotals.bucketizedWithHsd}</span>
+                          <span className="text-sky-700">HSD Raised {domainTotals.bucketizedWithHsd}</span>
                           <span className="text-orange-700">Under Triage {domainTotals.bucketizedUnderTriage}</span>
                           <span className="text-[var(--text-muted)]">Yet to Triage {domainTotals.bucketizedNoHsd}</span>
                         </span>

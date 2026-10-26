@@ -24,7 +24,7 @@ export async function POST(req: Request) {
   if (denied) return denied;
 
   try {
-    const body = (await req.json()) as { report?: unknown; sender?: unknown; password?: unknown; recipient?: unknown };
+    const body = (await req.json()) as { report?: unknown; sender?: unknown; password?: unknown; recipient?: unknown; cc?: unknown };
     if (!isWeeklyReport(body.report)) {
       return NextResponse.json({ error: "Create or load a valid Weekly Report before sending." }, { status: 400 });
     }
@@ -37,9 +37,12 @@ export async function POST(req: Request) {
     if (typeof body.recipient !== "string") {
       return NextResponse.json({ error: "Enter a recipient email address." }, { status: 400 });
     }
+    if (body.cc != null && typeof body.cc !== "string") {
+      return NextResponse.json({ error: "Enter CC email addresses as comma-separated text." }, { status: 400 });
+    }
     const settings = await getDashboardSettings();
     const report = { ...body.report, sectionVisibility: settings.weeklyReportSections };
-    const result = await sendWeeklySmtpReport(body.sender, body.password, body.recipient, report);
+    const result = await sendWeeklySmtpReport(body.sender, body.password, body.recipient, body.cc ?? "", report);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Weekly Report email failed." }, { status: 502 });

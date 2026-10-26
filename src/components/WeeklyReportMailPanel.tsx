@@ -53,7 +53,8 @@ export default function WeeklyReportMailPanel() {
   const [weeklyMailMessage, setWeeklyMailMessage] = useState("");
   const [weeklyMailError, setWeeklyMailError] = useState("");
   const [smtpSender, setSmtpSender] = useState("");
-  const [smtpRecipient, setSmtpRecipient] = useState("");
+  const [smtpRecipient, setSmtpRecipient] = useState("krishna.kunal@intel.com");
+  const [smtpCc, setSmtpCc] = useState("");
   const [smtpPassword, setSmtpPassword] = useState("");
   const [mailBusy, setMailBusy] = useState(false);
 
@@ -82,7 +83,7 @@ export default function WeeklyReportMailPanel() {
       const response = await fetch("/api/settings/mail/weekly-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ report: cached.report, sender: smtpSender, password: smtpPassword, recipient: smtpRecipient }),
+        body: JSON.stringify({ report: cached.report, sender: smtpSender, password: smtpPassword, recipient: smtpRecipient, cc: smtpCc }),
       });
       const data = (await response.json()) as { error?: string; sentTo?: string; filename?: string };
       if (!response.ok) throw new Error(data.error || "Weekly Report email failed.");
@@ -108,8 +109,12 @@ export default function WeeklyReportMailPanel() {
           <input type="email" value={smtpSender} onChange={(event) => setSmtpSender(event.target.value)} placeholder="name@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="email" />
         </label>
         <label className="block text-sm font-medium text-[var(--text)]">
-          Recipient
-          <input type="email" value={smtpRecipient} onChange={(event) => setSmtpRecipient(event.target.value)} placeholder="recipient@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="email" />
+          Recipient email(s)
+          <input type="text" inputMode="email" value={smtpRecipient} onChange={(event) => setSmtpRecipient(event.target.value)} placeholder="person1@intel.com, person2@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="email" />
+        </label>
+        <label className="block text-sm font-medium text-[var(--text)]">
+          CC email(s)
+          <input type="text" inputMode="email" value={smtpCc} onChange={(event) => setSmtpCc(event.target.value)} placeholder="person1@intel.com, person2@intel.com" className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm" autoComplete="off" />
         </label>
         <label className="block text-sm font-medium text-[var(--text)]">
           Intel mail password

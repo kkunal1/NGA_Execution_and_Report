@@ -4,6 +4,7 @@ import { getNgaiApiToken } from "./ngai-token";
 import { bucketOf } from "./normalize";
 import { resolveDispatcher } from "./proxy";
 import type { AgedHsdesIssue, HsdesIssue } from "./hsdes-sightings";
+import type { WeeklyReportSectionSettings } from "./dashboard-settings";
 import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_LINKS, type CpuBaseLabels, type TeamPlatformCount, type WeeklyReportLink } from "./weekly-report-settings";
 
 const PAGE_SIZE = 1000;
@@ -91,6 +92,7 @@ export type WeeklyReport = {
   latestInProgress: number;
   latestNotRun: number;
   domainSummary: WeeklyReportDomainSummary[];
+  sectionVisibility?: WeeklyReportSectionSettings;
   validRuns: number;
   triageRuns: number;
   validLines: number;

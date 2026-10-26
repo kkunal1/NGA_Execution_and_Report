@@ -85,6 +85,15 @@ function safeReportLink(url: string) {
   }
 }
 
+function removeTableSection(documentHtml: string, headingHtml: string) {
+  const headingStart = documentHtml.indexOf(headingHtml);
+  if (headingStart < 0) return documentHtml;
+  const tableStart = documentHtml.indexOf('<div style="overflow-x:auto;margin:10px 0 20px">', headingStart + headingHtml.length);
+  const tableEnd = documentHtml.indexOf("</table></div>", tableStart);
+  if (tableStart < 0 || tableEnd < 0) return documentHtml;
+  return documentHtml.slice(0, headingStart) + documentHtml.slice(tableEnd + "</table></div>".length);
+}
+
 function renderWeeklyReportEmailDocument(report: WeeklyReport) {
   const attempted = report.latestPassed + report.latestFailed + report.latestRerunPendingRunning;
   const from = new Date(report.from).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" });
@@ -142,7 +151,7 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport) {
   ];
   const executionMetricsTable = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:10px 0 20px;border-collapse:collapse;background:#eef4fa;border-top:1px solid #c4d6e5;border-bottom:1px solid #c4d6e5"><tbody><tr>${executionMetrics.map((metric) => `<td width="20%" style="width:20%;padding:14px 10px;vertical-align:top;background:#eef4fa"><div style="border-left:3px solid ${metric.border};padding-left:10px"><div style="color:#4e6c84;font-size:12px;font-weight:500">${metric.label}${metric.detail ? ` <span style="color:#60788e;font-size:10px;font-weight:400">${metric.detail}</span>` : ""}</div><div style="margin-top:4px;color:${metric.color};font-size:19px;font-weight:700">${metric.count.toLocaleString("en-US")} <span style="font-size:12px;font-weight:600">${percentage(metric.count)}</span></div></div></td>`).join("")}</tr></tbody></table>`;
   const executionSummary = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Execution Summary</h2>${executionMetricsTable}`;
-  const domainSummary = domainSummarySection(report.domainSummary ?? []);
+  const domainSummary = report.sectionVisibility?.domainWise === false ? "" : domainSummarySection(report.domainSummary ?? []);
   const statusSummary = `<section style="margin:20px 0;padding:0 12px;color:#253646"><h2 style="margin:0 0 8px;color:#204e76;font-size:17px">DMR-AP1 B0 Execution Status Summary</h2><ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7"><li><strong>${percentage(attempted)}</strong> tests have been attempted, with <strong style="color:#087a50">${percentage(report.latestPassed)} passed</strong>, <strong style="color:#bb3846">${percentage(report.latestFailed)} failed</strong> and <strong style="color:#aa5420">${percentage(report.blockedLines)} blocked</strong>.</li><li>Failure analysis and rerun in progress.</li><li>Execution is currently running with <strong>${escapeHtml(report.runningBkc || "BKC#40")}</strong>.</li></ul></section>`;
   const noteCallout = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:10px 0 0;border-collapse:collapse;background-color:#fff6d6"><tbody><tr><td style="padding:10px 14px;border-left:3px solid #d7a02b;background-color:#fff6d6;color:#594416;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.5"><strong>Note:</strong> This report was generated with AI assistance. The updates have been reviewed for accuracy.</td></tr></tbody></table>`;
   const reportLinks = (report.links ?? []).map((link) => {
@@ -154,12 +163,17 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport) {
     : `<p style="font-size:13px;color:#60788e">No links configured.</p>`);
   const oldCpuHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">CPU Breakdown</h2>`;
   const cpuHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">${escapeHtml(displayCpuAllocationTitle(report.cpuBreakdownTitle))}</h2>`;
-  const reportDocument = renderWeeklyReportEmailDocument(report)
+  const hsdHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">HSDs with 5 or More Failed Runs</h2>`;
+  const overallFailureHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Overall Validation Group <span style="color:#dc2626">Failure Breakdown</span></h2>`;
+  let reportDocument = renderWeeklyReportEmailDocument(report)
     .replace(/<h2 style="[^"]*">Execution Summary<\/h2>[\s\S]*?(?=<h2 style="[^"]*">CPU Breakdown<\/h2>)/, executionSummary)
     .replace(oldCpuHeading, cpuHeading)
     .replace(/<h2 style="[^"]*">Links<\/h2>[\s\S]*?(?=<footer)/, "")
     .replace(/<h2 style="[^"]*">Failure Stage Details<\/h2>[\s\S]*?(?=<footer)/, "")
     .replace(/<footer[^>]*>Generated by NGA Execution Tracker<\/footer>/, "");
+  if (report.sectionVisibility?.cpuAllocation === false) reportDocument = removeTableSection(reportDocument, cpuHeading);
+  if (report.sectionVisibility?.hsdFailureSummary === false) reportDocument = removeTableSection(reportDocument, hsdHeading);
+  if (report.sectionVisibility?.overallFailureBreakdown === false) reportDocument = removeTableSection(reportDocument, overallFailureHeading);
   const linksBeforeCpu = reportDocument.replace(cpuHeading, `${linksSection}${cpuHeading}`);
   const domainSummaryBeforeBreakdown = linksBeforeCpu.replace(
     /<h2 style="[^"]*">Overall Validation Group <span style="color:#dc2626">Failure Breakdown<\/span><\/h2>/,

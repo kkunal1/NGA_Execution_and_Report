@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config";
+import { DEFAULT_WEEKLY_REPORT_SECTIONS, type WeeklyReportSectionSettings } from "./weekly-report-visibility";
+export { DEFAULT_WEEKLY_REPORT_SECTIONS } from "./weekly-report-visibility";
+export type { WeeklyReportSectionSettings } from "./weekly-report-visibility";
 
 export type DashboardSettings = {
   executionStatusSplit: boolean;
@@ -10,6 +13,7 @@ export type DashboardSettings = {
   weeklyReport: boolean;
   weeklyReportUpdate: boolean;
   weeklyReportEmail: boolean;
+  weeklyReportSections: WeeklyReportSectionSettings;
   weeklyReportMode: "dateRange" | "workWeek";
   executionTime: boolean;
   ngaiTestRunData: boolean;
@@ -23,6 +27,7 @@ export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
   weeklyReport: false,
   weeklyReportUpdate: false,
   weeklyReportEmail: false,
+  weeklyReportSections: DEFAULT_WEEKLY_REPORT_SECTIONS,
   weeklyReportMode: "dateRange",
   executionTime: false,
   ngaiTestRunData: false,
@@ -41,6 +46,12 @@ export async function getDashboardSettings(): Promise<DashboardSettings> {
       weeklyReport: saved.weeklyReport ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReport,
       weeklyReportUpdate: saved.weeklyReportUpdate ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReportUpdate,
       weeklyReportEmail: saved.weeklyReportEmail ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReportEmail,
+      weeklyReportSections: {
+        cpuAllocation: saved.weeklyReportSections?.cpuAllocation ?? DEFAULT_WEEKLY_REPORT_SECTIONS.cpuAllocation,
+        hsdFailureSummary: saved.weeklyReportSections?.hsdFailureSummary ?? DEFAULT_WEEKLY_REPORT_SECTIONS.hsdFailureSummary,
+        domainWise: saved.weeklyReportSections?.domainWise ?? DEFAULT_WEEKLY_REPORT_SECTIONS.domainWise,
+        overallFailureBreakdown: saved.weeklyReportSections?.overallFailureBreakdown ?? DEFAULT_WEEKLY_REPORT_SECTIONS.overallFailureBreakdown,
+      },
       weeklyReportMode: saved.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
       executionTime: saved.executionTime ?? DEFAULT_DASHBOARD_SETTINGS.executionTime,
       ngaiTestRunData: saved.ngaiTestRunData ?? DEFAULT_DASHBOARD_SETTINGS.ngaiTestRunData,

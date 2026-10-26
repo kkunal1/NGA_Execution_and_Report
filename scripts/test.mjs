@@ -33,6 +33,12 @@ assert.equal(canAccessWeeklyReportFeature("admin", "weeklyReportEmail", { weekly
 assert.equal(isValidAdminPassword("abcd"), true);
 assert.equal(isValidAdminPassword("abc"), false);
 assert.equal(DEFAULT_DASHBOARD_SETTINGS.showManualAborts, true);
+assert.deepEqual(DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, {
+  cpuAllocation: true,
+  hsdFailureSummary: true,
+  domainWise: true,
+  overallFailureBreakdown: true,
+});
 assert.deepEqual(DEFAULT_POOL_NAMES, ["pv_dmr-ap-ap1-b0"]);
 assert.deepEqual(normalizePoolNames([" pv_dmr-ap-ap1-b0 ", "another_pool"]), ["pv_dmr-ap-ap1-b0", "another_pool"]);
 assert.equal(normalizePoolNames([]), null);
@@ -295,6 +301,15 @@ assert.ok(weeklyEmailHtml.includes("Failure analysis and rerun in progress."));
 assert.ok(weeklyEmailHtml.includes("Execution is currently running with <strong>BKC#WW41</strong>."));
 assert.ok(!weeklyEmailHtml.includes("Failure Breakdown in Selected Window"));
 assert.ok(weeklyEmailHtml.includes("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>"));
+const emailWithoutOptionalSections = renderWeeklyReportEmailHtml({
+  ...weeklyReport,
+  sectionVisibility: { cpuAllocation: false, hsdFailureSummary: false, domainWise: false, overallFailureBreakdown: false },
+});
+assert.ok(!emailWithoutOptionalSections.includes("DMR System Allocation Across Teams"));
+assert.ok(!emailWithoutOptionalSections.includes("DOMAIN-WISE DATA"));
+assert.ok(!emailWithoutOptionalSections.includes("Overall Validation Group"));
+assert.ok(!emailWithoutOptionalSections.includes("HSDs with 5 or More Failed Runs"));
+assert.ok(weeklyEmailHtml.indexOf("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>") < weeklyEmailHtml.indexOf("HSDs with 5 or More Failed Runs"));
 assert.ok(weeklyEmailHtml.includes(">DMR System Allocation Across Teams</h2>"));
 assert.ok(weeklyEmailHtml.includes("font-weight:600;color:#fff;background:#204e76;"), "failure breakdown header uses the web report's navy and white style");
 assert.ok(weeklyEmailHtml.indexOf(">Execution Summary</h2>") < weeklyEmailHtml.indexOf(">Links</h2>"));

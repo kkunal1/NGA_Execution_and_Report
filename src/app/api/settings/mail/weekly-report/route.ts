@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { sendWeeklySmtpReport } from "@/lib/smtp-mail";
 import { authorizeWeeklyReportFeature } from "@/lib/weekly-report-access";
+import { getDashboardSettings } from "@/lib/dashboard-settings";
 import type { WeeklyReport } from "@/lib/weekly-report";
 
 export const runtime = "nodejs";
@@ -36,7 +37,9 @@ export async function POST(req: Request) {
     if (typeof body.recipient !== "string") {
       return NextResponse.json({ error: "Enter a recipient email address." }, { status: 400 });
     }
-    const result = await sendWeeklySmtpReport(body.sender, body.password, body.recipient, body.report);
+    const settings = await getDashboardSettings();
+    const report = { ...body.report, sectionVisibility: settings.weeklyReportSections };
+    const result = await sendWeeklySmtpReport(body.sender, body.password, body.recipient, report);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Weekly Report email failed." }, { status: 502 });

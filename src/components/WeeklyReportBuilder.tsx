@@ -249,12 +249,15 @@ export default function WeeklyReportBuilder() {
     const refreshSavedReports = async () => {
       try {
         const response = await fetch("/api/weekly-report/saved", { cache: "no-store" });
-        const data = (await response.json()) as { reports?: string[]; savedReports?: string[]; today?: string; error?: string };
+        const data = (await response.json()) as { reports?: string[]; savedReports?: string[]; today?: string; sectionVisibility?: WeeklyReport["sectionVisibility"]; error?: string };
         if (!response.ok) throw new Error(data.error || "Could not list saved Weekly Reports.");
         if (cancelled) return;
         const today = data.today ?? getISTDateKey();
         const reportKeys = data.reports ?? [today];
         const savedKeys = data.savedReports ?? reportKeys.filter((key) => key !== today);
+        if (data.sectionVisibility) {
+          setReport((currentReport) => currentReport ? { ...currentReport, sectionVisibility: data.sectionVisibility } : currentReport);
+        }
         if (today !== previousToday && selectedReportKeyRef.current === previousToday) {
           setReport(null);
           setReportLabel(null);
@@ -555,6 +558,39 @@ export default function WeeklyReportBuilder() {
       <Copy className="h-4 w-4" aria-hidden="true" />Copy Report
     </button>
   );
+  const hsdFailureSection = report && report.sectionVisibility?.hsdFailureSummary !== false && (
+    <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
+      <h2 className="mb-4 text-base font-bold text-[#204e76]">HSDs with 5 or More Failed Runs</h2>
+      {report.sightingWarning && <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES titles may be unavailable: {report.sightingWarning}</p>}
+      {hsdFailureSummaries.length ? (
+        <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
+          <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+            <thead className="bg-[#204e76] text-xs font-semibold text-white">
+              <tr><th className="w-36 px-3 py-2.5">HSD</th><th className="w-28 px-3 py-2.5 text-right">Failed Tests</th><th className="w-48 px-3 py-2.5">Domain</th><th className="px-3 py-2.5">Title</th></tr>
+            </thead>
+            <tbody className="divide-y divide-[#cfdae5]">
+              {hsdFailureSummaries.map((summary) => {
+                const issue = hsdesIssueById.get(summary.hsdId);
+                const domain = summary.domains.length === 1
+                  ? formatValidationGroup(summary.domains[0].domain)
+                  : summary.domains.map(({ domain: name, failedRuns }) => `${formatValidationGroup(name)} (${failedRuns})`).join(", ");
+                return (
+                  <tr key={summary.hsdId} className="even:bg-[#edf3f9]">
+                    <td className="break-all px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/article/${encodeURIComponent(summary.hsdId)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{summary.hsdId}</a></td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#bb3846]">{summary.failedRuns}</td>
+                    <td className="px-3 py-2">{domain}</td>
+                    <td className="break-words px-3 py-2">{report.hsdFailureTitles?.[summary.hsdId] || issue?.title || "Loading title…"}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-[#647e94]">{hasHsdFailureSummaries ? "No HSDs have 5 or more failed runs." : "Create a new report to calculate HSD failure counts for this saved report."}</p>
+      )}
+    </section>
+  );
   return (
     <div className="mx-auto max-w-7xl text-[var(--text)]">
       <div className="mb-5 flex items-center gap-2">
@@ -651,6 +687,7 @@ export default function WeeklyReportBuilder() {
             {reportLinks.map((link) => <li key={`${link.label}-${link.url}`}><a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">{link.label}</a></li>)}
             {!reportLinks.length && <li className="text-[#647e94]">No links configured.</li>}
           </ul>
+          {report.sectionVisibility?.cpuAllocation !== false && <>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">{displayCpuAllocationTitle(report.cpuBreakdownTitle)}</h4>
           <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
             <table className="w-full min-w-[480px] border-collapse text-left text-sm">
@@ -673,38 +710,10 @@ export default function WeeklyReportBuilder() {
               </tfoot>}
             </table>
           </div>
-          <h4 className="mt-5 text-sm font-bold text-[#204e76]">HSDs with 5 or More Failed Runs</h4>
-          {report.sightingWarning && <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES titles may be unavailable: {report.sightingWarning}</p>}
-          {hsdFailureSummaries.length ? (
-            <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
-              <table className="w-full min-w-[760px] border-collapse text-left text-sm">
-                <thead className="bg-[#204e76] text-xs font-semibold text-white">
-                  <tr><th className="w-36 px-3 py-2.5">HSD</th><th className="w-28 px-3 py-2.5 text-right">Failed Tests</th><th className="w-48 px-3 py-2.5">Domain</th><th className="px-3 py-2.5">Title</th></tr>
-                </thead>
-                <tbody className="divide-y divide-[#cfdae5]">
-                  {hsdFailureSummaries.map((summary) => {
-                    const issue = hsdesIssueById.get(summary.hsdId);
-                    const domain = summary.domains.length === 1
-                      ? formatValidationGroup(summary.domains[0].domain)
-                      : summary.domains.map(({ domain: name, failedRuns }) => `${formatValidationGroup(name)} (${failedRuns})`).join(", ");
-                    return (
-                      <tr key={summary.hsdId} className="even:bg-[#edf3f9]">
-                        <td className="break-all px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/article/${encodeURIComponent(summary.hsdId)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{summary.hsdId}</a></td>
-                        <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#bb3846]">{summary.failedRuns}</td>
-                        <td className="px-3 py-2">{domain}</td>
-                        <td className="break-words px-3 py-2">{report.hsdFailureTitles?.[summary.hsdId] || issue?.title || "Loading title…"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <p className="mt-3 text-sm text-[#647e94]">{hasHsdFailureSummaries ? "No HSDs have 5 or more failed runs." : "Create a new report to calculate HSD failure counts for this saved report."}</p>
-          )}
+          </>}
         </section>
 
-        <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
+        {report.sectionVisibility?.domainWise !== false && <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
           <h2 className="mb-4 text-base font-bold uppercase text-[#204e76]">Domain-wise data</h2>
           {domainSummary.length ? (
             <div className="overflow-x-auto border border-[#b8cadb]">
@@ -761,9 +770,10 @@ export default function WeeklyReportBuilder() {
           ) : (
             <p className="text-sm text-[#647e94]">Domain-wise data is unavailable in this saved report. Create a report with the current version to include it.</p>
           )}
-        </section>
+        </section>}
 
-        <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />
+        {report.sectionVisibility?.overallFailureBreakdown !== false && <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />}
+        {hsdFailureSection}
         <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
           <h2 className="mb-1 text-base font-bold text-[#204e76]">All HSDES Issues by Domain</h2>
           {hsdesDetailsLoading ? (

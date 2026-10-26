@@ -4,8 +4,15 @@ import { useEffect, useState } from "react";
 import { DATA_PROVIDERS, DATA_PROVIDER_KEY, NGAI_PROXY_KEY, NGAI_VPN_KEY, type DataProvider } from "@/lib/provider";
 import { THEMES, THEME_KEY, isThemeId, type ThemeId } from "@/lib/theme";
 import WeeklyReportMailPanel from "@/components/WeeklyReportMailPanel";
+import { DEFAULT_WEEKLY_REPORT_SECTIONS, type WeeklyReportSectionSettings } from "@/lib/weekly-report-visibility";
 
 const THEME_OPTIONS = Object.entries(THEMES) as [ThemeId, (typeof THEMES)[ThemeId]][];
+const WEEKLY_REPORT_SECTION_OPTIONS: [keyof WeeklyReportSectionSettings, string][] = [
+  ["cpuAllocation", "DMR System Allocation Across Teams"],
+  ["hsdFailureSummary", "HSDs with 5 or More Failed Runs"],
+  ["domainWise", "Domain-wise data"],
+  ["overallFailureBreakdown", "Overall Validation group-wise failure breakdown"],
+];
 
 type NgaiTokenStatus = {
   encryptionConfigured: boolean;
@@ -34,6 +41,7 @@ type DashboardSettings = {
   weeklyReport: boolean;
   weeklyReportUpdate: boolean;
   weeklyReportEmail: boolean;
+  weeklyReportSections: WeeklyReportSectionSettings;
   weeklyReportMode: "dateRange" | "workWeek";
   executionTime: boolean;
   ngaiTestRunData: boolean;
@@ -80,6 +88,7 @@ export default function SettingsPage() {
     weeklyReport: false,
     weeklyReportUpdate: false,
     weeklyReportEmail: false,
+    weeklyReportSections: DEFAULT_WEEKLY_REPORT_SECTIONS,
     weeklyReportMode: "dateRange",
     executionTime: false,
     ngaiTestRunData: false,
@@ -163,6 +172,7 @@ export default function SettingsPage() {
           weeklyReport: data.weeklyReport === true,
           weeklyReportUpdate: data.weeklyReportUpdate === true,
           weeklyReportEmail: data.weeklyReportEmail === true,
+          weeklyReportSections: data.weeklyReportSections ?? DEFAULT_WEEKLY_REPORT_SECTIONS,
           weeklyReportMode: data.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
           executionTime: data.executionTime,
           ngaiTestRunData: data.ngaiTestRunData,
@@ -592,8 +602,30 @@ export default function SettingsPage() {
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="weekly-report-settings-heading">
-        <h2 id="weekly-report-settings-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Daily Report Archive</h2>
+        <h2 id="weekly-report-settings-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Weekly Report Settings</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">The server generates the previous day&apos;s report at 12:05 AM IST and saves it centrally. Automatic reports use the B0 P1 and P2 suites.</p>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Choose which sections appear in manually created and automatically generated reports.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {WEEKLY_REPORT_SECTION_OPTIONS.map(([key, label]) => (
+            <label key={key} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
+              <span>{label}</span>
+              <input
+                type="checkbox"
+                role="switch"
+                checked={dashboardSettings.weeklyReportSections[key]}
+                onChange={(event) => void saveDashboardSettings({
+                  ...dashboardSettings,
+                  weeklyReportSections: { ...dashboardSettings.weeklyReportSections, [key]: event.target.checked },
+                })}
+                className="h-5 w-5 accent-[var(--accent)]"
+              />
+            </label>
+          ))}
+        </div>
+        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
+          {dashboardSettingsSaved ? "Weekly Report section settings saved." : "Changes apply to future reports for all users."}
+        </p>
+        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>
 
       <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="add-admin-heading">

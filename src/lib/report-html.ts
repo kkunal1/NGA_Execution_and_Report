@@ -113,7 +113,7 @@ export function renderReportHtml(
         <td class="num pass">${d.passed}</td>
         <td class="num">${d.passRatePct}%</td>
         <td class="num fail">${d.failed}</td>
-        <td class="num"><span class="bucketcell"><strong>${d.bucketized ?? 0}</strong><span class="bucketcounts"><span>HSD ${d.bucketizedWithHsd ?? 0}</span><span>Under Triage ${d.bucketizedUnderTriage ?? d.bucketizedWithoutHsd ?? 0}</span><span>No HSD ${d.bucketizedNoHsd ?? 0}</span></span></span></td>
+        <td class="num"><span class="bucketcell"><strong>${d.bucketized ?? 0}</strong><span class="bucketcounts"><span>HSD ${d.bucketizedWithHsd ?? 0}</span><span>Under Triage ${d.bucketizedUnderTriage ?? d.bucketizedWithoutHsd ?? 0}</span><span>Yet to Triage ${d.bucketizedNoHsd ?? 0}</span></span></span></td>
         <td class="num block">${d.blocked}</td>
         <td class="num">${d.notRun}</td>
       </tr>`,
@@ -179,7 +179,7 @@ table.grid th{background:${t.surfaceAlt};color:${t.textMuted};font-weight:600}
 td.num{text-align:right;font-variant-numeric:tabular-nums}
 td.pass{color:#16a34a}td.fail{color:#dc2626}td.block{color:#b45309}
 .bucketcell{display:inline-flex;align-items:center;gap:8px}.bucketcounts{display:flex;flex-direction:column;white-space:nowrap;font-size:11px;line-height:16px;color:${t.textMuted}}
-.bucketcounts span:first-child{color:#0284c7}
+.bucketcounts span:first-child{color:#0284c7}.bucketcounts span:nth-child(2){color:#f97316}
 td.name{max-width:520px;word-break:break-word}
 td.empty{text-align:center;color:${t.textMuted};padding:20px}
 .pill{color:#fff;border-radius:999px;padding:2px 10px;font-size:11px;white-space:nowrap}

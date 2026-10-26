@@ -962,8 +962,8 @@ export default function Dashboard() {
                             <span className="font-semibold">{d.bucketized ?? 0}</span>
                             <span className="flex flex-col whitespace-nowrap text-[11px] leading-4">
                               <span className="text-sky-500">HSD {d.bucketizedWithHsd ?? 0}</span>
-                              <span className="text-[var(--text-muted)]">Under Triage {d.bucketizedUnderTriage ?? d.bucketizedWithoutHsd ?? 0}</span>
-                              <span className="text-[var(--text-muted)]">No HSD {d.bucketizedNoHsd ?? 0}</span>
+                              <span className="text-orange-500">Under Triage {d.bucketizedUnderTriage ?? d.bucketizedWithoutHsd ?? 0}</span>
+                              <span className="text-[var(--text-muted)]">Yet to Triage {d.bucketizedNoHsd ?? 0}</span>
                             </span>
                           </div>
                         </td>
@@ -983,8 +983,8 @@ export default function Dashboard() {
                           <span>{s.bucketized ?? 0}</span>
                           <span className="flex flex-col whitespace-nowrap text-[11px] leading-4">
                             <span className="text-sky-700">HSD {s.bucketizedWithHsd ?? 0}</span>
-                            <span className="text-[var(--text-muted)]">Under Triage {s.bucketizedUnderTriage ?? s.bucketizedWithoutHsd ?? 0}</span>
-                            <span className="text-[var(--text-muted)]">No HSD {s.bucketizedNoHsd ?? 0}</span>
+                            <span className="text-orange-700">Under Triage {s.bucketizedUnderTriage ?? s.bucketizedWithoutHsd ?? 0}</span>
+                            <span className="text-[var(--text-muted)]">Yet to Triage {s.bucketizedNoHsd ?? 0}</span>
                           </span>
                         </div>
                       </td>

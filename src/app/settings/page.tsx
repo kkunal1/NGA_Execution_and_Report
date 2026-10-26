@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { FileText, Send } from "lucide-react";
 import { DATA_PROVIDERS, DATA_PROVIDER_KEY, NGAI_PROXY_KEY, NGAI_VPN_KEY, type DataProvider } from "@/lib/provider";
 import { THEMES, THEME_KEY, isThemeId, type ThemeId } from "@/lib/theme";
+import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 
 const THEME_OPTIONS = Object.entries(THEMES) as [ThemeId, (typeof THEMES)[ThemeId]][];
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
@@ -12,30 +13,40 @@ type WeeklyReportMailCache = {
   report: Record<string, unknown>;
   from: string;
   to: string;
+  reportLabel: string;
   suites: string[];
   planned: number;
   latestPassed: number;
   latestFailed: number;
+  blockedLines: number;
+  latestNotRun: number;
 };
 
 function readWeeklyReportMailCache(): WeeklyReportMailCache | null {
   try {
     const stored = window.sessionStorage.getItem(WEEKLY_REPORT_STORAGE_KEY);
     if (!stored) return null;
-    const value = JSON.parse(stored) as { report?: unknown };
+    const value = JSON.parse(stored) as { report?: unknown; generatedWeek?: unknown };
     if (typeof value.report !== "object" || value.report === null || Array.isArray(value.report)) return null;
     const report = value.report as Record<string, unknown>;
-    if (typeof report.from !== "string" || typeof report.to !== "string" ||
+    if (typeof report.from !== "string" || !Number.isFinite(Date.parse(report.from)) ||
+      typeof report.to !== "string" || !Number.isFinite(Date.parse(report.to)) ||
       !Array.isArray(report.suites) || !report.suites.every((suite) => typeof suite === "string") ||
-      typeof report.planned !== "number" || typeof report.latestPassed !== "number" || typeof report.latestFailed !== "number") return null;
+      typeof report.planned !== "number" || typeof report.latestPassed !== "number" || typeof report.latestFailed !== "number" ||
+      typeof report.blockedLines !== "number" || typeof report.latestNotRun !== "number") return null;
     return {
       report,
       from: report.from,
       to: report.to,
+      reportLabel: typeof value.generatedWeek === "string"
+        ? value.generatedWeek
+        : getDailyReportLabel(getISTDateKey(new Date(report.from))),
       suites: report.suites,
       planned: report.planned,
       latestPassed: report.latestPassed,
       latestFailed: report.latestFailed,
+      blockedLines: report.blockedLines,
+      latestNotRun: report.latestNotRun,
     };
   } catch {
     return null;
@@ -152,10 +163,13 @@ export default function SettingsPage() {
     setWeeklyMailSummary(cachedWeeklyReport ? {
       from: cachedWeeklyReport.from,
       to: cachedWeeklyReport.to,
+      reportLabel: cachedWeeklyReport.reportLabel,
       suites: cachedWeeklyReport.suites,
       planned: cachedWeeklyReport.planned,
       latestPassed: cachedWeeklyReport.latestPassed,
       latestFailed: cachedWeeklyReport.latestFailed,
+      blockedLines: cachedWeeklyReport.blockedLines,
+      latestNotRun: cachedWeeklyReport.latestNotRun,
     } : null);
     const stored = window.localStorage.getItem(DATA_PROVIDER_KEY);
     if (stored === "sso" || stored === "ngai") setProvider(stored);
@@ -766,7 +780,7 @@ export default function SettingsPage() {
         <p className="mt-3 text-xs text-[var(--text-muted)]">Sender: krishna.kunal@intel.com · Secure SMTP with TLS</p>
         {weeklyMailSummary ? (
           <p className="mt-3 text-sm text-[var(--text)]">
-            Report ready: {new Date(weeklyMailSummary.from).toLocaleDateString()} – {new Date(weeklyMailSummary.to).toLocaleDateString()} · {weeklyMailSummary.suites.length} suite{weeklyMailSummary.suites.length === 1 ? "" : "s"} · {weeklyMailSummary.latestPassed} passed · {weeklyMailSummary.latestFailed} failed
+            Report ready for {weeklyMailSummary.reportLabel} · {weeklyMailSummary.suites.length} suites · {weeklyMailSummary.latestPassed} passed · {weeklyMailSummary.latestFailed} failed · {weeklyMailSummary.blockedLines} blocked · {weeklyMailSummary.latestNotRun} not run
           </p>
         ) : (
           <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Create or load a Weekly Report first.</p>

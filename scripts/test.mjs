@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
-import { renderWeeklyReportEmailHtml } from "../src/lib/weekly-report-email.ts";
+import { renderWeeklyReportEmailHtml, weeklyReportEmailSubject } from "../src/lib/weekly-report-email.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
 import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
@@ -247,13 +247,32 @@ assert.deepEqual(hsdSummary.hsdFailureSummaries, [
 assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2 });
 const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   ...weeklyReport,
-  suites: ["<script>alert('x')</script>"],
-  links: [{ label: "Unsafe link", url: "javascript:alert(1)" }],
+  hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
+  links: [
+    { label: "<script>alert('x')</script>", url: "https://example.com" },
+    { label: "Unsafe link", url: "javascript:alert(1)" },
+  ],
 });
 assert.ok(weeklyEmailHtml.includes("&lt;script&gt;alert(&#39;x&#39;)&lt;/script&gt;"), "email report escapes user-controlled text");
 assert.ok(!weeklyEmailHtml.includes("<script>alert"), "email report does not render user text as markup");
 assert.ok(!weeklyEmailHtml.includes("href=\"javascript:"), "email report excludes unsafe link protocols");
-assert.ok(weeklyEmailHtml.includes("Overall Validation Group Failure Breakdown"));
+assert.ok(weeklyEmailHtml.includes("<strong>Note:</strong> This report was generated with AI assistance. The updates have been reviewed for accuracy."));
+assert.ok(weeklyEmailHtml.includes("role=\"presentation\" width=\"100%\""));
+assert.ok(weeklyEmailHtml.includes("padding:10px 14px;border-left:3px solid #d7a02b;background-color:#fff6d6;color:#594416;font-family:'Courier New',Courier,monospace;font-size:12px"));
+assert.ok(!weeklyEmailHtml.includes("Suites:</b>"), "email header omits the suite list");
+assert.ok(!weeklyEmailHtml.includes('color:#60788e;font-size:12px">Generated '), "email header omits the generated timestamp");
+assert.ok(weeklyEmailHtml.includes("DMR-AP1 B0 Execution Status Summary"));
+assert.ok(weeklyEmailHtml.includes("Security (5), RAS (1)"), "email renders validation group aliases as readable names");
+assert.ok(!weeklyEmailHtml.includes("pv_security"), "email omits raw validation group aliases");
+assert.ok(weeklyEmailHtml.includes("<strong>0%</strong> tests have been attempted"));
+assert.ok(weeklyEmailHtml.includes("Failure analysis and rerun in progress."));
+assert.ok(weeklyEmailHtml.includes("Execution is currently running with <strong>BKC#WW41</strong>."));
+assert.ok(weeklyEmailHtml.includes("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>"));
+assert.ok(weeklyEmailHtml.includes("font-weight:600;color:#fff;background:#204e76;"), "failure breakdown header uses the web report's navy and white style");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW43.6");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW43.7");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW44.1");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 B0 Execution Weekly Status Report For WW44.2");
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.cpuBaseLabels, DEFAULT_CPU_BASE_LABELS);
 assert.equal(weeklyReport.cpuBreakdownTitle, DEFAULT_CPU_BREAKDOWN_TITLE);

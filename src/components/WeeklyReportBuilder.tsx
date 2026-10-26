@@ -504,6 +504,19 @@ export default function WeeklyReportBuilder() {
     ? report.hsdFailureSummaries.filter((summary) => summary.failedRuns >= 5)
     : [];
   const hsdesIssueById = new Map(hsdesIssues.map((issue) => [issue.id, issue]));
+  const domainSummary = Array.isArray(report?.domainSummary) ? report.domainSummary : [];
+  const domainTotals = domainSummary.reduce((totals, row) => ({
+    tests: totals.tests + row.tests,
+    passed: totals.passed + row.passed,
+    failed: totals.failed + row.failed,
+    bucketized: totals.bucketized + row.bucketized,
+    bucketizedWithHsd: totals.bucketizedWithHsd + row.bucketizedWithHsd,
+    bucketizedUnderTriage: totals.bucketizedUnderTriage + row.bucketizedUnderTriage,
+    bucketizedNoHsd: totals.bucketizedNoHsd + row.bucketizedNoHsd,
+    blocked: totals.blocked + row.blocked,
+    notRun: totals.notRun + row.notRun,
+  }), { tests: 0, passed: 0, failed: 0, bucketized: 0, bucketizedWithHsd: 0, bucketizedUnderTriage: 0, bucketizedNoHsd: 0, blocked: 0, notRun: 0 });
+  const domainPassRate = domainTotals.tests ? (domainTotals.passed / domainTotals.tests * 100).toFixed(1).replace(/\.0$/, "") : "0";
   const teamPlatformCounts = report?.teamPlatformCounts ?? [];
   const cpuColumns = Array.isArray(report?.cpuColumns) ? report.cpuColumns : [];
   const hasCustomTotal = cpuColumns.some((column) => column.toLowerCase() === "total");
@@ -687,6 +700,65 @@ export default function WeeklyReportBuilder() {
             </div>
           ) : (
             <p className="mt-3 text-sm text-[#647e94]">{hasHsdFailureSummaries ? "No HSDs have 5 or more failed runs." : "Create a new report to calculate HSD failure counts for this saved report."}</p>
+          )}
+        </section>
+
+        <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
+          <h2 className="mb-4 text-base font-bold uppercase text-[#204e76]">Domain-wise data</h2>
+          {domainSummary.length ? (
+            <div className="overflow-x-auto border border-[#b8cadb]">
+              <table className="w-full min-w-[950px] border-collapse text-left text-sm">
+                <thead className="bg-[#204e76] text-xs font-semibold text-white">
+                  <tr>{["#", "Domain (Owner Team)", "Total", "Pass", "Pass %", "Fail", "Bucketized", "Blocked", "Not run"].map((heading) => <th key={heading} className="px-3 py-3">{heading}</th>)}</tr>
+                </thead>
+                <tbody className="divide-y divide-[#cfdae5]">
+                  {domainSummary.map((row, index) => (
+                    <tr key={row.domain} className="bg-white even:bg-[#edf3f9]">
+                      <td className="px-3 py-2 text-[#72869a]">{index + 1}</td>
+                      <th className="px-3 py-2 font-semibold text-[#244c70]">{formatValidationGroup(row.domain)}</th>
+                      <td className="px-3 py-2 tabular-nums">{row.tests.toLocaleString()}</td>
+                      <td className="px-3 py-2 tabular-nums text-green-600">{row.passed.toLocaleString()}</td>
+                      <td className={`px-3 py-2 tabular-nums ${row.passRatePct >= 80 ? "font-bold text-emerald-600" : "text-orange-500"}`}>{row.passRatePct}%</td>
+                      <td className="px-3 py-2 tabular-nums text-red-600">{row.failed.toLocaleString()}</td>
+                      <td className="px-3 py-2 tabular-nums">
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-semibold">{row.bucketized.toLocaleString()}</span>
+                          <span className="flex flex-col whitespace-nowrap text-[11px] leading-4">
+                            <span className="text-sky-600">HSD {row.bucketizedWithHsd}</span>
+                            <span className="text-orange-500">Under Triage {row.bucketizedUnderTriage}</span>
+                            <span className="text-[var(--text-muted)]">Yet to Triage {row.bucketizedNoHsd}</span>
+                          </span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2 tabular-nums text-amber-600">{row.blocked.toLocaleString()}</td>
+                      <td className="px-3 py-2 tabular-nums text-[var(--text-muted)]">{row.notRun.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                  <tr className="border-t-2 border-[#94aec6] bg-[#dce8f4] font-bold text-[#173f60]">
+                    <td className="px-3 py-2" />
+                    <th className="px-3 py-2 text-left">Total / Average</th>
+                    <td className="px-3 py-2 tabular-nums">{domainTotals.tests.toLocaleString()}</td>
+                    <td className="px-3 py-2 tabular-nums text-green-700">{domainTotals.passed.toLocaleString()}</td>
+                    <td className="px-3 py-2 tabular-nums">{domainPassRate}%</td>
+                    <td className="px-3 py-2 tabular-nums text-red-700">{domainTotals.failed.toLocaleString()}</td>
+                    <td className="px-3 py-2 tabular-nums">
+                      <div className="flex items-center gap-2.5">
+                        <span>{domainTotals.bucketized.toLocaleString()}</span>
+                        <span className="flex flex-col whitespace-nowrap text-[11px] leading-4 font-normal">
+                          <span className="text-sky-700">HSD {domainTotals.bucketizedWithHsd}</span>
+                          <span className="text-orange-700">Under Triage {domainTotals.bucketizedUnderTriage}</span>
+                          <span className="text-[var(--text-muted)]">Yet to Triage {domainTotals.bucketizedNoHsd}</span>
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-3 py-2 tabular-nums text-amber-700">{domainTotals.blocked.toLocaleString()}</td>
+                    <td className="px-3 py-2 tabular-nums">{domainTotals.notRun.toLocaleString()}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className="text-sm text-[#647e94]">Domain-wise data is unavailable in this saved report. Create a report with the current version to include it.</p>
           )}
         </section>
 

@@ -64,6 +64,20 @@ export type StageDetail = {
   count: number;
 };
 
+export type WeeklyReportDomainSummary = {
+  domain: string;
+  tests: number;
+  passed: number;
+  passRatePct: number;
+  failed: number;
+  bucketized: number;
+  bucketizedWithHsd: number;
+  bucketizedUnderTriage: number;
+  bucketizedNoHsd: number;
+  blocked: number;
+  notRun: number;
+};
+
 export type WeeklyReport = {
   generatedAt: string;
   suites: string[];
@@ -76,6 +90,7 @@ export type WeeklyReport = {
   blockedLines: number;
   latestInProgress: number;
   latestNotRun: number;
+  domainSummary: WeeklyReportDomainSummary[];
   validRuns: number;
   triageRuns: number;
   validLines: number;
@@ -227,6 +242,40 @@ function prebootAbortCounts(runs: Run[]): Record<string, number> {
 export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, windowRuns: Run[], latestRuns: Run[], abortedRuns: Run[] = [], runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS, links: WeeklyReportLink[] = DEFAULT_WEEKLY_REPORT_LINKS, cpuColumns: string[] = [], cpuBreakdownTitle = DEFAULT_CPU_BREAKDOWN_TITLE, cpuBaseLabels: CpuBaseLabels = DEFAULT_CPU_BASE_LABELS): WeeklyReport {
   const latestValid = latestRuns;
   const latestBucket = (run: Run) => bucketOf(run.state ?? "", run.testLine?.goStatus ?? "");
+  const domainRuns = new Map<string, Run[]>();
+  for (const run of latestValid) {
+    const domain = run.validationGroup?.testGroupName || "Unknown";
+    const runs = domainRuns.get(domain) ?? [];
+    runs.push(run);
+    domainRuns.set(domain, runs);
+  }
+  const domainSummary: WeeklyReportDomainSummary[] = [...domainRuns.entries()].map(([domain, runs]) => {
+    const buckets = runs.map(latestBucket);
+    const failedRuns = runs.filter((run, index) => buckets[index] === "Failed");
+    let bucketizedWithHsd = 0;
+    let bucketizedUnderTriage = 0;
+    let bucketizedNoHsd = 0;
+    for (const run of failedRuns) {
+      const bucketNames = (run.failure ?? []).map((failure) => failure.bucket?.bucketName?.trim() ?? "").filter(Boolean);
+      if (bucketNames.some((name) => /\d{10,}/.test(name))) bucketizedWithHsd++;
+      else if (bucketNames.length) bucketizedUnderTriage++;
+      else bucketizedNoHsd++;
+    }
+    const passed = buckets.filter((bucket) => bucket === "Passed").length;
+    return {
+      domain,
+      tests: runs.length,
+      passed,
+      passRatePct: runs.length ? Math.round((passed / runs.length) * 1000) / 10 : 0,
+      failed: failedRuns.length,
+      bucketized: failedRuns.length,
+      bucketizedWithHsd,
+      bucketizedUnderTriage,
+      bucketizedNoHsd,
+      blocked: buckets.filter((bucket) => bucket === "Blocked").length,
+      notRun: buckets.filter((bucket) => bucket === "Not Run").length,
+    };
+  }).sort((a, b) => b.tests - a.tests || a.domain.localeCompare(b.domain));
   const recent = windowRuns.filter((run) => run.testLineId && (run.state === "Passed" || run.state === "Failed"));
   const valid = recent.filter((run) => !run.isTriageFlag);
   const latestInWindow = new Map<string, Run>();
@@ -247,6 +296,7 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     blockedLines: latestValid.filter((run) => latestBucket(run) === "Blocked").length,
     latestInProgress: latestValid.filter((run) => latestBucket(run) === "In Progress").length,
     latestNotRun: latestValid.filter((run) => latestBucket(run) === "Not Run").length,
+    domainSummary,
     validRuns: valid.length,
     triageRuns: recent.length - valid.length,
     validLines: linesInWindow.length,

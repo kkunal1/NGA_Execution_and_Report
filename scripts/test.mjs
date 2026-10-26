@@ -244,6 +244,19 @@ const hsdFailureRuns = [
 const hsdSummary = summarizeWeeklyReport(
   ["suite"], new Date("2026-10-01T00:00:00Z"), new Date("2026-10-08T00:00:00Z"), [], hsdFailureRuns,
 );
+const domainSummaryReport = summarizeWeeklyReport(
+  ["suite"], new Date("2026-10-01T00:00:00Z"), new Date("2026-10-08T00:00:00Z"), [], [
+    { state: "Failed", validationGroup: { testGroupName: "pv_security" }, failure: [{ bucket: { bucketName: "hsd_1234567890" } }] },
+    { state: "Failed", validationGroup: { testGroupName: "pv_security" }, failure: [{ bucket: { bucketName: "under_triage" } }] },
+    { state: "Failed", validationGroup: { testGroupName: "pv_security" }, failure: [{}] },
+    { state: "Passed", validationGroup: { testGroupName: "pv_security" } },
+    { state: "Blocked", validationGroup: { testGroupName: "pv_memory" } },
+  ],
+);
+assert.deepEqual(domainSummaryReport.domainSummary, [
+  { domain: "pv_security", tests: 4, passed: 1, passRatePct: 25, failed: 3, bucketized: 3, bucketizedWithHsd: 1, bucketizedUnderTriage: 1, bucketizedNoHsd: 1, blocked: 0, notRun: 0 },
+  { domain: "pv_memory", tests: 1, passed: 0, passRatePct: 0, failed: 0, bucketized: 0, bucketizedWithHsd: 0, bucketizedUnderTriage: 0, bucketizedNoHsd: 0, blocked: 1, notRun: 0 },
+]);
 assert.deepEqual(hsdSummary.hsdFailureSummaries, [
   { hsdId: "15020010517", failedRuns: 6, domains: [{ domain: "pv_security", failedRuns: 5 }, { domain: "pv_ras", failedRuns: 1 }] },
   { hsdId: "14028767291", failedRuns: 1, domains: [{ domain: "pv_ras", failedRuns: 1 }] },
@@ -252,6 +265,7 @@ assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2
 const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   ...weeklyReport,
   hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
+  domainSummary: hsdSummary.domainSummary,
   links: [
     { label: "<script>alert('x')</script>", url: "https://example.com" },
     { label: "Unsafe link", url: "javascript:alert(1)" },
@@ -266,6 +280,8 @@ assert.ok(weeklyEmailHtml.includes("padding:10px 14px;border-left:3px solid #d7a
 assert.ok(!weeklyEmailHtml.includes("Suites:</b>"), "email header omits the suite list");
 assert.ok(!weeklyEmailHtml.includes('color:#60788e;font-size:12px">Generated '), "email header omits the generated timestamp");
 assert.ok(weeklyEmailHtml.includes("DMR-AP1 B0 Execution Status Summary"));
+assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
+assert.ok(weeklyEmailHtml.indexOf("DOMAIN-WISE DATA") < weeklyEmailHtml.indexOf("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>"));
 assert.ok(weeklyEmailHtml.includes("color:#bb3846;"), "email failure-stage counts use the web report red");
 assert.ok(weeklyEmailHtml.includes("color:#087a78;"), "email sighting counts use the web report teal");
 assert.ok(weeklyEmailHtml.includes("color:#204e76;font-weight:700;"), "email row totals use the web report navy bold style");

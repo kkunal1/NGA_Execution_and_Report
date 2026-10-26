@@ -175,7 +175,32 @@ export default function WeeklyReportBuilder() {
   const [copyStatus, setCopyStatus] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => setReportReady(true), []);
+  useEffect(() => {
+    try {
+      const stored = window.sessionStorage.getItem(WEEKLY_REPORT_STORAGE_KEY);
+      if (stored) {
+        const cached = JSON.parse(stored) as { report?: unknown; generatedWeek?: unknown; selectedReportKey?: unknown };
+        if (typeof cached.report === "object" && cached.report !== null && !Array.isArray(cached.report)) {
+          const cachedReport = cached.report as WeeklyReport;
+          if (Array.isArray(cachedReport.suites) && typeof cachedReport.from === "string" && Number.isFinite(Date.parse(cachedReport.from)) &&
+            typeof cachedReport.to === "string" && Number.isFinite(Date.parse(cachedReport.to))) {
+            const cachedKey = typeof cached.selectedReportKey === "string" && /^\d{4}-\d{2}-\d{2}$/.test(cached.selectedReportKey)
+              ? cached.selectedReportKey
+              : getISTDateKey(new Date(cachedReport.from));
+            const cachedLabel = typeof cached.generatedWeek === "string" ? cached.generatedWeek : reportOptionLabel(cachedKey);
+            selectedReportKeyRef.current = cachedKey;
+            setSelectedReportKey(cachedKey);
+            setReport(cachedReport);
+            setReportLabel(cachedLabel);
+          }
+        }
+      }
+    } catch {
+      try { window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY); } catch { /* Ignore unavailable browser storage. */ }
+    } finally {
+      setReportReady(true);
+    }
+  }, []);
 
   const missingHsdTitleIds = (report?.hsdFailureSummaries ?? [])
     .filter((summary) => summary.failedRuns >= 5 && !report?.hsdFailureTitles?.[summary.hsdId])
@@ -203,7 +228,7 @@ export default function WeeklyReportBuilder() {
         const refreshedReport = { ...report, hsdFailureTitles: { ...report.hsdFailureTitles, ...titles } };
         setReport(refreshedReport);
         try {
-          window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek: reportLabel }));
+          window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek: reportLabel, selectedReportKey: selectedReportKeyRef.current }));
         } catch {
           // Keep fetched titles visible even if the browser cannot cache them.
         }
@@ -239,6 +264,11 @@ export default function WeeklyReportBuilder() {
         setSavedReportKeys(savedKeys);
         const current = selectedReportKeyRef.current;
         const nextSelected = !current || current === previousToday || !reportKeys.includes(current) ? today : current;
+        if (current && current !== nextSelected) {
+          setReport(null);
+          setReportLabel(null);
+          try { window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY); } catch { /* Ignore unavailable browser storage. */ }
+        }
         selectedReportKeyRef.current = nextSelected;
         setSelectedReportKey(nextSelected);
         previousToday = today;
@@ -399,7 +429,7 @@ export default function WeeklyReportBuilder() {
       setHsdesDetailsLoading(false);
       setCopyStatus("");
       try {
-        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: data.report, generatedWeek: nextReportLabel }));
+        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: data.report, generatedWeek: nextReportLabel, selectedReportKey }));
       } catch {
         setError("Report loaded, but this browser could not save it for navigation.");
       }
@@ -429,7 +459,7 @@ export default function WeeklyReportBuilder() {
       setHsdesDetailsError("");
       setHsdesDetailsLoading(false);
       try {
-        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: result, generatedWeek: nextReportLabel }));
+        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: result, generatedWeek: nextReportLabel, selectedReportKey: todayReportKey }));
       } catch {
         setError("Report created, but this browser could not cache it for navigation.");
       }

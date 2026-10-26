@@ -25,21 +25,29 @@ function table(headers: string[], rows: (string | number)[][], darkHeader = true
   return `<div style="overflow-x:auto;margin:10px 0 20px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${headers.map((header) => cell(header, true, darkHeader)).join("")}</tr></thead><tbody>${rows.length ? rows.map((row) => `<tr>${row.map((value) => cell(value)).join("")}</tr>`).join("") : `<tr>${cell("No data")}</tr>`}</tbody></table></div>`;
 }
 
+function breakdownCell(value: string | number, color: string, bold = false) {
+  return `<td style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;color:${color};${bold ? "font-weight:700;" : ""}">${escapeHtml(String(value))}</td>`;
+}
+
 function section(title: string, content: string) {
   return `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">${escapeHtml(title)}</h2>${content}`;
 }
 
 function failureTable(title: string, rows: FailureRow[]) {
+  if (title === "Failure Breakdown in Selected Window") return "";
   const breakdownText = "failure breakdown";
   const breakdownIndex = title.toLowerCase().indexOf(breakdownText);
   const heading = breakdownIndex < 0
     ? escapeHtml(title)
     : `${escapeHtml(title.slice(0, breakdownIndex))}<span style="color:#dc2626">${escapeHtml(title.slice(breakdownIndex, breakdownIndex + breakdownText.length))}</span>${escapeHtml(title.slice(breakdownIndex + breakdownText.length))}`;
-  const reportTable = table(
-    ["Validation Group", "PreBoot", "PreTest", "Test", "PostTest", "Cleanup", "Total", "Sighting IDs Attached"],
-    rows.map((row) => [formatValidationGroupName(row.group), ...stages.map((stage) => row.stages[stage] ?? 0), row.total, row.attached]),
-    true,
-  );
+  const headers = ["Validation Group", "PreBoot", "PreTest", "Test", "PostTest", "Cleanup", "Total", "Sighting IDs Attached"];
+  const body = rows.map((row) => `<tr>${[
+    breakdownCell(formatValidationGroupName(row.group), "#244c70", true),
+    ...stages.map((stage) => breakdownCell(row.stages[stage] ?? 0, row.stages[stage] ? "#bb3846" : "#72869a", Boolean(row.stages[stage]))),
+    breakdownCell(row.total, "#204e76", true),
+    breakdownCell(row.attached, "#087a78", true),
+  ].join("")}</tr>`).join("");
+  const reportTable = `<div style="overflow-x:auto;margin:10px 0 20px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${headers.map((header) => cell(header, true, true)).join("")}</tr></thead><tbody>${body || `<tr><td colspan="8" style="border:1px solid #cbd7e2;padding:7px 9px;color:#647e94;text-align:center">No failed runs.</td></tr>`}</tbody></table></div>`;
   return `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">${heading}</h2>${reportTable}`;
 }
 
@@ -82,7 +90,7 @@ function renderWeeklyReportEmailDocument(report: WeeklyReport) {
   const hsdRows = (report.hsdFailureSummaries ?? []).filter((summary) => summary.failedRuns >= 5).map((summary) => [
     summary.hsdId,
     summary.failedRuns,
-    summary.domains.map((domain) => `${formatValidationGroupName(domain.domain)} (${domain.failedRuns})`).join(", "),
+    summary.domains.map((domain) => formatValidationGroupName(domain.domain)).join(", "),
     report.hsdFailureTitles?.[summary.hsdId] ?? "",
   ]);
   const issueRows = (report.hsdesIssues ?? []).map((issue) => [formatValidationGroupName(issue.domain), issue.id, issue.title || "Untitled", issue.status, issue.daysOpen]);
@@ -102,6 +110,18 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport) {
     : "0%";
   const statusSummary = `<section style="margin:20px 0;padding:0 12px;color:#253646"><h2 style="margin:0 0 8px;color:#204e76;font-size:17px">DMR-AP1 B0 Execution Status Summary</h2><ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7"><li><strong>${percentage(attempted)}</strong> tests have been attempted, with <strong style="color:#087a50">${percentage(report.latestPassed)} passed</strong>, <strong style="color:#bb3846">${percentage(report.latestFailed)} failed</strong> and <strong style="color:#aa5420">${percentage(report.blockedLines)} blocked</strong>.</li><li>Failure analysis and rerun in progress.</li><li>Execution is currently running with <strong>${escapeHtml(report.runningBkc || "BKC#40")}</strong>.</li></ul></section>`;
   const noteCallout = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:10px 0 0;border-collapse:collapse;background-color:#fff6d6"><tbody><tr><td style="padding:10px 14px;border-left:3px solid #d7a02b;background-color:#fff6d6;color:#594416;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.5"><strong>Note:</strong> This report was generated with AI assistance. The updates have been reviewed for accuracy.</td></tr></tbody></table>`;
-  return renderWeeklyReportEmailDocument(report)
-    .replace(/<header\b[^>]*>[\s\S]*?<\/header>/, `${noteCallout}${statusSummary}`);
+  const reportLinks = (report.links ?? []).map((link) => {
+    const href = safeReportLink(link.url);
+    return href ? `<li style="margin:4px 0"><a href="${href}" style="color:#205d92">${escapeHtml(link.label)}</a></li>` : "";
+  }).filter(Boolean).join("");
+  const linksSection = section("Links", reportLinks
+    ? `<ul style="padding-left:20px;font-size:13px">${reportLinks}</ul>`
+    : `<p style="font-size:13px;color:#60788e">No links configured.</p>`);
+  const cpuHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">CPU Breakdown</h2>`;
+  const reportDocument = renderWeeklyReportEmailDocument(report)
+    .replace(/<h2 style="[^"]*">Links<\/h2>[\s\S]*?(?=<footer)/, "")
+    .replace(/<h2 style="[^"]*">Failure Stage Details<\/h2>[\s\S]*?(?=<footer)/, "")
+    .replace(/<footer[^>]*>Generated by NGA Execution Tracker<\/footer>/, "");
+  const linksBeforeCpu = reportDocument.replace(cpuHeading, `${linksSection}${cpuHeading}`);
+  return linksBeforeCpu.replace(/<header\b[^>]*>[\s\S]*?<\/header>/, `${noteCallout}${statusSummary}`);
 }

@@ -699,7 +699,7 @@ export default function SettingsPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[var(--border)]">
-                {loginAudit.map((entry, index) => (
+                {loginAudit.slice(0, 25).map((entry, index) => (
                   <tr key={`${entry.loggedInAt}-${entry.username}-${index}`}>
                     <td className="whitespace-nowrap px-3 py-2 text-[var(--text-muted)]">{new Date(entry.loggedInAt).toLocaleString()}</td>
                     <td className="px-3 py-2 text-[var(--text)]">{entry.username} <span className="text-xs text-[var(--text-muted)]">({entry.role})</span></td>

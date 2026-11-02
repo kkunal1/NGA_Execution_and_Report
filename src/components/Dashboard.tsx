@@ -1220,10 +1220,11 @@ export default function Dashboard() {
                   <col />
                   <col className="w-24" />
                   <col className="w-48" />
+                  <col className="w-28" />
                 </colgroup>
                 <thead className="bg-[var(--surface-alt)] text-[var(--text)]">
                   <tr>
-                    {["#", "Domain", "Testline", "Status", "Date"].map((h) => (
+                    {["#", "Domain", "Testline", "Status", "Date", "More Info"].map((h) => (
                       <th key={h} className={`px-3 py-2 font-medium ${h === "Status" ? "text-center" : "text-left"}`}>
                         {h}
                       </th>
@@ -1264,6 +1265,7 @@ export default function Dashboard() {
                       </select>
                     </th>
                     <th className="px-3 pb-2" />
+                    <th className="px-3 pb-2" />
                   </tr>
                 </thead>
                 <tbody>
@@ -1286,11 +1288,21 @@ export default function Dashboard() {
                           ? new Date(row.date).toLocaleString(undefined, { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })
                           : "-"}
                       </td>
+                      <td className="whitespace-nowrap px-3 py-2">
+                        <a
+                          href={`https://nga.laas.intel.com/#/dmr_pv/planning/testResult/${encodeURIComponent(row.id)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="font-medium text-[var(--accent)] underline-offset-2 hover:underline"
+                        >
+                          More Info
+                        </a>
+                      </td>
                     </tr>
                   ))}
                   {!filteredExecutedRows.length && (
                     <tr>
-                      <td colSpan={5} className="px-3 py-8 text-center text-[var(--text-muted)]">
+                      <td colSpan={6} className="px-3 py-8 text-center text-[var(--text-muted)]">
                         {latestExecutedRows.length ? "No executed tests match the filters." : "No executed tests in the selected range."}
                       </td>
                     </tr>

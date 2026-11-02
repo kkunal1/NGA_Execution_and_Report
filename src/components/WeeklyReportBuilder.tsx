@@ -496,7 +496,8 @@ export default function WeeklyReportBuilder() {
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
   const reportLinks = Array.isArray(report?.links) ? report.links : [];
   const hsdesIssues = Array.isArray(report?.hsdesIssues) ? report.hsdesIssues : [];
-  const hsdesIssuesByDomain = [...hsdesIssues.reduce((groups, issue) => {
+  const openHsdesIssues = hsdesIssues.filter((issue) => issue.status?.trim().toLowerCase() === "open");
+  const hsdesIssuesByDomain = [...openHsdesIssues.reduce((groups, issue) => {
     const issues = groups.get(issue.domain) ?? [];
     issues.push(issue);
     groups.set(issue.domain, issues);
@@ -505,8 +506,8 @@ export default function WeeklyReportBuilder() {
     .sort(([left], [right]) => left.localeCompare(right));
   const activeHsdesDomain = hsdesIssuesByDomain.some(([domain]) => domain === hsdesDomainFilter) ? hsdesDomainFilter : "all";
   const filteredHsdesIssues = activeHsdesDomain === "all"
-    ? hsdesIssues
-    : hsdesIssues.filter((issue) => issue.domain === activeHsdesDomain);
+    ? openHsdesIssues
+    : openHsdesIssues.filter((issue) => issue.domain === activeHsdesDomain);
   const hasHsdFailureSummaries = Array.isArray(report?.hsdFailureSummaries);
   const hsdFailureSummaries = hasHsdFailureSummaries
     ? report.hsdFailureSummaries.filter((summary) => summary.failedRuns >= 5)
@@ -782,7 +783,7 @@ export default function WeeklyReportBuilder() {
         {report.sectionVisibility?.overallFailureBreakdown !== false && <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />}
         {hsdFailureSection}
         <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
-          <h2 className="mb-1 text-base font-bold text-[#204e76]">All HSDES Issues by Domain</h2>
+          <h2 className="mb-1 text-base font-bold text-[#204e76]">Open HSDES Issues by Domain</h2>
           {hsdesDetailsLoading ? (
             <p role="status" className="mt-3 text-sm text-[#647e94]">Refreshing HSDES details for this saved report…</p>
           ) : hsdesDetailsError ? (
@@ -792,10 +793,10 @@ export default function WeeklyReportBuilder() {
           ) : hsdesIssuesByDomain.length ? (
             <>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-xs text-[#57718a]">Showing {filteredHsdesIssues.length} of {hsdesIssues.length} HSDES issues across {hsdesIssuesByDomain.length} domains.</p>
+                <p className="text-xs text-[#57718a]">Showing {filteredHsdesIssues.length} of {openHsdesIssues.length} open HSDES issues across {hsdesIssuesByDomain.length} domains.</p>
                 <label className="flex items-center gap-2 text-xs font-semibold text-[#244c70]">Domain
                   <select value={activeHsdesDomain} onChange={(event) => setHsdesDomainFilter(event.target.value)} className="h-8 rounded-md border border-[#b8cadb] bg-white px-2 text-xs font-normal text-[#253646]">
-                    <option value="all">All domains ({hsdesIssues.length})</option>
+                    <option value="all">All domains ({openHsdesIssues.length})</option>
                     {hsdesIssuesByDomain.map(([domain, issues]) => <option key={domain} value={domain}>{formatValidationGroup(domain)} ({issues.length})</option>)}
                   </select>
                 </label>
@@ -821,7 +822,7 @@ export default function WeeklyReportBuilder() {
               </div>
             </>
           ) : (
-            <p className="mt-3 text-sm text-[#647e94]">No HSDES issues found.</p>
+            <p className="mt-3 text-sm text-[#647e94]">No open HSDES issues found.</p>
           )}
         </section>
       </article>}

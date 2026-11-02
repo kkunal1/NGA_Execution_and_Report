@@ -139,7 +139,9 @@ function renderWeeklyReportEmailDocument(report: WeeklyReport) {
     summary.domains.map((domain) => formatValidationGroupName(domain.domain)).join(", "),
     `${report.hsdFailureTitles?.[summary.hsdId] ?? hsdIssueById.get(summary.hsdId)?.title ?? ""}\nStatus: ${report.hsdFailureStatuses?.[summary.hsdId] ?? hsdIssueById.get(summary.hsdId)?.status ?? "Unknown"}`,
   ]);
-  const issueRows = (report.hsdesIssues ?? []).map((issue) => [formatValidationGroupName(issue.domain), issue.id, issue.title || "Untitled", issue.status, issue.daysOpen]);
+  const issueRows = (report.hsdesIssues ?? [])
+    .filter((issue) => issue.status.trim().toLowerCase() === "open")
+    .map((issue) => [formatValidationGroupName(issue.domain), issue.id, issue.title || "Untitled", issue.status, issue.daysOpen]);
   const stageRows = (report.stageDetails ?? []).map((detail) => [detail.stage, formatValidationGroupName(detail.group), detail.config, detail.testLine, detail.step, detail.subState, detail.count]);
   const links = (report.links ?? []).map((link) => {
     const href = safeReportLink(link.url);
@@ -182,6 +184,7 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport) {
   const overallFailureHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Overall Validation Group <span style="color:#dc2626">Failure Breakdown</span></h2>`;
   let reportDocument = renderWeeklyReportEmailDocument(report)
     .replace(/Weekly Execution Report/g, "Daily Execution Report")
+    .replace(/HSDES Issues by Domain/g, "Open HSDES Issues by Domain")
     .replace(/<h2 style="[^"]*">Execution Summary<\/h2>[\s\S]*?(?=<h2 style="[^"]*">CPU Breakdown<\/h2>)/, executionSummary)
     .replace(oldCpuHeading, cpuHeading)
     .replace(/<h2 style="[^"]*">Links<\/h2>[\s\S]*?(?=<footer)/, "")

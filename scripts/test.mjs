@@ -285,6 +285,11 @@ const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   ...weeklyReport,
   hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
   hsdFailureStatuses: { "15020010517": "Open" },
+  hsdesIssues: [
+    { id: "16000000001", title: "Open issue title", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 },
+    { id: "16000000002", title: "Rejected issue title", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Rejected", daysOpen: 2 },
+    { id: "16000000003", title: "Completed issue title", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Completed", daysOpen: 0 },
+  ],
   domainSummary: domainSummaryReport.domainSummary,
   links: [
     { label: "<script>alert('x')</script>", url: "https://example.com" },
@@ -305,6 +310,10 @@ assert.ok(!weeklyEmailHtml.includes("Weekly Execution Report"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
 assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
 assert.ok(weeklyEmailHtml.includes("<br><strong>Status: Open</strong>"));
+assert.ok(weeklyEmailHtml.includes("Open HSDES Issues by Domain"), "email and attachment label the open-only issue section accurately");
+assert.ok(weeklyEmailHtml.includes("16000000001") && weeklyEmailHtml.includes("Open issue title"), "email and attachment include open HSDES issues");
+assert.ok(!weeklyEmailHtml.includes("16000000002") && !weeklyEmailHtml.includes("16000000003"), "email and attachment omit rejected and completed HSDES issues");
+assert.ok(weeklyEmailHtml.includes("15020010517"), "open-only issue list does not remove HSDs in the failed-runs summary");
 assert.ok(weeklyEmailHtml.endsWith("Regards,<br>Krishna Kunal</p></main></body></html>"));
 assert.equal(weeklyReportEmailSignatureText, "\n\n\nRegards,\nKrishna Kunal");
 assert.ok(weeklyEmailHtml.includes('<tr style="background:#edf3f9"><td style="border:1px solid #cbd7e2;padding:7px 9px;text-align:left;vertical-align:top;">'), "standard email tables alternate row shading");

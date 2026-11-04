@@ -573,7 +573,7 @@ export default function WeeklyReportBuilder() {
         <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
             <thead className="bg-[#204e76] text-xs font-semibold text-white">
-              <tr><th className="w-40 px-3 py-2.5">Domain</th><th className="w-36 px-3 py-2.5">HSD</th><th className="px-3 py-2.5">Title &amp; Status</th><th className="w-28 px-3 py-2.5 text-right">Failed Test</th></tr>
+              <tr><th className="w-40 px-3 py-2.5">Domain</th><th className="w-36 px-3 py-2.5">HSD</th><th className="w-28 px-3 py-2.5 text-right">Failed Test</th><th className="px-3 py-2.5">Title &amp; Status</th></tr>
             </thead>
             <tbody className="divide-y divide-[#cfdae5]">
               {hsdFailureSummaries.map((summary) => {
@@ -585,11 +585,11 @@ export default function WeeklyReportBuilder() {
                   <tr key={summary.hsdId} className="even:bg-[#edf3f9]">
                     <td className="px-3 py-2">{domain}</td>
                     <td className="break-all px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/article/${encodeURIComponent(summary.hsdId)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{summary.hsdId}</a></td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#bb3846]">{summary.failedRuns}</td>
                     <td className="break-words px-3 py-2">
                       {report.hsdFailureTitles?.[summary.hsdId] || issue?.title || "Loading title…"}
                       <div className="mt-1 text-xs text-[#647e94]">Status: {report.hsdFailureStatuses?.[summary.hsdId] || issue?.status || (hsdesDetailsLoading ? "Loading…" : "Unknown")}</div>
                     </td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#bb3846]">{summary.failedRuns}</td>
                   </tr>
                 );
               })}

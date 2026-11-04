@@ -178,12 +178,14 @@ export function extractHsdesArticleDetails(value: unknown): HsdesArticleDetails 
   if (typeof value !== "object" || value === null) return null;
   const records = (value as { data?: unknown }).data;
   if (!Array.isArray(records) || typeof records[0] !== "object" || records[0] === null) return null;
-  const record = records[0] as { title?: unknown; status?: unknown; report_type?: unknown };
+  const record = records[0] as { title?: unknown; status?: unknown; report_type?: unknown; "bug.report_type"?: unknown };
   if (typeof record.title !== "string" || !record.title.trim()) return null;
+  const reportType = [record.report_type, record["bug.report_type"]]
+    .find((value): value is string => typeof value === "string" && Boolean(value.trim()) && value.trim().toLowerCase() !== "unknown");
   return {
     title: record.title.trim(),
     status: typeof record.status === "string" && record.status.trim() ? record.status.trim() : "Unknown",
-    reportType: typeof record.report_type === "string" && record.report_type.trim() ? record.report_type.trim() : "Unknown",
+    reportType: reportType?.trim() ?? "Unknown",
   };
 }
 

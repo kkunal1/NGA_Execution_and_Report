@@ -350,19 +350,20 @@ assert.ok(!weeklyEmailHtml.includes("Weekly Execution Report"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
 assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
 assert.ok(weeklyEmailHtml.includes("<br><strong>Status: Open</strong>"));
-assert.match(weeklyEmailHtml, />Domain<\/th><th[^>]*>HSD<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title &amp; Status<\/th><th[^>]*>Failed Test<\/th>/, "HSD failure summary uses the requested column order");
-assert.match(weeklyEmailHtml, /15020010517[\s\S]*?<\/td><td[^>]*>sighting<\/td><td[^>]*>[\s\S]*?Status: Open<\/strong><\/td><td[^>]*>6<\/td>/, "HSD failure summary shows report type and keeps failed count last");
+assert.match(weeklyEmailHtml, />Domain<\/th><th[^>]*>HSD<\/th><th[^>]*>Title &amp; Status<\/th><th[^>]*>Failed Test<\/th>/, "HSD failure summary keeps the requested order without Report Type");
+assert.match(weeklyEmailHtml, /15020010517[\s\S]*?<\/td><td[^>]*>[\s\S]*?Status: Open<\/strong><\/td><td[^>]*>6<\/td>/, "HSD failure summary preserves status and the final failed count");
 assert.ok(weeklyEmailHtml.includes("Open HSDES Issues by Domain"), "email and attachment label the open-only issue section accurately");
 assert.ok(weeklyEmailHtml.includes("16000000001") && weeklyEmailHtml.includes("Open issue title"), "email and attachment include open HSDES issues");
-assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title<\/th>/, "email and attachment place Report Type immediately after HSDES ID");
-assert.match(weeklyEmailHtml, /16000000001[\s\S]*?<\/td><td[^>]*>presighting<\/td><td[^>]*>Open issue title<\/td>/, "email and attachment display the HSDES report_type value");
+assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Title<\/th>/, "email and attachment omit the Report Type column");
+assert.doesNotMatch(weeklyEmailHtml, /Report Type|>presighting<|>sighting</, "Report Type is not rendered even when present in saved data");
 const reportTypeFixture = {
   ...weeklyReport,
   hsdesIssues: [{ id: "16000000004", title: "Legacy open issue", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 }],
 };
 for (const showYetToAttempt of [true, false]) {
   const htmlWithLegacyIssue = renderWeeklyReportEmailHtml(reportTypeFixture, { showYetToAttempt });
-  assert.match(htmlWithLegacyIssue, /16000000004[\s\S]*?<\/td><td[^>]*>Unknown<\/td><td[^>]*>Legacy open issue<\/td>/, "both body and attachment use Unknown when report_type is missing");
+  assert.match(htmlWithLegacyIssue, /16000000004[\s\S]*?<\/td><td[^>]*>Legacy open issue<\/td>/, "both body and attachment render issues without a Report Type cell");
+  assert.doesNotMatch(htmlWithLegacyIssue, /Report Type/);
 }
 assert.ok(!weeklyEmailHtml.includes("16000000002") && !weeklyEmailHtml.includes("16000000003"), "email and attachment omit rejected and completed HSDES issues");
 assert.ok(weeklyEmailHtml.includes("15020010517"), "open-only issue list does not remove HSDs in the failed-runs summary");
@@ -537,6 +538,8 @@ assert.equal(extractHsdesArticleTitle({ data: [{ title: "Direct HSD article titl
 assert.equal(extractHsdesArticleTitle({ data: [{ title: " " }] }), null);
 assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: " Direct HSD title ", status: " Open ", report_type: " presighting " }] }), { title: "Direct HSD title", status: "Open", reportType: "presighting" });
 assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct HSD title" }] }), { title: "Direct HSD title", status: "Unknown", reportType: "Unknown" });
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "SAF SoftLockup", status: "open", "bug.report_type": "sighting" }] }), { title: "SAF SoftLockup", status: "open", reportType: "sighting" });
+assert.equal(extractHsdesArticleDetails({ data: [{ title: "HSD", report_type: "Unknown", "bug.report_type": " presighting " }] })?.reportType, "presighting");
 assert.deepEqual(extractHsdesIssuesOlderThan(allIssueRecords).map(({ id }) => id), ["aged-security"]);
 const pagedIssueRecords = Array.from({ length: 20001 }, (_, index) => ({ id: `paged-${index + 1}` }));
 const pageStarts = [];

@@ -233,6 +233,23 @@ assert.equal(summarize([
   { ...rows[0], bucket: "Passed", state: "Passed", rerunIndex: 0 },
   { ...rows[2], id: "gk-blocked", bucket: "Blocked", state: "PendingGatekeepers", rerunIndex: 1 },
 ]).executionAttempted, 1, "blocked PendingGatekeepers reruns are excluded from execution attempted");
+const attemptedParityReport = summarizeWeeklyReport(
+  ["suite"],
+  new Date("2026-10-01T00:00:00Z"),
+  new Date("2026-10-08T00:00:00Z"),
+  [],
+  [
+    { state: "Passed", rerunIndex: 0 },
+    { state: "Failed", rerunIndex: 0 },
+    { state: "PendingRunning", rerunIndex: 1 },
+    { state: "PendingGatekeepers", rerunIndex: 1, testLine: { goStatus: "Blocked" } },
+  ],
+);
+assert.equal(
+  attemptedSummary.executionAttempted,
+  attemptedParityReport.latestPassed + attemptedParityReport.latestFailed + attemptedParityReport.latestRerunPendingRunning,
+  "Execution Report and Weekly Report use the same attempted definition, excluding blocked pending reruns",
+);
 const customReportLinks = [
   { label: "PV VV Exec Summary Dashboard", url: "https://xve-dashboards.intel.com/dmr-ap/execution-summary" },
   { label: "DMR Query", url: "https://hsdes.intel.com/appstore/generalapps/#/pages/community/15010407190?queryId=16032003391" },

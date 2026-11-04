@@ -74,6 +74,17 @@ export function bucketOf(state: string, goStatus = ""): StateBucket {
   return "Other";
 }
 
+export function isCountedPendingRerunAttempt(
+  state: string,
+  rerunIndex: number | null | undefined,
+  bucket: StateBucket,
+): boolean {
+  return bucket !== "Blocked" &&
+    rerunIndex != null &&
+    rerunIndex > 0 &&
+    /^pending(running|gatekeepers?)$/.test(state.trim().toLowerCase());
+}
+
 const NAME_KEYS = [
   "testname",
   "testcasename",

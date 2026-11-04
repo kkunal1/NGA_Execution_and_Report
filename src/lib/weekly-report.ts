@@ -1,7 +1,7 @@
 import { request as undiciRequest } from "undici";
 import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
-import { bucketOf } from "./normalize";
+import { bucketOf, isCountedPendingRerunAttempt } from "./normalize";
 import { resolveDispatcher } from "./proxy";
 import type { AgedHsdesIssue, HsdesIssue } from "./hsdes-sightings";
 import type { WeeklyReportSectionSettings } from "./dashboard-settings";
@@ -296,7 +296,9 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     planned: latestValid.length,
     latestPassed: latestValid.filter((run) => latestBucket(run) === "Passed").length,
     latestFailed: latestValid.filter((run) => latestBucket(run) === "Failed").length,
-    latestRerunPendingRunning: latestValid.filter((run) => (run.rerunIndex ?? 0) > 0 && /^pending(running|gatekeepers?)$/.test(run.state?.trim().toLowerCase() ?? "")).length,
+    latestRerunPendingRunning: latestValid.filter((run) =>
+      isCountedPendingRerunAttempt(run.state ?? "", run.rerunIndex, latestBucket(run)),
+    ).length,
     blockedLines: latestValid.filter((run) => latestBucket(run) === "Blocked").length,
     latestInProgress: latestValid.filter((run) => latestBucket(run) === "In Progress").length,
     latestNotRun: latestValid.filter((run) => latestBucket(run) === "Not Run").length,

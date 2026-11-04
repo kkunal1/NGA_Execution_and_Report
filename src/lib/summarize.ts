@@ -1,3 +1,4 @@
+import { isCountedPendingRerunAttempt } from "./normalize";
 import type { StateBucket, Summary, TestRow } from "./types";
 
 // Fallback classification from testline name keywords, used only when a row has no
@@ -123,8 +124,7 @@ export function summarize(rows: TestRow[]): Summary {
   return {
     tests: rows.length,
     executionAttempted: c.Passed + c.Failed + rows.filter((row) =>
-      row.bucket !== "Blocked" &&
-      row.rerunIndex != null && row.rerunIndex > 0 && /^pending(running|gatekeepers?)$/.test(row.state.trim().toLowerCase()),
+      isCountedPendingRerunAttempt(row.state, row.rerunIndex, row.bucket),
     ).length,
     passed: c.Passed,
     failed: c.Failed,

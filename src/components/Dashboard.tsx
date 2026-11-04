@@ -531,6 +531,10 @@ export default function Dashboard() {
   const s = run ? visibleSummary : undefined;
   const failRatePct = s ? pctOf(s.failed, s.tests) : 0;
   const blockedRatePct = s ? pctOf(s.blocked, s.tests) : 0;
+  const yetToAttemptCount = visibleRows.filter(
+    (row) => row.bucket === "Not Run" && (row.rerunIndex == null || row.rerunIndex <= 0),
+  ).length;
+  const yetToAttemptPct = s ? pctOf(yetToAttemptCount, s.notRun) : 0;
 
   const setLast7Days = () => {
     const to = new Date();
@@ -845,7 +849,7 @@ export default function Dashboard() {
             <Card label="Failed" value={s.failed} detail={`${failRatePct}%`} tone="text-[var(--card-fail-label)]" icon={XCircle} iconTone="bg-red-100 text-red-600" cardTone="bg-[var(--card-fail-bg)] border-[var(--card-fail-border)]" />
             <Card label="Blocked" value={s.blocked} detail={`${blockedRatePct}%`} tone="text-[var(--card-blocked-label)]" icon={ShieldBan} iconTone="bg-amber-100 text-amber-600" cardTone="bg-[var(--card-blocked-bg)] border-[var(--card-blocked-border)]" />
             <Card label="In progress" value={s.inProgress} tone="text-[var(--card-progress-label)]" icon={Clock} iconTone="bg-sky-100 text-sky-600" cardTone="bg-[var(--card-progress-bg)] border-[var(--card-progress-border)]" />
-            <Card label="Not run" value={s.notRun} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" />
+            <Card label="Not run" value={s.notRun} detail={`Yet to attempt: ${yetToAttemptCount} (${yetToAttemptPct}%)`} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" />
             {s.other > 0 && <Card label="Other" value={s.other} tone="text-[var(--card-violet-label)]" cardTone="bg-[var(--card-violet-bg)] border-[var(--card-violet-border)]" />}
           </section>
 

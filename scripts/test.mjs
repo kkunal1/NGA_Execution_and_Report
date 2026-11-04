@@ -228,6 +228,10 @@ assert.equal(summarize([
   { ...rows[2], id: "gk-first", bucket: "Not Run", state: "PendingGatekeepers", rerunIndex: 0 },
   { ...rows[2], id: "gk-rerun", bucket: "Not Run", state: "PendingGatekeepers", rerunIndex: 1 },
 ]).executionAttempted, 2, "attempted includes PendingGatekeepers reruns with index > 0");
+assert.equal(summarize([
+  { ...rows[0], bucket: "Passed", state: "Passed", rerunIndex: 0 },
+  { ...rows[2], id: "gk-blocked", bucket: "Blocked", state: "PendingGatekeepers", rerunIndex: 1 },
+]).executionAttempted, 1, "blocked PendingGatekeepers reruns are excluded from execution attempted");
 const customReportLinks = [
   { label: "PV VV Exec Summary Dashboard", url: "https://xve-dashboards.intel.com/dmr-ap/execution-summary" },
   { label: "DMR Query", url: "https://hsdes.intel.com/appstore/generalapps/#/pages/community/15010407190?queryId=16032003391" },

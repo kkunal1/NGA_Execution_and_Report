@@ -407,6 +407,14 @@ assert.ok(emailWithMetricCards.includes("1,091 <span style=\"font-size:12px;font
 assert.ok(emailWithMetricCards.includes("868 <span style=\"font-size:12px;font-weight:600\">68.3%</span>"));
 assert.ok(emailWithMetricCards.includes("Yet to attempt: 6 (0.5%)"));
 assert.match(emailWithMetricCards, />Not Run<\/div><div[^>]*>147 <span[^>]*>11\.6%<\/span><\/div><div[^>]*>Yet to attempt: 6 \(0\.5%\)<\/div>/, "Not Run keeps its label above the count and Yet to attempt on a separate line below it");
+const emailBodyWithoutYetToAttempt = renderWeeklyReportEmailHtml({
+  ...weeklyReport,
+  planned: 1270,
+  latestNotRun: 147,
+  latestYetToAttempt: 6,
+}, { showYetToAttempt: false });
+assert.doesNotMatch(emailBodyWithoutYetToAttempt, /yet to attempt/i, "email body omits Yet to attempt while the default attachment retains it");
+assert.match(emailBodyWithoutYetToAttempt, />Not Run<\/div><div[^>]*>147 <span[^>]*>11\.6%<\/span><\/div><\/div><\/td>/, "email body retains the Not Run count without an extra detail row");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW43.6");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW43.7");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW44.1");

@@ -41,6 +41,7 @@ assert.equal(canAccessWeeklyReportFeature("admin", "weeklyReportEmail", { weekly
 assert.equal(isValidAdminPassword("abcd"), true);
 assert.equal(isValidAdminPassword("abc"), false);
 assert.equal(DEFAULT_DASHBOARD_SETTINGS.showManualAborts, true);
+assert.equal(DEFAULT_DASHBOARD_SETTINGS.weeklyReportHsdDetails, false);
 assert.deepEqual(DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, {
   cpuAllocation: true,
   hsdFailureSummary: true,

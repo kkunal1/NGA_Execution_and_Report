@@ -28,6 +28,7 @@ export async function PUT(req: Request) {
       typeof body.poolSystems !== "boolean" || typeof body.weeklyReport !== "boolean" || typeof body.executionTime !== "boolean" ||
       (body.weeklyReportUpdate !== undefined && typeof body.weeklyReportUpdate !== "boolean") ||
       (body.weeklyReportEmail !== undefined && typeof body.weeklyReportEmail !== "boolean") ||
+      (body.weeklyReportHsdDetails !== undefined && typeof body.weeklyReportHsdDetails !== "boolean") ||
       !validWeeklyReportSections || typeof body.ngaiTestRunData !== "boolean" ||
       (body.weeklyReportMode !== "dateRange" && body.weeklyReportMode !== "workWeek")) {
       return NextResponse.json({ error: "Invalid dashboard or Weekly Report settings." }, { status: 400 });
@@ -40,6 +41,9 @@ export async function PUT(req: Request) {
       weeklyReport: body.weeklyReport,
       weeklyReportUpdate: body.weeklyReportUpdate === true,
       weeklyReportEmail: body.weeklyReportEmail === true,
+      weeklyReportHsdDetails: body.weeklyReportHsdDetails === undefined
+        ? currentSettings.weeklyReportHsdDetails
+        : body.weeklyReportHsdDetails,
       weeklyReportSections: weeklyReportSections as WeeklyReportSectionSettings,
       weeklyReportMode: body.weeklyReportMode,
       executionTime: body.executionTime,

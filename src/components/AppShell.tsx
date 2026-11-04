@@ -3,7 +3,7 @@
 import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, FilePenLine, FileText, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight, Send, ListChecks } from "lucide-react";
+import { LayoutDashboard, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, FilePenLine, FileText, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight, Send } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
@@ -11,7 +11,6 @@ import { RefreshScheduleContext, type RefreshSchedule } from "./refresh-context"
 
 const NAV = [
   { href: "/", label: "Execution Report", icon: LayoutDashboard },
-  { href: "/failure-management", label: "Failure Management", icon: ListChecks, adminOnly: true },
   { href: "/pool-systems", label: "B0 Pool Systems", icon: Server, visibilityKey: "poolSystems" as const },
   { href: "/weekly-report", label: "Weekly Report", icon: CalendarDays, visibilityKey: "weeklyReport" as const },
   { href: "/execution-time", label: "Check Execution Time", icon: Timer, visibilityKey: "executionTime" as const },
@@ -182,7 +181,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       (pathname === "/weekly-report/send-email" && !menuVisibility.weeklyReportEmail) ||
       (pathname === "/update-hsd-details" && !menuVisibility.weeklyReportHsdDetails)
     );
-    if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/failure-management" || pathname.startsWith("/failure-management/") || pathname === "/new-job" || disabledWeeklyFeature)) {
+    if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || disabledWeeklyFeature)) {
       router.replace("/");
     }
   }, [menuVisibility, menuVisibilityReady, pathname, role, router]);
@@ -323,7 +322,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/failure-management" || pathname.startsWith("/failure-management/") || pathname === "/new-job" || viewerWeeklyFeaturePending || viewerWeeklyFeatureDenied)) {
+  if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || viewerWeeklyFeaturePending || viewerWeeklyFeatureDenied)) {
     return <div className="flex min-h-screen items-center justify-center bg-[var(--page-bg)] text-sm text-[var(--text-muted)]">Opening viewer dashboard…</div>;
   }
 

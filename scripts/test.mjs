@@ -325,7 +325,7 @@ const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
   hsdFailureStatuses: { "15020010517": "Open" },
   hsdesIssues: [
-    { id: "16000000001", title: "Open issue title", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 },
+    { id: "16000000001", title: "Open issue title", reportType: "presighting", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 },
     { id: "16000000002", title: "Rejected issue title", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Rejected", daysOpen: 2 },
     { id: "16000000003", title: "Completed issue title", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Completed", daysOpen: 0 },
   ],
@@ -351,6 +351,16 @@ assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
 assert.ok(weeklyEmailHtml.includes("<br><strong>Status: Open</strong>"));
 assert.ok(weeklyEmailHtml.includes("Open HSDES Issues by Domain"), "email and attachment label the open-only issue section accurately");
 assert.ok(weeklyEmailHtml.includes("16000000001") && weeklyEmailHtml.includes("Open issue title"), "email and attachment include open HSDES issues");
+assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title<\/th>/, "email and attachment place Report Type immediately after HSDES ID");
+assert.match(weeklyEmailHtml, /16000000001[\s\S]*?<\/td><td[^>]*>presighting<\/td><td[^>]*>Open issue title<\/td>/, "email and attachment display the HSDES report_type value");
+const reportTypeFixture = {
+  ...weeklyReport,
+  hsdesIssues: [{ id: "16000000004", title: "Legacy open issue", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 }],
+};
+for (const showYetToAttempt of [true, false]) {
+  const htmlWithLegacyIssue = renderWeeklyReportEmailHtml(reportTypeFixture, { showYetToAttempt });
+  assert.match(htmlWithLegacyIssue, /16000000004[\s\S]*?<\/td><td[^>]*>Unknown<\/td><td[^>]*>Legacy open issue<\/td>/, "both body and attachment use Unknown when report_type is missing");
+}
 assert.ok(!weeklyEmailHtml.includes("16000000002") && !weeklyEmailHtml.includes("16000000003"), "email and attachment omit rejected and completed HSDES issues");
 assert.ok(weeklyEmailHtml.includes("15020010517"), "open-only issue list does not remove HSDs in the failed-runs summary");
 assert.ok(weeklyEmailHtml.endsWith("Regards,<br>Krishna Kunal</p></main></body></html>"));
@@ -489,6 +499,19 @@ assert.deepEqual(aggregateHsdesIssueIdsByDomain([
   pv_memory: 1,
   pv_virtualization: 1,
 });
+assert.deepEqual(extractHsdesIssues([
+  { id: "type-sighting", report_type: "sighting" },
+  { id: "type-presighting", report_type: " presighting " },
+  { id: "type-request", report_type: "test_request" },
+  { id: "type-missing" },
+  { id: "type-invalid", report_type: 42 },
+]).map(({ id, reportType }) => ({ id, reportType })), [
+  { id: "type-invalid", reportType: "Unknown" },
+  { id: "type-missing", reportType: "Unknown" },
+  { id: "type-presighting", reportType: "presighting" },
+  { id: "type-request", reportType: "test_request" },
+  { id: "type-sighting", reportType: "sighting" },
+]);
 assert.deepEqual(extractHsdesIssuesOlderThan([
   { id: "late-security", title: "Older security issue", team_found: "security_subsystem_validation", status: "open", days_open: "45" },
   { id: "late-security", title: "Duplicate row", team_found: "security_subsystem_validation", status: "open", days_open: "45" },

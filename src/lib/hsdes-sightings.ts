@@ -11,6 +11,7 @@ type HsdesQueryRecord = {
   id?: unknown;
   title?: unknown;
   status?: unknown;
+  report_type?: unknown;
   team_found?: unknown;
   days_open?: unknown;
 };
@@ -62,7 +63,7 @@ export type AgedHsdesIssue = {
   daysOpen: number;
 };
 
-export type HsdesIssue = AgedHsdesIssue;
+export type HsdesIssue = AgedHsdesIssue & { reportType?: string };
 
 export function extractHsdesIssues(records: unknown[]): HsdesIssue[] {
   const issues = new Map<string, HsdesIssue>();
@@ -80,6 +81,7 @@ export function extractHsdesIssues(records: unknown[]): HsdesIssue[] {
       teamFound,
       domain: canonicalizeSightingDomain(teamFound) ?? (teamFound || "Unmapped"),
       status: typeof record.status === "string" ? record.status : "Unknown",
+      reportType: typeof record.report_type === "string" && record.report_type.trim() ? record.report_type.trim() : "Unknown",
       daysOpen: Number.isFinite(daysOpen) ? daysOpen : 0,
     });
   }

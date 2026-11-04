@@ -671,18 +671,18 @@ export default function WeeklyReportBuilder() {
               ["Test Passed", report.latestPassed.toLocaleString(), percentage(report.latestPassed, report.planned), "text-[#087a50]", "border-[#087a50]"],
               ["Test Failed", report.latestFailed.toLocaleString(), percentage(report.latestFailed, report.planned), "text-[#bb3846]", "border-[#bb3846]"],
               ["Test Blocked", report.blockedLines.toLocaleString(), percentage(report.blockedLines, report.planned), "text-[#aa5420]", "border-[#aa5420]"],
-              ["Not run", report.latestNotRun.toLocaleString(), percentage(report.latestNotRun, report.planned), "text-[#9a6313]", "border-[#c1852c]"],
+              ["Not Run", report.latestNotRun.toLocaleString(), percentage(report.latestNotRun, report.planned), "text-[#9a6313]", "border-[#c1852c]"],
             ].map(([label, count, percent, color, border]) => (
               <div key={label} className={`border-l-[3px] pl-3 ${border}`}>
                 <p className="text-xs font-medium text-[#4e6c84]">
                   {label}
                   {label === "Execution Attempted" && <> <span className="ml-1 text-[11px] font-normal text-[#60788e]">(pass + fail + rerun created)</span></>}
                 </p>
-                {label === "Not run" && <p className="mt-0.5 text-[11px] font-medium text-[#60788e]">Yet to attempt: {yetToAttempt.toLocaleString()} ({reportPercentage(yetToAttempt, report.planned)})</p>}
                 <p data-copy-pair className={`mt-1 flex flex-wrap items-baseline gap-x-2 font-bold tabular-nums ${color}`}>
                   <span className="text-xl">{count}</span>
                   <span className="text-sm font-semibold">{percent}</span>
                 </p>
+                {label === "Not Run" && <p className="mt-1 text-[11px] font-medium text-[#60788e]">Yet to attempt: {yetToAttempt.toLocaleString()} ({reportPercentage(yetToAttempt, report.planned)})</p>}
               </div>
             ))}
           </div>

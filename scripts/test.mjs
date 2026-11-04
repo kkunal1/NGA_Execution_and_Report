@@ -406,6 +406,7 @@ assert.ok(emailWithMetricCards.includes("Execution Attempted"));
 assert.ok(emailWithMetricCards.includes("1,091 <span style=\"font-size:12px;font-weight:600\">85.9%</span>"));
 assert.ok(emailWithMetricCards.includes("868 <span style=\"font-size:12px;font-weight:600\">68.3%</span>"));
 assert.ok(emailWithMetricCards.includes("Yet to attempt: 6 (0.5%)"));
+assert.match(emailWithMetricCards, />Not Run<\/div><div[^>]*>147 <span[^>]*>11\.6%<\/span><\/div><div[^>]*>Yet to attempt: 6 \(0\.5%\)<\/div>/, "Not Run keeps its label above the count and Yet to attempt on a separate line below it");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW43.6");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW43.7");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW44.1");

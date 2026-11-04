@@ -354,16 +354,19 @@ assert.match(weeklyEmailHtml, />Domain<\/th><th[^>]*>HSD<\/th><th[^>]*>Failed Te
 assert.match(weeklyEmailHtml, /15020010517[\s\S]*?<\/td><td[^>]*>6<\/td><td[^>]*>[\s\S]*?Status: Open<\/strong><\/td>/, "HSD failure summary preserves the failed count after HSD and status in the final column");
 assert.ok(weeklyEmailHtml.includes("Open HSDES Issues by Domain"), "email and attachment label the open-only issue section accurately");
 assert.ok(weeklyEmailHtml.includes("16000000001") && weeklyEmailHtml.includes("Open issue title"), "email and attachment include open HSDES issues");
-assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Title<\/th>/, "email and attachment omit the Report Type column");
-assert.doesNotMatch(weeklyEmailHtml, /Report Type|>presighting<|>sighting</, "Report Type is not rendered even when present in saved data");
+assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title<\/th>/, "open HSDES issues retain Report Type immediately after HSDES ID");
+assert.match(weeklyEmailHtml, /16000000001[\s\S]*?<\/td><td[^>]*>presighting<\/td><td[^>]*>Open issue title<\/td>/, "open HSDES issues display their actual report type");
+const hsdFailureTableHtml = weeklyEmailHtml.match(/>HSDs with 5 or More Failed Runs<\/h2>([\s\S]*?)<\/table>/)?.[1];
+assert.ok(hsdFailureTableHtml, "HSD failure summary table is present");
+assert.doesNotMatch(hsdFailureTableHtml, /Report Type|>sighting</, "Report Type stays removed only from the HSD failure summary");
 const reportTypeFixture = {
   ...weeklyReport,
   hsdesIssues: [{ id: "16000000004", title: "Legacy open issue", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 }],
 };
 for (const showYetToAttempt of [true, false]) {
   const htmlWithLegacyIssue = renderWeeklyReportEmailHtml(reportTypeFixture, { showYetToAttempt });
-  assert.match(htmlWithLegacyIssue, /16000000004[\s\S]*?<\/td><td[^>]*>Legacy open issue<\/td>/, "both body and attachment render issues without a Report Type cell");
-  assert.doesNotMatch(htmlWithLegacyIssue, /Report Type/);
+  assert.match(htmlWithLegacyIssue, /16000000004[\s\S]*?<\/td><td[^>]*>Unknown<\/td><td[^>]*>Legacy open issue<\/td>/, "both body and attachment retain a Report Type cell in open issues");
+  assert.equal(htmlWithLegacyIssue.match(/>Report Type<\/th>/g)?.length, 1, "only the open-issues table includes Report Type");
 }
 assert.ok(!weeklyEmailHtml.includes("16000000002") && !weeklyEmailHtml.includes("16000000003"), "email and attachment omit rejected and completed HSDES issues");
 assert.ok(weeklyEmailHtml.includes("15020010517"), "open-only issue list does not remove HSDs in the failed-runs summary");

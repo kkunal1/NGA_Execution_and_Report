@@ -807,19 +807,20 @@ export default function WeeklyReportBuilder() {
               <div data-copy-expand className="max-h-[32rem] overflow-auto overscroll-contain border border-[#b8cadb]">
                 <table className="w-full min-w-[850px] border-collapse text-left text-xs" style={{ fontFamily: '"Courier New", Courier, monospace' }}>
                   <thead className="sticky top-0 z-10 bg-[#204e76] text-[11px] font-semibold text-white">
-                    <tr><th className="w-40 px-2.5 py-2">Domain</th><th className="w-36 px-2.5 py-2">HSDES ID</th><th className="px-2.5 py-2">Title</th><th className="w-28 px-2.5 py-2">Status</th><th className="w-24 px-2.5 py-2">Days open</th></tr>
+                    <tr><th className="w-40 px-2.5 py-2">Domain</th><th className="w-36 px-2.5 py-2">HSDES ID</th><th className="w-32 px-2.5 py-2">Report Type</th><th className="px-2.5 py-2">Title</th><th className="w-28 px-2.5 py-2">Status</th><th className="w-24 px-2.5 py-2">Days open</th></tr>
                   </thead>
                   <tbody className="divide-y divide-[#cfdae5]">
                     {filteredHsdesIssues.map((issue) => (
                       <tr key={issue.id} className="even:bg-[#edf3f9]">
                         <td className="px-2.5 py-2">{formatValidationGroup(issue.domain)}</td>
                         <td className="break-all px-2.5 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a></td>
+                        <td className="break-words px-2.5 py-2">{issue.reportType || "Unknown"}</td>
                         <td className="break-words px-2.5 py-2">{issue.title || "Untitled"}</td>
                         <td className="px-2.5 py-2">{issue.status}</td>
                         <td className="px-2.5 py-2 tabular-nums">{issue.daysOpen}</td>
                       </tr>
                     ))}
-                    {!filteredHsdesIssues.length && <tr><td colSpan={5} className="px-3 py-6 text-center text-[#647e94]">No issues in this domain.</td></tr>}
+                    {!filteredHsdesIssues.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-[#647e94]">No issues in this domain.</td></tr>}
                   </tbody>
                 </table>
               </div>

@@ -1,5 +1,6 @@
 import { createTransport } from "nodemailer";
 import type { WeeklyReport } from "./weekly-report";
+import { weeklyReportYetToAttemptCount } from "./weekly-report-metrics";
 import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSignatureText, weeklyReportEmailSubject } from "./weekly-report-email";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -30,6 +31,8 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
   const subject = weeklyReportEmailSubject(report);
   const filename = weeklyReportEmailFilename(report);
   const attempted = report.latestPassed + report.latestFailed + report.latestRerunPendingRunning;
+  const yetToAttempt = weeklyReportYetToAttemptCount(report);
+  const yetToAttemptPct = report.planned ? `${(yetToAttempt / report.planned * 100).toFixed(1).replace(/\.0$/, "")}%` : "0%";
   const reportHtml = renderWeeklyReportEmailHtml(report);
   const transporter = createTransport({
     host,
@@ -49,7 +52,7 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
       to: recipients,
       cc,
       subject,
-      text: `Weekly Report for ${from} to ${toDate}. Recipients: ${recipients.join(", ")}. Suites: ${report.suites.join(", ")}. Attempted: ${attempted}; passed: ${report.latestPassed}; failed: ${report.latestFailed}. The formatted report is included below and attached.${weeklyReportEmailSignatureText}`,
+      text: `Weekly Report for ${from} to ${toDate}. Recipients: ${recipients.join(", ")}. Suites: ${report.suites.join(", ")}. Attempted: ${attempted}; passed: ${report.latestPassed}; failed: ${report.latestFailed}; yet to attempt: ${yetToAttempt} (${yetToAttemptPct}). The formatted report is included below and attached.${weeklyReportEmailSignatureText}`,
       html: reportHtml,
       attachments: [{
         filename,

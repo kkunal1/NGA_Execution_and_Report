@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
+import { weeklyReportYetToAttemptCount } from "../src/lib/weekly-report-metrics.ts";
 import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSignatureText, weeklyReportEmailSubject } from "../src/lib/weekly-report-email.ts";
 import { displayCpuAllocationTitle } from "../src/lib/weekly-report-display.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
@@ -252,6 +253,22 @@ const weeklyReport = summarizeWeeklyReport(
   DEFAULT_TEAM_PLATFORM_COUNTS,
   customReportLinks,
 );
+const weeklyAttemptReport = summarizeWeeklyReport(
+  ["suite"],
+  new Date("2026-10-01T00:00:00Z"),
+  new Date("2026-10-08T00:00:00Z"),
+  [],
+  [
+    { testRunId: "never-1", testLineId: "line-1", state: "PendingRunning", rerunIndex: 0 },
+    { testRunId: "rerun-1", testLineId: "line-2", state: "PendingRunning", rerunIndex: 1 },
+    { testRunId: "never-2", testLineId: "line-3", state: "PendingGatekeepers", rerunIndex: 0 },
+    { testRunId: "blocked-gk", testLineId: "line-4", state: "PendingGatekeepers", rerunIndex: 1, testLine: { goStatus: "Blocked" } },
+  ],
+);
+assert.equal(weeklyAttemptReport.latestNotRun, 3);
+assert.equal(weeklyAttemptReport.latestYetToAttempt, 2);
+assert.equal(weeklyReportYetToAttemptCount({ latestNotRun: 147, latestRerunPendingRunning: 33 }), 114);
+assert.equal(weeklyReportYetToAttemptCount({ latestNotRun: 147, latestRerunPendingRunning: 33, latestYetToAttempt: 6 }), 6);
 const hsdFailureRuns = [
   ...Array.from({ length: 6 }, (_, index) => ({
     state: "Failed",
@@ -364,11 +381,13 @@ const emailWithMetricCards = renderWeeklyReportEmailHtml({
   latestRerunPendingRunning: 33,
   blockedLines: 63,
   latestNotRun: 147,
+  latestYetToAttempt: 6,
 });
 assert.equal(emailWithMetricCards.match(/<td width="20%"/g)?.length, 5, "email summary uses five equal-width metric cards");
 assert.ok(emailWithMetricCards.includes("Execution Attempted"));
 assert.ok(emailWithMetricCards.includes("1,091 <span style=\"font-size:12px;font-weight:600\">85.9%</span>"));
 assert.ok(emailWithMetricCards.includes("868 <span style=\"font-size:12px;font-weight:600\">68.3%</span>"));
+assert.ok(emailWithMetricCards.includes("Yet to attempt: 6 (0.5%)"));
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-23T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW43.6");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW43.7");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 PV B0 Execution Daily Status Report For WW44.1");

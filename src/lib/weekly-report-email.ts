@@ -1,4 +1,5 @@
 import type { FailureRow, Stage, WeeklyReport, WeeklyReportDomainSummary } from "./weekly-report";
+import { weeklyReportYetToAttemptCount } from "./weekly-report-metrics";
 import { formatValidationGroupName } from "./normalize";
 import { displayCpuAllocationTitle } from "./weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "./work-weeks";
@@ -153,6 +154,7 @@ function renderWeeklyReportEmailDocument(report: WeeklyReport) {
 
 export function renderWeeklyReportEmailHtml(report: WeeklyReport) {
   const attempted = report.latestPassed + report.latestFailed + report.latestRerunPendingRunning;
+  const yetToAttempt = weeklyReportYetToAttemptCount(report);
   const percentage = (count: number) => report.planned
     ? `${(count / report.planned * 100).toFixed(1).replace(/\.0$/, "")}%`
     : "0%";
@@ -161,7 +163,7 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport) {
     { label: "Test Passed", count: report.latestPassed, color: "#087a50", border: "#087a50" },
     { label: "Test Failed", count: report.latestFailed, color: "#bb3846", border: "#bb3846" },
     { label: "Test Blocked", count: report.blockedLines, color: "#aa5420", border: "#aa5420" },
-    { label: "Not run", count: report.latestNotRun, color: "#9a6313", border: "#c1852c" },
+    { label: "Not run", count: report.latestNotRun, color: "#9a6313", border: "#c1852c", detail: `Yet to attempt: ${yetToAttempt.toLocaleString("en-US")} (${percentage(yetToAttempt)})` },
   ];
   const executionMetricsTable = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:10px 0 20px;border-collapse:collapse;background:#eef4fa;border-top:1px solid #c4d6e5;border-bottom:1px solid #c4d6e5"><tbody><tr>${executionMetrics.map((metric) => `<td width="20%" style="width:20%;padding:14px 10px;vertical-align:top;background:#eef4fa"><div style="border-left:3px solid ${metric.border};padding-left:10px"><div style="color:#4e6c84;font-size:12px;font-weight:500">${metric.label}${metric.detail ? ` <span style="color:#60788e;font-size:10px;font-weight:400">${metric.detail}</span>` : ""}</div><div style="margin-top:4px;color:${metric.color};font-size:19px;font-weight:700">${metric.count.toLocaleString("en-US")} <span style="font-size:12px;font-weight:600">${percentage(metric.count)}</span></div></div></td>`).join("")}</tr></tbody></table>`;
   const executionSummary = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Execution Summary</h2>${executionMetricsTable}`;

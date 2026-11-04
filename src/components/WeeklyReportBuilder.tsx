@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, Copy, Download, FileText, FolderOpen, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
+import { weeklyReportYetToAttemptCount } from "@/lib/weekly-report-metrics";
 import { displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 
@@ -494,6 +495,7 @@ export default function WeeklyReportBuilder() {
 
   const control = "w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-2 text-sm text-[var(--text)]";
   const attempted = report ? report.latestPassed + report.latestFailed + report.latestRerunPendingRunning : 0;
+  const yetToAttempt = report ? weeklyReportYetToAttemptCount(report) : 0;
   const reportLinks = Array.isArray(report?.links) ? report.links : [];
   const hsdesIssues = Array.isArray(report?.hsdesIssues) ? report.hsdesIssues : [];
   const openHsdesIssues = hsdesIssues.filter((issue) => issue.status?.trim().toLowerCase() === "open");
@@ -676,6 +678,7 @@ export default function WeeklyReportBuilder() {
                   {label}
                   {label === "Execution Attempted" && <> <span className="ml-1 text-[11px] font-normal text-[#60788e]">(pass + fail + rerun created)</span></>}
                 </p>
+                {label === "Not run" && <p className="mt-0.5 text-[11px] font-medium text-[#60788e]">Yet to attempt: {yetToAttempt.toLocaleString()} ({reportPercentage(yetToAttempt, report.planned)})</p>}
                 <p data-copy-pair className={`mt-1 flex flex-wrap items-baseline gap-x-2 font-bold tabular-nums ${color}`}>
                   <span className="text-xl">{count}</span>
                   <span className="text-sm font-semibold">{percent}</span>

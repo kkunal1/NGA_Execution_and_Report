@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { FileText, Send } from "lucide-react";
+import { weeklyReportYetToAttemptCount } from "@/lib/weekly-report-metrics";
 import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
@@ -12,10 +13,12 @@ type WeeklyReportMailCache = {
   to: string;
   reportLabel: string;
   suites: string[];
+  planned: number;
   latestPassed: number;
   latestFailed: number;
   blockedLines: number;
   latestNotRun: number;
+  latestYetToAttempt: number;
 };
 
 function readWeeklyReportMailCache(): WeeklyReportMailCache | null {
@@ -28,6 +31,7 @@ function readWeeklyReportMailCache(): WeeklyReportMailCache | null {
     if (typeof report.from !== "string" || !Number.isFinite(Date.parse(report.from)) ||
       typeof report.to !== "string" || !Number.isFinite(Date.parse(report.to)) ||
       !Array.isArray(report.suites) || !report.suites.every((suite) => typeof suite === "string") ||
+      typeof report.planned !== "number" ||
       typeof report.latestPassed !== "number" || typeof report.latestFailed !== "number" ||
       typeof report.blockedLines !== "number" || typeof report.latestNotRun !== "number") return null;
     return {
@@ -38,10 +42,18 @@ function readWeeklyReportMailCache(): WeeklyReportMailCache | null {
         ? value.generatedWeek
         : getDailyReportLabel(getISTDateKey(new Date(report.from))),
       suites: report.suites,
+      planned: report.planned,
       latestPassed: report.latestPassed,
       latestFailed: report.latestFailed,
       blockedLines: report.blockedLines,
       latestNotRun: report.latestNotRun,
+      latestYetToAttempt: weeklyReportYetToAttemptCount({
+        latestYetToAttempt: typeof report.latestYetToAttempt === "number" ? report.latestYetToAttempt : undefined,
+        latestNotRun: report.latestNotRun,
+        latestRerunPendingRunning: typeof report.latestRerunPendingRunning === "number"
+          ? report.latestRerunPendingRunning
+          : 0,
+      }),
     };
   } catch {
     return null;
@@ -65,10 +77,12 @@ export default function WeeklyReportMailPanel() {
       to: cached.to,
       reportLabel: cached.reportLabel,
       suites: cached.suites,
+      planned: cached.planned,
       latestPassed: cached.latestPassed,
       latestFailed: cached.latestFailed,
       blockedLines: cached.blockedLines,
       latestNotRun: cached.latestNotRun,
+      latestYetToAttempt: cached.latestYetToAttempt,
     } : null);
   }, []);
 
@@ -127,7 +141,7 @@ export default function WeeklyReportMailPanel() {
       </div>
       {weeklyMailSummary ? (
         <p className="mt-3 text-sm text-[var(--text)]">
-          Report ready for {weeklyMailSummary.reportLabel} · {weeklyMailSummary.suites.length} suites · {weeklyMailSummary.latestPassed} passed · {weeklyMailSummary.latestFailed} failed · {weeklyMailSummary.blockedLines} blocked · {weeklyMailSummary.latestNotRun} not run
+          Report ready for {weeklyMailSummary.reportLabel} · {weeklyMailSummary.suites.length} suites · {weeklyMailSummary.latestPassed} passed · {weeklyMailSummary.latestFailed} failed · {weeklyMailSummary.blockedLines} blocked · {weeklyMailSummary.latestNotRun} not run · {weeklyMailSummary.latestYetToAttempt} yet to attempt ({weeklyMailSummary.planned ? (weeklyMailSummary.latestYetToAttempt / weeklyMailSummary.planned * 100).toFixed(1).replace(/\.0$/, "") : "0"}%)
         </p>
       ) : (
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Create or load a Weekly Report first.</p>

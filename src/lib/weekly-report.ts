@@ -91,6 +91,7 @@ export type WeeklyReport = {
   blockedLines: number;
   latestInProgress: number;
   latestNotRun: number;
+  latestYetToAttempt?: number;
   domainSummary: WeeklyReportDomainSummary[];
   sectionVisibility?: WeeklyReportSectionSettings;
   validRuns: number;
@@ -299,6 +300,9 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     blockedLines: latestValid.filter((run) => latestBucket(run) === "Blocked").length,
     latestInProgress: latestValid.filter((run) => latestBucket(run) === "In Progress").length,
     latestNotRun: latestValid.filter((run) => latestBucket(run) === "Not Run").length,
+    latestYetToAttempt: latestValid.filter((run) =>
+      latestBucket(run) === "Not Run" && (run.rerunIndex ?? 0) <= 0,
+    ).length,
     domainSummary,
     validRuns: valid.length,
     triageRuns: recent.length - valid.length,

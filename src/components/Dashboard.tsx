@@ -534,7 +534,7 @@ export default function Dashboard() {
   const yetToAttemptCount = visibleRows.filter(
     (row) => row.bucket === "Not Run" && (row.rerunIndex == null || row.rerunIndex <= 0),
   ).length;
-  const yetToAttemptPct = s ? pctOf(yetToAttemptCount, s.notRun) : 0;
+  const yetToAttemptPct = s ? pctOf(yetToAttemptCount, s.tests) : 0;
 
   const setLast7Days = () => {
     const to = new Date();

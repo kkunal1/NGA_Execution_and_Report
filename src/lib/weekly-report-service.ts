@@ -30,6 +30,7 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
   const hsdArticleDetails = sectionVisibility.hsdFailureSummary ? await fetchHsdesArticleDetails(hsdIds) : {};
   const hsdFailureTitles = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.title]));
   const hsdFailureStatuses = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.status]));
+  const hsdFailureReportTypes = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.reportType]));
   return {
     ...report,
     sectionVisibility,
@@ -42,6 +43,7 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
     agedHsdesIssues: sightingResult.agedIssues,
     hsdFailureTitles,
     hsdFailureStatuses,
+    hsdFailureReportTypes,
     sightingWarning: sightingResult.warning,
   };
 }

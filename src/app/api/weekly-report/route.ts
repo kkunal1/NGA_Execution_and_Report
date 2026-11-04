@@ -21,6 +21,7 @@ export async function GET(req: Request) {
       return NextResponse.json({
         hsdFailureTitles: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.title])),
         hsdFailureStatuses: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.status])),
+        hsdFailureReportTypes: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.reportType])),
       });
     }
     return NextResponse.json(await fetchHsdesIssueData(reportSettings.hsdesLink));

@@ -324,6 +324,7 @@ const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   ...weeklyReport,
   hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
   hsdFailureStatuses: { "15020010517": "Open" },
+  hsdFailureReportTypes: { "15020010517": "sighting" },
   hsdesIssues: [
     { id: "16000000001", title: "Open issue title", reportType: "presighting", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 },
     { id: "16000000002", title: "Rejected issue title", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Rejected", daysOpen: 2 },
@@ -349,6 +350,8 @@ assert.ok(!weeklyEmailHtml.includes("Weekly Execution Report"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
 assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
 assert.ok(weeklyEmailHtml.includes("<br><strong>Status: Open</strong>"));
+assert.match(weeklyEmailHtml, />Domain<\/th><th[^>]*>HSD<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title &amp; Status<\/th><th[^>]*>Failed Test<\/th>/, "HSD failure summary uses the requested column order");
+assert.match(weeklyEmailHtml, /15020010517[\s\S]*?<\/td><td[^>]*>sighting<\/td><td[^>]*>[\s\S]*?Status: Open<\/strong><\/td><td[^>]*>6<\/td>/, "HSD failure summary shows report type and keeps failed count last");
 assert.ok(weeklyEmailHtml.includes("Open HSDES Issues by Domain"), "email and attachment label the open-only issue section accurately");
 assert.ok(weeklyEmailHtml.includes("16000000001") && weeklyEmailHtml.includes("Open issue title"), "email and attachment include open HSDES issues");
 assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title<\/th>/, "email and attachment place Report Type immediately after HSDES ID");
@@ -532,8 +535,8 @@ assert.deepEqual(extractHsdesIssues(allIssueRecords).map(({ id, title, domain })
 ]);
 assert.equal(extractHsdesArticleTitle({ data: [{ title: "Direct HSD article title" }] }), "Direct HSD article title");
 assert.equal(extractHsdesArticleTitle({ data: [{ title: " " }] }), null);
-assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: " Direct HSD title ", status: " Open " }] }), { title: "Direct HSD title", status: "Open" });
-assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct HSD title" }] }), { title: "Direct HSD title", status: "Unknown" });
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: " Direct HSD title ", status: " Open ", report_type: " presighting " }] }), { title: "Direct HSD title", status: "Open", reportType: "presighting" });
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct HSD title" }] }), { title: "Direct HSD title", status: "Unknown", reportType: "Unknown" });
 assert.deepEqual(extractHsdesIssuesOlderThan(allIssueRecords).map(({ id }) => id), ["aged-security"]);
 const pagedIssueRecords = Array.from({ length: 20001 }, (_, index) => ({ id: `paged-${index + 1}` }));
 const pageStarts = [];

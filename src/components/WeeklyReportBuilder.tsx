@@ -205,7 +205,7 @@ export default function WeeklyReportBuilder() {
   }, []);
 
   const missingHsdDetailsIds = (report?.hsdFailureSummaries ?? [])
-    .filter((summary) => summary.failedRuns >= 5 && (!report?.hsdFailureTitles?.[summary.hsdId] || !report?.hsdFailureStatuses?.[summary.hsdId]))
+    .filter((summary) => summary.failedRuns >= 5 && (!report?.hsdFailureTitles?.[summary.hsdId] || !report?.hsdFailureStatuses?.[summary.hsdId] || !report?.hsdFailureReportTypes?.[summary.hsdId]))
     .map((summary) => summary.hsdId);
   const missingHsdDetailsKey = missingHsdDetailsIds.join("|");
 
@@ -218,19 +218,20 @@ export default function WeeklyReportBuilder() {
     setHsdesDetailsError("");
     void fetch(`/api/weekly-report?${query.toString()}`, { cache: "no-store" })
       .then(async (response) => {
-        const result = (await response.json()) as { hsdFailureTitles?: Record<string, string>; hsdFailureStatuses?: Record<string, string>; error?: string };
+        const result = (await response.json()) as { hsdFailureTitles?: Record<string, string>; hsdFailureStatuses?: Record<string, string>; hsdFailureReportTypes?: Record<string, string>; error?: string };
         if (!response.ok) throw new Error(result.error || "Could not retrieve HSD details.");
-        if (!result.hsdFailureTitles || !result.hsdFailureStatuses || missingHsdDetailsIds.some((id) => !result.hsdFailureTitles?.[id] || !result.hsdFailureStatuses?.[id])) {
-          throw new Error("HSDES did not return a title and status for every HSD in this report.");
+        if (!result.hsdFailureTitles || !result.hsdFailureStatuses || !result.hsdFailureReportTypes || missingHsdDetailsIds.some((id) => !result.hsdFailureTitles?.[id] || !result.hsdFailureStatuses?.[id] || !result.hsdFailureReportTypes?.[id])) {
+          throw new Error("HSDES did not return details for every HSD in this report.");
         }
-        return { titles: result.hsdFailureTitles, statuses: result.hsdFailureStatuses };
+        return { titles: result.hsdFailureTitles, statuses: result.hsdFailureStatuses, reportTypes: result.hsdFailureReportTypes };
       })
-      .then(({ titles, statuses }) => {
+      .then(({ titles, statuses, reportTypes }) => {
         if (cancelled) return;
         const refreshedReport = {
           ...report,
           hsdFailureTitles: { ...report.hsdFailureTitles, ...titles },
           hsdFailureStatuses: { ...report.hsdFailureStatuses, ...statuses },
+          hsdFailureReportTypes: { ...report.hsdFailureReportTypes, ...reportTypes },
         };
         setReport(refreshedReport);
         try {
@@ -573,7 +574,7 @@ export default function WeeklyReportBuilder() {
         <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
             <thead className="bg-[#204e76] text-xs font-semibold text-white">
-              <tr><th className="w-36 px-3 py-2.5">HSD</th><th className="w-28 px-3 py-2.5 text-right">Failed Tests</th><th className="w-48 px-3 py-2.5">Domain</th><th className="px-3 py-2.5">Title</th></tr>
+              <tr><th className="w-40 px-3 py-2.5">Domain</th><th className="w-36 px-3 py-2.5">HSD</th><th className="w-32 px-3 py-2.5">Report Type</th><th className="px-3 py-2.5">Title &amp; Status</th><th className="w-28 px-3 py-2.5 text-right">Failed Test</th></tr>
             </thead>
             <tbody className="divide-y divide-[#cfdae5]">
               {hsdFailureSummaries.map((summary) => {
@@ -583,13 +584,14 @@ export default function WeeklyReportBuilder() {
                   : summary.domains.map(({ domain: name, failedRuns }) => `${formatValidationGroup(name)} (${failedRuns})`).join(", ");
                 return (
                   <tr key={summary.hsdId} className="even:bg-[#edf3f9]">
-                    <td className="break-all px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/article/${encodeURIComponent(summary.hsdId)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{summary.hsdId}</a></td>
-                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#bb3846]">{summary.failedRuns}</td>
                     <td className="px-3 py-2">{domain}</td>
+                    <td className="break-all px-3 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/article/${encodeURIComponent(summary.hsdId)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{summary.hsdId}</a></td>
+                    <td className="break-words px-3 py-2">{report.hsdFailureReportTypes?.[summary.hsdId] || issue?.reportType || "Unknown"}</td>
                     <td className="break-words px-3 py-2">
                       {report.hsdFailureTitles?.[summary.hsdId] || issue?.title || "Loading title…"}
                       <div className="mt-1 text-xs text-[#647e94]">Status: {report.hsdFailureStatuses?.[summary.hsdId] || issue?.status || (hsdesDetailsLoading ? "Loading…" : "Unknown")}</div>
                     </td>
+                    <td className="px-3 py-2 text-right font-semibold tabular-nums text-[#bb3846]">{summary.failedRuns}</td>
                   </tr>
                 );
               })}

@@ -934,12 +934,12 @@ export default function Dashboard() {
               <div id="not-run-test-panel" role="tabpanel" aria-labelledby={`not-run-tab-${notRunTab}`} tabIndex={0} className="min-h-0 overflow-auto overscroll-contain">
                 <table className="w-full min-w-[560px] border-collapse text-left text-sm">
                   <thead className="sticky top-0 bg-[var(--surface-alt)] text-xs text-[var(--text-muted)]">
-                    <tr><th scope="col" className="px-4 py-3">Test / Suite</th><th scope="col" className="px-4 py-3">Domain</th><th scope="col" className="px-4 py-3">State</th><th scope="col" className="px-4 py-3">NGA</th></tr>
+                    <tr><th scope="col" className="px-4 py-3">Testline Name</th><th scope="col" className="px-4 py-3">Domain</th><th scope="col" className="px-4 py-3">State</th><th scope="col" className="px-4 py-3">NGA</th></tr>
                   </thead>
                   <tbody>
                     {notRunPopupRows.map((row, index) => (
                       <tr key={`${row.id}-${index}`} className="border-t border-[var(--border)] align-top even:bg-[var(--surface-alt)]">
-                        <td className="max-w-sm break-words px-4 py-3"><p className="font-medium">{row.testline || row.name}</p><p className="mt-1 text-xs text-[var(--text-muted)]">{row.suite}</p></td>
+                        <td className="max-w-sm break-words px-4 py-3"><p className="font-medium">{row.testline || row.name}</p></td>
                         <td className="px-4 py-3">{row.domain ? formatValidationGroupName(row.domain) : "Unmapped"}</td>
                         <td className="px-4 py-3 text-xs text-[var(--text-muted)]">{row.state || "Not Run"}</td>
                         <td className="px-4 py-3"><a href={`https://nga.laas.intel.com/#/dmr_pv/planning/testResult/${encodeURIComponent(row.id)}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap font-medium text-[var(--accent)] hover:underline">More Info<span className="sr-only"> for {row.testline || row.name}</span></a></td>

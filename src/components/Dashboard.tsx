@@ -13,7 +13,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { BarChart3, CheckCircle2, ChevronDown, ChevronRight, Clock, Download as DownloadIcon, ListChecks, PlayCircle, Plus, ShieldBan, Trash2, X, XCircle } from "lucide-react";
+import { BarChart3, CheckCircle2, ChevronDown, ChevronRight, Clock, Download as DownloadIcon, Info, ListChecks, PlayCircle, Plus, ShieldBan, Trash2, X, XCircle } from "lucide-react";
 import type { RunResult, Summary, TestRow } from "@/lib/types";
 import { formatValidationGroupName, normalizeSuiteNames } from "@/lib/normalize";
 import { summarize } from "@/lib/summarize";
@@ -54,6 +54,7 @@ function Card({
   cardTone = "bg-[var(--surface)] border-[var(--border)]",
   icon: Icon,
   onClick,
+  info,
 }: {
   label: string;
   value: string | number;
@@ -63,13 +64,17 @@ function Card({
   cardTone?: string;
   icon?: typeof ListChecks;
   onClick?: () => void;
+  info?: string;
 }) {
+  const infoId = info ? `card-info-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined;
   return (
     <div
-      className={`flex items-center gap-3 rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${cardTone}`}
+      className={`flex items-center gap-3 rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${cardTone}${info ? " relative group" : ""}`}
       role={onClick ? "button" : undefined}
       tabIndex={onClick ? 0 : undefined}
       aria-haspopup={onClick ? "dialog" : undefined}
+      aria-label={info ? `${label}: ${value}` : undefined}
+      aria-describedby={infoId}
       onClick={onClick}
       onKeyDown={onClick ? (event) => {
         if (event.key === "Enter" || event.key === " ") {
@@ -78,6 +83,10 @@ function Card({
         }
       } : undefined}
     >
+      {info && <>
+        <Info className="absolute right-2 top-2 h-3.5 w-3.5 text-[var(--text-muted)]" aria-hidden="true" />
+        <span id={infoId} role="tooltip" className="pointer-events-none invisible absolute bottom-full right-0 z-20 mb-2 w-56 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-xs font-medium text-[var(--text)] shadow-lg group-hover:visible group-focus-visible:visible">{info}</span>
+      </>}
       {Icon && (
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconTone}`}>
           <Icon className="h-5 w-5" />
@@ -122,7 +131,8 @@ export default function Dashboard() {
   const [executedDomainFilter, setExecutedDomainFilter] = useState("");
   const [executedTestlineFilter, setExecutedTestlineFilter] = useState("");
   const [executedStatusFilter, setExecutedStatusFilter] = useState<"" | "Passed" | "Failed">("");
-  const [notRunOpen, setNotRunOpen] = useState(false);
+  const [testDetailsOpen, setTestDetailsOpen] = useState(false);
+  const [testDetailsKind, setTestDetailsKind] = useState<"not-run" | "in-progress">("not-run");
   const [notRunTab, setNotRunTab] = useState<"not-run" | "yet-to-attempt">("not-run");
   const notRunDialogRef = useRef<HTMLDialogElement>(null);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
@@ -130,7 +140,7 @@ export default function Dashboard() {
   const autoRefreshInFlight = useRef(false);
 
   useEffect(() => {
-    if (!notRunOpen) return;
+    if (!testDetailsOpen) return;
     const dialog = notRunDialogRef.current;
     if (!dialog) return;
     const previousOverflow = document.body.style.overflow;
@@ -140,7 +150,7 @@ export default function Dashboard() {
       dialog.close();
       document.body.style.overflow = previousOverflow;
     };
-  }, [notRunOpen]);
+  }, [testDetailsOpen]);
 
   const load = useCallback(async (runId?: string) => {
     const res = await fetch(`/api/runs${runId ? `?runId=${runId}` : ""}`);
@@ -565,7 +575,11 @@ export default function Dashboard() {
   const yetToAttemptRows = notRunRows.filter((row) => row.rerunIndex == null || row.rerunIndex <= 0);
   const yetToAttemptCount = yetToAttemptRows.length;
   const yetToAttemptPct = s ? pctOf(yetToAttemptCount, s.tests) : 0;
-  const notRunPopupRows = notRunTab === "not-run" ? notRunRows : yetToAttemptRows;
+  const inProgressDetails = testDetailsKind === "in-progress";
+  const testDetailsTitle = inProgressDetails ? "In Progress Tests" : "Not Run Tests";
+  const testDetailsRows = inProgressDetails
+    ? visibleRows.filter((row) => row.bucket === "In Progress")
+    : notRunTab === "not-run" ? notRunRows : yetToAttemptRows;
 
   const setLast7Days = () => {
     const to = new Date();
@@ -879,34 +893,34 @@ export default function Dashboard() {
             <Card label="Passed" value={s.passed} detail={`${s.passRatePct}%`} tone="text-[var(--card-pass-label)]" icon={CheckCircle2} iconTone="bg-green-100 text-green-600" cardTone="bg-[var(--card-pass-bg)] border-[var(--card-pass-border)]" />
             <Card label="Failed" value={s.failed} detail={`${failRatePct}%`} tone="text-[var(--card-fail-label)]" icon={XCircle} iconTone="bg-red-100 text-red-600" cardTone="bg-[var(--card-fail-bg)] border-[var(--card-fail-border)]" />
             <Card label="Blocked" value={s.blocked} detail={`${blockedRatePct}%`} tone="text-[var(--card-blocked-label)]" icon={ShieldBan} iconTone="bg-amber-100 text-amber-600" cardTone="bg-[var(--card-blocked-bg)] border-[var(--card-blocked-border)]" />
-            <Card label="In progress" value={s.inProgress} tone="text-[var(--card-progress-label)]" icon={Clock} iconTone="bg-sky-100 text-sky-600" cardTone="bg-[var(--card-progress-bg)] border-[var(--card-progress-border)]" />
-            <Card label="Not run" value={s.notRun} detail={`Yet to attempt: ${yetToAttemptCount} (${yetToAttemptPct}%)`} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" onClick={() => { setNotRunTab("not-run"); setNotRunOpen(true); }} />
+            <Card label="In progress" value={s.inProgress} tone="text-[var(--card-progress-label)]" icon={Clock} iconTone="bg-sky-100 text-sky-600" cardTone="bg-[var(--card-progress-bg)] border-[var(--card-progress-border)]" info="Click to view in-progress test details." onClick={() => { setTestDetailsKind("in-progress"); setTestDetailsOpen(true); }} />
+            <Card label="Not run" value={s.notRun} detail={`Yet to attempt: ${yetToAttemptCount} (${yetToAttemptPct}%)`} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" info="Click to view Not Run and yet-to-attempt test details." onClick={() => { setTestDetailsKind("not-run"); setNotRunTab("not-run"); setTestDetailsOpen(true); }} />
             {s.other > 0 && <Card label="Other" value={s.other} tone="text-[var(--card-violet-label)]" cardTone="bg-[var(--card-violet-bg)] border-[var(--card-violet-border)]" />}
           </section>
 
           <dialog
             ref={notRunDialogRef}
             aria-labelledby="not-run-dialog-title"
-            onCancel={() => setNotRunOpen(false)}
-            onClose={() => setNotRunOpen(false)}
+            onCancel={() => setTestDetailsOpen(false)}
+            onClose={() => setTestDetailsOpen(false)}
             onKeyDown={(event) => {
               if (event.key === "Escape") {
                 event.preventDefault();
                 event.stopPropagation();
-                setNotRunOpen(false);
+                setTestDetailsOpen(false);
               }
             }}
-            onClick={(event) => { if (event.target === event.currentTarget) setNotRunOpen(false); }}
+            onClick={(event) => { if (event.target === event.currentTarget) setTestDetailsOpen(false); }}
             className="fixed inset-0 m-auto max-h-[80dvh] w-[calc(100%_-_2rem)] max-w-3xl overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0 text-[var(--text)] shadow-xl backdrop:bg-black/50"
           >
             <div className="flex max-h-[80dvh] flex-col">
               <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
-                <h2 id="not-run-dialog-title" className="text-base font-semibold">Not Run Tests</h2>
-                <button type="button" onClick={() => setNotRunOpen(false)} aria-label="Close Not Run tests" title="Close" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--surface-alt)]">
+                <h2 id="not-run-dialog-title" className="text-base font-semibold">{testDetailsTitle}</h2>
+                <button type="button" onClick={() => setTestDetailsOpen(false)} aria-label={`Close ${testDetailsTitle}`} title="Close" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--surface-alt)]">
                   <X className="h-4 w-4" aria-hidden="true" />
                 </button>
               </header>
-              <div role="tablist" aria-label="Not Run test lists" className="flex shrink-0 gap-1 border-b border-[var(--border)] px-4 pt-2">
+              {!inProgressDetails && <div role="tablist" aria-label="Not Run test lists" className="flex shrink-0 gap-1 border-b border-[var(--border)] px-4 pt-2">
                 {([
                   ["not-run", `Not Run (${notRunRows.length})`],
                   ["yet-to-attempt", `Yet to attempt (${yetToAttemptCount})`],
@@ -930,22 +944,22 @@ export default function Dashboard() {
                     className={`min-h-10 border-b-2 px-3 py-2 text-sm font-medium ${notRunTab === tab ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"}`}
                   >{label}</button>
                 ))}
-              </div>
-              <div id="not-run-test-panel" role="tabpanel" aria-labelledby={`not-run-tab-${notRunTab}`} tabIndex={0} className="min-h-0 overflow-auto overscroll-contain">
+              </div>}
+              <div id="not-run-test-panel" role={inProgressDetails ? "region" : "tabpanel"} aria-labelledby={inProgressDetails ? "not-run-dialog-title" : `not-run-tab-${notRunTab}`} tabIndex={0} className="min-h-0 overflow-auto overscroll-contain">
                 <table className="w-full min-w-[560px] border-collapse text-left text-sm">
                   <thead className="sticky top-0 bg-[var(--surface-alt)] text-xs text-[var(--text-muted)]">
                     <tr><th scope="col" className="px-4 py-3">Testline Name</th><th scope="col" className="px-4 py-3">Domain</th><th scope="col" className="px-4 py-3">State</th><th scope="col" className="px-4 py-3">NGA</th></tr>
                   </thead>
                   <tbody>
-                    {notRunPopupRows.map((row, index) => (
+                    {testDetailsRows.map((row, index) => (
                       <tr key={`${row.id}-${index}`} className="border-t border-[var(--border)] align-top even:bg-[var(--surface-alt)]">
                         <td className="max-w-sm break-words px-4 py-3"><p className="font-medium">{row.testline || row.name}</p></td>
                         <td className="px-4 py-3">{row.domain ? formatValidationGroupName(row.domain) : "Unmapped"}</td>
-                        <td className="px-4 py-3 text-xs text-[var(--text-muted)]">{row.state || "Not Run"}</td>
+                        <td className="px-4 py-3 text-xs text-[var(--text-muted)]">{row.state || (inProgressDetails ? "In Progress" : "Not Run")}</td>
                         <td className="px-4 py-3"><a href={`https://nga.laas.intel.com/#/dmr_pv/planning/testResult/${encodeURIComponent(row.id)}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap font-medium text-[var(--accent)] hover:underline">More Info<span className="sr-only"> for {row.testline || row.name}</span></a></td>
                       </tr>
                     ))}
-                    {!notRunPopupRows.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-[var(--text-muted)]">{notRunTab === "not-run" ? "No Not Run tests." : "No tests yet to attempt."}</td></tr>}
+                    {!testDetailsRows.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-[var(--text-muted)]">{inProgressDetails ? "No tests currently in progress." : notRunTab === "not-run" ? "No Not Run tests." : "No tests yet to attempt."}</td></tr>}
                   </tbody>
                 </table>
               </div>

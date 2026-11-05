@@ -53,6 +53,7 @@ function Card({
   iconTone = "bg-slate-100 text-slate-500",
   cardTone = "bg-[var(--surface)] border-[var(--border)]",
   icon: Icon,
+  onClick,
 }: {
   label: string;
   value: string | number;
@@ -61,9 +62,22 @@ function Card({
   iconTone?: string;
   cardTone?: string;
   icon?: typeof ListChecks;
+  onClick?: () => void;
 }) {
   return (
-    <div className={`flex items-center gap-3 rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${cardTone}`}>
+    <div
+      className={`flex items-center gap-3 rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${cardTone}`}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      aria-haspopup={onClick ? "dialog" : undefined}
+      onClick={onClick}
+      onKeyDown={onClick ? (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      } : undefined}
+    >
       {Icon && (
         <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${iconTone}`}>
           <Icon className="h-5 w-5" />
@@ -108,9 +122,25 @@ export default function Dashboard() {
   const [executedDomainFilter, setExecutedDomainFilter] = useState("");
   const [executedTestlineFilter, setExecutedTestlineFilter] = useState("");
   const [executedStatusFilter, setExecutedStatusFilter] = useState<"" | "Passed" | "Failed">("");
+  const [notRunOpen, setNotRunOpen] = useState(false);
+  const [notRunTab, setNotRunTab] = useState<"not-run" | "yet-to-attempt">("not-run");
+  const notRunDialogRef = useRef<HTMLDialogElement>(null);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
   const [dashboardSettings, setDashboardSettings] = useState({ executionStatusSplit: true, rawStateValues: true, showManualAborts: true });
   const autoRefreshInFlight = useRef(false);
+
+  useEffect(() => {
+    if (!notRunOpen) return;
+    const dialog = notRunDialogRef.current;
+    if (!dialog) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    dialog.showModal();
+    return () => {
+      dialog.close();
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [notRunOpen]);
 
   const load = useCallback(async (runId?: string) => {
     const res = await fetch(`/api/runs${runId ? `?runId=${runId}` : ""}`);
@@ -531,10 +561,11 @@ export default function Dashboard() {
   const s = run ? visibleSummary : undefined;
   const failRatePct = s ? pctOf(s.failed, s.tests) : 0;
   const blockedRatePct = s ? pctOf(s.blocked, s.tests) : 0;
-  const yetToAttemptCount = visibleRows.filter(
-    (row) => row.bucket === "Not Run" && (row.rerunIndex == null || row.rerunIndex <= 0),
-  ).length;
+  const notRunRows = visibleRows.filter((row) => row.bucket === "Not Run");
+  const yetToAttemptRows = notRunRows.filter((row) => row.rerunIndex == null || row.rerunIndex <= 0);
+  const yetToAttemptCount = yetToAttemptRows.length;
   const yetToAttemptPct = s ? pctOf(yetToAttemptCount, s.tests) : 0;
+  const notRunPopupRows = notRunTab === "not-run" ? notRunRows : yetToAttemptRows;
 
   const setLast7Days = () => {
     const to = new Date();
@@ -849,9 +880,77 @@ export default function Dashboard() {
             <Card label="Failed" value={s.failed} detail={`${failRatePct}%`} tone="text-[var(--card-fail-label)]" icon={XCircle} iconTone="bg-red-100 text-red-600" cardTone="bg-[var(--card-fail-bg)] border-[var(--card-fail-border)]" />
             <Card label="Blocked" value={s.blocked} detail={`${blockedRatePct}%`} tone="text-[var(--card-blocked-label)]" icon={ShieldBan} iconTone="bg-amber-100 text-amber-600" cardTone="bg-[var(--card-blocked-bg)] border-[var(--card-blocked-border)]" />
             <Card label="In progress" value={s.inProgress} tone="text-[var(--card-progress-label)]" icon={Clock} iconTone="bg-sky-100 text-sky-600" cardTone="bg-[var(--card-progress-bg)] border-[var(--card-progress-border)]" />
-            <Card label="Not run" value={s.notRun} detail={`Yet to attempt: ${yetToAttemptCount} (${yetToAttemptPct}%)`} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" />
+            <Card label="Not run" value={s.notRun} detail={`Yet to attempt: ${yetToAttemptCount} (${yetToAttemptPct}%)`} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" onClick={() => { setNotRunTab("not-run"); setNotRunOpen(true); }} />
             {s.other > 0 && <Card label="Other" value={s.other} tone="text-[var(--card-violet-label)]" cardTone="bg-[var(--card-violet-bg)] border-[var(--card-violet-border)]" />}
           </section>
+
+          <dialog
+            ref={notRunDialogRef}
+            aria-labelledby="not-run-dialog-title"
+            onCancel={() => setNotRunOpen(false)}
+            onClose={() => setNotRunOpen(false)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") {
+                event.preventDefault();
+                event.stopPropagation();
+                setNotRunOpen(false);
+              }
+            }}
+            onClick={(event) => { if (event.target === event.currentTarget) setNotRunOpen(false); }}
+            className="fixed inset-0 m-auto max-h-[80dvh] w-[calc(100%_-_2rem)] max-w-3xl overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] p-0 text-[var(--text)] shadow-xl backdrop:bg-black/50"
+          >
+            <div className="flex max-h-[80dvh] flex-col">
+              <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--border)] px-4 py-3">
+                <h2 id="not-run-dialog-title" className="text-base font-semibold">Not Run Tests</h2>
+                <button type="button" onClick={() => setNotRunOpen(false)} aria-label="Close Not Run tests" title="Close" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-[var(--surface-alt)]">
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </header>
+              <div role="tablist" aria-label="Not Run test lists" className="flex shrink-0 gap-1 border-b border-[var(--border)] px-4 pt-2">
+                {([
+                  ["not-run", `Not Run (${notRunRows.length})`],
+                  ["yet-to-attempt", `Yet to attempt (${yetToAttemptCount})`],
+                ] as const).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    id={`not-run-tab-${tab}`}
+                    type="button"
+                    role="tab"
+                    aria-selected={notRunTab === tab}
+                    aria-controls="not-run-test-panel"
+                    tabIndex={notRunTab === tab ? 0 : -1}
+                    onClick={() => setNotRunTab(tab)}
+                    onKeyDown={(event) => {
+                      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+                      event.preventDefault();
+                      const nextTab = event.key === "Home" ? "not-run" : event.key === "End" ? "yet-to-attempt" : tab === "not-run" ? "yet-to-attempt" : "not-run";
+                      setNotRunTab(nextTab);
+                      document.getElementById(`not-run-tab-${nextTab}`)?.focus();
+                    }}
+                    className={`min-h-10 border-b-2 px-3 py-2 text-sm font-medium ${notRunTab === tab ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"}`}
+                  >{label}</button>
+                ))}
+              </div>
+              <div id="not-run-test-panel" role="tabpanel" aria-labelledby={`not-run-tab-${notRunTab}`} tabIndex={0} className="min-h-0 overflow-auto overscroll-contain">
+                <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+                  <thead className="sticky top-0 bg-[var(--surface-alt)] text-xs text-[var(--text-muted)]">
+                    <tr><th scope="col" className="px-4 py-3">Test / Suite</th><th scope="col" className="px-4 py-3">Domain</th><th scope="col" className="px-4 py-3">State</th><th scope="col" className="px-4 py-3">NGA</th></tr>
+                  </thead>
+                  <tbody>
+                    {notRunPopupRows.map((row, index) => (
+                      <tr key={`${row.id}-${index}`} className="border-t border-[var(--border)] align-top even:bg-[var(--surface-alt)]">
+                        <td className="max-w-sm break-words px-4 py-3"><p className="font-medium">{row.testline || row.name}</p><p className="mt-1 text-xs text-[var(--text-muted)]">{row.suite}</p></td>
+                        <td className="px-4 py-3">{row.domain ? formatValidationGroupName(row.domain) : "Unmapped"}</td>
+                        <td className="px-4 py-3 text-xs text-[var(--text-muted)]">{row.state || "Not Run"}</td>
+                        <td className="px-4 py-3"><a href={`https://nga.laas.intel.com/#/dmr_pv/planning/testResult/${encodeURIComponent(row.id)}`} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap font-medium text-[var(--accent)] hover:underline">More Info<span className="sr-only"> for {row.testline || row.name}</span></a></td>
+                      </tr>
+                    ))}
+                    {!notRunPopupRows.length && <tr><td colSpan={4} className="px-4 py-10 text-center text-[var(--text-muted)]">{notRunTab === "not-run" ? "No Not Run tests." : "No tests yet to attempt."}</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </dialog>
 
           {(dashboardSettings.executionStatusSplit || dashboardSettings.rawStateValues) && (
           <section className="mt-6 grid gap-4 lg:grid-cols-2">

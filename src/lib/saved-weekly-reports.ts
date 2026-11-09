@@ -4,6 +4,7 @@ import path from "node:path";
 import { config } from "./config";
 import type { WeeklyReport } from "./weekly-report";
 import { buildFailureProgress } from "./weekly-report-metrics";
+import { getISTDateKey } from "./work-weeks";
 
 const reportsPath = path.join(config.dataDir, "weekly-reports");
 
@@ -79,7 +80,8 @@ export async function withFailureProgress(
   loadDailyReport: (key: string) => Promise<WeeklyReport | null> = loadSavedWeeklyReport,
 ): Promise<WeeklyReport> {
   const days = buildFailureProgress(report).days;
-  const history = await Promise.all(days.slice(0, -1).map(async (day) => ({
+  const reportDate = getISTDateKey(new Date(Date.parse(report.to) - 1));
+  const history = await Promise.all(days.filter((day) => day.date < reportDate).map(async (day) => ({
     date: day.date,
     report: await loadDailyReport(day.date),
   })));

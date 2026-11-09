@@ -17,8 +17,11 @@ export function buildFailureProgress(report: FailureSnapshot, history: { date: s
     snapshots.set(date, snapshot);
   }
   if (report.domainSummary?.length) snapshots.set(endDate, report);
-  const days = Array.from({ length: 7 }, (_, index) => {
-    const date = new Date(Date.parse(`${endDate}T12:00:00Z`) + (index - 6) * 86_400_000).toISOString().slice(0, 10);
+  const endDay = new Date(`${endDate}T12:00:00Z`);
+  const weekdayOffset = (endDay.getUTCDay() + 6) % 7;
+  const previousMonday = endDay.getTime() - (weekdayOffset + 7) * 86_400_000;
+  const days = Array.from({ length: 10 }, (_, index) => {
+    const date = new Date(previousMonday + (index + Math.floor(index / 5) * 2) * 86_400_000).toISOString().slice(0, 10);
     const snapshot = snapshots.get(date);
     return {
       date,

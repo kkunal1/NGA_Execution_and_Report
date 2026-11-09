@@ -72,7 +72,7 @@ function failureProgressSection(report: WeeklyReport) {
   const body = progress.rows.map((row, index) => `<tr style="background:${index % 2 ? "#edf3f9" : "#fff"}">${cell(formatValidationGroupName(row.domain))}${row.counts.map((count) => cell(value(count))).join("")}</tr>`).join("");
   const totals = ["Total Failure", ...progress.days.map((day) => value(day.total))];
   const footer = totals.map((count) => `<td style="border:1px solid #cbd7e2;padding:7px 9px;background:#fff1bd;color:#594416;font-weight:700;text-align:center">${escapeHtml(count)}</td>`).join("");
-  return section("Progress on Failed Tests", `<div style="overflow-x:auto;margin:10px 0 20px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${headers.map((header) => cell(header, true, true)).join("")}</tr></thead><tbody>${body || `<tr><td colspan="8" style="padding:12px;color:#647e94">No domain failure snapshots available.</td></tr>`}</tbody><tfoot><tr>${footer}</tr></tfoot></table></div>`);
+  return section("Progress on Failed Tests", `<div style="overflow-x:auto;margin:10px 0 20px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${headers.map((header) => cell(header, true, true)).join("")}</tr></thead><tbody>${body || `<tr><td colspan="${headers.length}" style="padding:12px;color:#647e94">No domain failure snapshots available.</td></tr>`}</tbody><tfoot><tr>${footer}</tr></tfoot></table></div>`);
 }
 
 function domainSummarySection(rows: WeeklyReportDomainSummary[]) {

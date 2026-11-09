@@ -3,6 +3,7 @@ import { sendWeeklySmtpReport } from "@/lib/smtp-mail";
 import { authorizeWeeklyReportFeature } from "@/lib/weekly-report-access";
 import { getDashboardSettings } from "@/lib/dashboard-settings";
 import type { WeeklyReport } from "@/lib/weekly-report";
+import { withFailureProgress } from "@/lib/saved-weekly-reports";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -41,7 +42,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Enter CC email addresses as comma-separated text." }, { status: 400 });
     }
     const settings = await getDashboardSettings();
-    const report = { ...body.report, sectionVisibility: settings.weeklyReportSections };
+    const report = { ...await withFailureProgress(body.report), sectionVisibility: settings.weeklyReportSections };
     const result = await sendWeeklySmtpReport(body.sender, body.password, body.recipient, body.cc ?? "", report);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {

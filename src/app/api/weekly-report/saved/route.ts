@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
-import { isDailyReportDate, isSavedReportKey, listSavedReportKeys, loadSavedWeeklyReport } from "@/lib/saved-weekly-reports";
+import { isDailyReportDate, isSavedReportKey, listSavedReportKeys, loadSavedWeeklyReport, withFailureProgress } from "@/lib/saved-weekly-reports";
 import { getISTDateKey } from "@/lib/work-weeks";
 import { getDashboardSettings } from "@/lib/dashboard-settings";
 
@@ -24,7 +24,7 @@ export async function GET(req: Request) {
     const report = await loadSavedWeeklyReport(key);
     if (!report) return NextResponse.json({ error: `No report has been saved for ${key}.` }, { status: 404 });
     const settings = await getDashboardSettings();
-    return NextResponse.json({ report: { ...report, sectionVisibility: settings.weeklyReportSections } });
+    return NextResponse.json({ report: { ...await withFailureProgress(report), sectionVisibility: settings.weeklyReportSections } });
   } catch {
     return NextResponse.json({ error: "Could not load saved Weekly Reports." }, { status: 500 });
   }

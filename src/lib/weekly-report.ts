@@ -93,6 +93,10 @@ export type WeeklyReport = {
   latestNotRun: number;
   latestYetToAttempt?: number;
   domainSummary: WeeklyReportDomainSummary[];
+  failureProgress?: {
+    days: { date: string; label: string; total: number | null }[];
+    rows: { domain: string; counts: (number | null)[] }[];
+  };
   sectionVisibility?: WeeklyReportSectionSettings;
   validRuns: number;
   triageRuns: number;

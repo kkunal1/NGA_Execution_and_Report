@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
-import { weeklyReportYetToAttemptCount } from "../src/lib/weekly-report-metrics.ts";
+import { buildFailureProgress, weeklyReportYetToAttemptCount } from "../src/lib/weekly-report-metrics.ts";
 import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSignatureText, weeklyReportEmailSubject } from "../src/lib/weekly-report-email.ts";
 import { displayCpuAllocationTitle } from "../src/lib/weekly-report-display.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
@@ -22,9 +22,45 @@ import { buildReportFilename } from "../src/lib/report-filename.ts";
 import { renderReportHtml } from "../src/lib/report-html.ts";
 import { visibleReportSections } from "../src/lib/report-sections.ts";
 import { getDailyReportLabel, getISTDayRange, getWorkWeeks } from "../src/lib/work-weeks.ts";
-import { isDailyReportDate, isSavedReportKey, isWorkWeekKey } from "../src/lib/saved-weekly-reports.ts";
+import { isDailyReportDate, isSavedReportKey, isWorkWeekKey, withFailureProgress } from "../src/lib/saved-weekly-reports.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
+const failureSnapshot = (date, counts, suites = ["suite"]) => ({
+  to: getISTDayRange(date).to.toISOString(),
+  generatedAt: getISTDayRange(date).to.toISOString(),
+  suites,
+  domainSummary: Object.entries(counts).map(([domain, failed]) => ({ domain, failed })),
+});
+const failureProgress = buildFailureProgress(failureSnapshot("2026-11-04", { pv_security: 21, pv_ras: 34 }), [
+  { date: "2026-11-02", report: failureSnapshot("2026-11-02", { pv_security: 60, pv_ras: 48 }) },
+  { date: "2026-11-03", report: failureSnapshot("2026-11-03", { pv_security: 31, pv_ras: 45, pv_memory: 0 }) },
+  { date: "2026-11-04", report: failureSnapshot("2026-11-04", { pv_security: 999 }) },
+  { date: "2026-11-03", report: failureSnapshot("2026-11-03", { pv_security: 999 }, ["different-suite"]) },
+  { date: "2026-11-05", report: failureSnapshot("2026-11-05", { pv_security: 999 }) },
+]);
+assert.deepEqual(failureProgress.days.slice(-3).map(({ label, total }) => ({ label, total })), [
+  { label: "WW45.1", total: 108 }, { label: "WW45.2", total: 76 }, { label: "WW45.3", total: 55 },
+]);
+assert.deepEqual(failureProgress.rows.find((row) => row.domain === "pv_security").counts, [null, null, null, null, 60, 31, 21]);
+assert.deepEqual(failureProgress.rows.find((row) => row.domain === "pv_memory").counts.slice(-3), [null, 0, null], "missing domain snapshots differ from a verified zero");
+assert.equal(failureProgress.days[0].total, null, "missing daily history is not fabricated as zero");
+assert.equal(buildFailureProgress(failureSnapshot("2026-11-09", { pv_ras: 1 })).days[5].label, "WW45.7", "history spans work-week boundaries");
+const archiveReads = [];
+const centralDailyArchives = new Map([
+  ["2026-11-02", failureSnapshot("2026-11-02", { pv_security: 60, pv_ras: 48 })],
+  ["2026-11-03", { ...failureSnapshot("2026-11-03", { pv_security: 31, pv_ras: 45 }), generatedAt: "2026-11-09T12:00:00.000Z" }],
+]);
+const progressFromArchives = await withFailureProgress(failureSnapshot("2026-11-04", { pv_security: 21, pv_ras: 34 }), async (key) => {
+  archiveReads.push(key);
+  return centralDailyArchives.get(key) ?? null;
+});
+assert.deepEqual(archiveReads, ["2026-10-29", "2026-10-30", "2026-10-31", "2026-11-01", "2026-11-02", "2026-11-03"], "past data is read from the six exact daily archive filenames");
+assert.deepEqual(progressFromArchives.failureProgress.days.slice(-3).map((day) => day.total), [108, 76, 55], "central archive values are used regardless of the archive generation timestamp");
+assert.deepEqual(progressFromArchives.failureProgress.rows.find((row) => row.domain === "pv_security").counts.slice(-3), [60, 31, 21], "past columns retain their archive's domain counts instead of today's counts");
+assert.equal(progressFromArchives.failureProgress.days[0].total, null, "missing local archives remain unavailable instead of using current data");
+assert.equal(buildFailureProgress(failureSnapshot("2026-11-04", { pv_security: 21 }), [
+  { date: "2026-11-03", report: failureSnapshot("2026-11-02", { pv_security: 31 }) },
+]).days.at(-2).total, 31, "archive filename is the authoritative historical day, not report generation or window metadata");
 assert.equal(normalizeAdminUsername("new.admin"), "new.admin");
 assert.equal(normalizeAdminUsername("root"), null);
 assert.equal(normalizeAdminUsername("bad user"), null);
@@ -348,6 +384,14 @@ assert.ok(weeklyEmailHtml.includes("DMR-AP1 B0 Execution Status Summary"));
 assert.ok(weeklyEmailHtml.includes("<title>Daily Execution Report</title>"));
 assert.ok(!weeklyEmailHtml.includes("Weekly Execution Report"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
+assert.ok(weeklyEmailHtml.indexOf("DOMAIN-WISE DATA") < weeklyEmailHtml.indexOf("Progress on Failed Tests"));
+assert.ok(weeklyEmailHtml.indexOf("Progress on Failed Tests") < weeklyEmailHtml.indexOf("Overall Validation Group <span"));
+const emailWithFailureProgress = renderWeeklyReportEmailHtml({ ...weeklyReport, failureProgress });
+assert.ok(emailWithFailureProgress.includes("Failure Count (WW45.1)"));
+assert.ok(emailWithFailureProgress.includes("Failure Count (WW45.3)"));
+assert.ok(emailWithFailureProgress.includes("Total Failure"));
+assert.ok(emailWithFailureProgress.includes("55</td>"), "current failure total is exported unchanged");
+assert.ok(!renderWeeklyReportEmailHtml({ ...weeklyReport, failureProgress, sectionVisibility: { ...weeklyReport.sectionVisibility, domainWise: false } }).includes("Progress on Failed Tests"), "failure progress follows domain-wise section visibility");
 assert.ok(weeklyEmailHtml.includes("HSD Raised 1"));
 assert.ok(weeklyEmailHtml.includes("<br><strong>Status: Open</strong>"));
 assert.match(weeklyEmailHtml, />Domain<\/th><th[^>]*>HSD<\/th><th[^>]*>Failed Test<\/th><th[^>]*>Title &amp; Status<\/th>/, "HSD failure summary places Failed Test immediately after HSD");

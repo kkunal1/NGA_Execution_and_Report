@@ -1,5 +1,5 @@
 import type { FailureRow, Stage, WeeklyReport, WeeklyReportDomainSummary } from "./weekly-report";
-import { weeklyReportYetToAttemptCount } from "./weekly-report-metrics";
+import { buildFailureProgress, weeklyReportYetToAttemptCount } from "./weekly-report-metrics";
 import { formatValidationGroupName } from "./normalize";
 import { displayCpuAllocationTitle } from "./weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "./work-weeks";
@@ -62,6 +62,17 @@ function failureTable(title: string, rows: FailureRow[]) {
   ].join("")}</tr>`).join("");
   const reportTable = `<div style="overflow-x:auto;margin:10px 0 20px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${headers.map((header) => cell(header, true, true)).join("")}</tr></thead><tbody>${body || `<tr><td colspan="8" style="border:1px solid #cbd7e2;padding:7px 9px;color:#647e94;text-align:center">No failed runs.</td></tr>`}</tbody></table></div>`;
   return `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">${heading}</h2>${reportTable}`;
+}
+
+function failureProgressSection(report: WeeklyReport) {
+  if (report.sectionVisibility?.domainWise === false) return "";
+  const progress = report.failureProgress ?? buildFailureProgress(report);
+  const value = (count: number | null) => count === null ? "\u2014" : count.toLocaleString("en-US");
+  const headers = ["Domain", ...progress.days.map((day) => `Failure Count (${day.label})`)];
+  const body = progress.rows.map((row, index) => `<tr style="background:${index % 2 ? "#edf3f9" : "#fff"}">${cell(formatValidationGroupName(row.domain))}${row.counts.map((count) => cell(value(count))).join("")}</tr>`).join("");
+  const totals = ["Total Failure", ...progress.days.map((day) => value(day.total))];
+  const footer = totals.map((count) => `<td style="border:1px solid #cbd7e2;padding:7px 9px;background:#fff1bd;color:#594416;font-weight:700;text-align:center">${escapeHtml(count)}</td>`).join("");
+  return section("Progress on Failed Tests", `<div style="overflow-x:auto;margin:10px 0 20px"><table style="width:100%;border-collapse:collapse;font-size:12px"><thead><tr>${headers.map((header) => cell(header, true, true)).join("")}</tr></thead><tbody>${body || `<tr><td colspan="8" style="padding:12px;color:#647e94">No domain failure snapshots available.</td></tr>`}</tbody><tfoot><tr>${footer}</tr></tfoot></table></div>`);
 }
 
 function domainSummarySection(rows: WeeklyReportDomainSummary[]) {
@@ -197,7 +208,7 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport, options: { sho
   const linksBeforeCpu = reportDocument.replace(cpuHeading, `${linksSection}${cpuHeading}`);
   const domainSummaryBeforeBreakdown = linksBeforeCpu.replace(
     /<h2 style="[^"]*">Overall Validation Group <span style="color:#dc2626">Failure Breakdown<\/span><\/h2>/,
-    (heading) => `${domainSummary}${heading}`,
+    (heading) => `${domainSummary}${failureProgressSection(report)}${heading}`,
   );
   const visibleReportDocument = report.sectionVisibility?.overallFailureBreakdown === false
     ? removeTableSection(domainSummaryBeforeBreakdown, overallFailureHeading)

@@ -2,6 +2,7 @@ import { canonicalizeSightingDomain, fetchHsdesArticleDetails, fetchHsdesIssueDa
 import { generateWeeklyReport } from "./weekly-report";
 import { getWeeklyReportSettings } from "./weekly-report-settings";
 import { getDashboardSettings } from "./dashboard-settings";
+import { withFailureProgress } from "./saved-weekly-reports";
 
 export async function generateCompleteWeeklyReport(suites: string[], from: Date, to: Date) {
   const [settings, dashboardSettings] = await Promise.all([getWeeklyReportSettings(), getDashboardSettings()]);
@@ -31,7 +32,7 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
   const hsdFailureTitles = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.title]));
   const hsdFailureStatuses = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.status]));
   const hsdFailureReportTypes = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.reportType]));
-  return {
+  return withFailureProgress({
     ...report,
     sectionVisibility,
     teamPlatformCounts: sectionVisibility.cpuAllocation ? report.teamPlatformCounts : [],
@@ -45,5 +46,5 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
     hsdFailureStatuses,
     hsdFailureReportTypes,
     sightingWarning: sightingResult.warning,
-  };
+  });
 }

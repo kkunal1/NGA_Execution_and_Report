@@ -1,3 +1,44 @@
+import { getDailyReportLabel, getISTDateKey } from "./work-weeks";
+import type { WeeklyReport } from "./weekly-report";
+
+type FailureSnapshot = {
+  to: string;
+  generatedAt: string;
+  suites: string[];
+  domainSummary: { domain: string; failed: number }[];
+};
+
+export function buildFailureProgress(report: FailureSnapshot, history: { date: string; report: FailureSnapshot }[] = []): NonNullable<WeeklyReport["failureProgress"]> {
+  const endDate = getISTDateKey(new Date(Date.parse(report.to) - 1));
+  const suiteKey = (suites: string[]) => [...new Set(suites.map((suite) => suite.trim().toLowerCase()))].sort().join("\n");
+  const snapshots = new Map<string, FailureSnapshot>();
+  for (const { date, report: snapshot } of history) {
+    if (date >= endDate || suiteKey(snapshot.suites) !== suiteKey(report.suites) || !snapshot.domainSummary?.length) continue;
+    snapshots.set(date, snapshot);
+  }
+  if (report.domainSummary?.length) snapshots.set(endDate, report);
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(Date.parse(`${endDate}T12:00:00Z`) + (index - 6) * 86_400_000).toISOString().slice(0, 10);
+    const snapshot = snapshots.get(date);
+    return {
+      date,
+      label: getDailyReportLabel(date),
+      total: snapshot ? snapshot.domainSummary.reduce((sum, row) => sum + row.failed, 0) : null,
+    };
+  });
+  const domains = [...new Set([
+    ...(report.domainSummary ?? []).map((row) => row.domain),
+    ...days.flatMap((day) => snapshots.get(day.date)?.domainSummary.map((row) => row.domain) ?? []),
+  ])];
+  return {
+    days,
+    rows: domains.map((domain) => ({
+      domain,
+      counts: days.map((day) => snapshots.get(day.date)?.domainSummary.find((row) => row.domain === domain)?.failed ?? null),
+    })),
+  };
+}
+
 export function weeklyReportYetToAttemptCount(report: {
   latestYetToAttempt?: number;
   latestNotRun: number;

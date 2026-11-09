@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays, Copy, Download, FileText, FolderOpen, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
-import { weeklyReportYetToAttemptCount } from "@/lib/weekly-report-metrics";
+import { buildFailureProgress, weeklyReportYetToAttemptCount } from "@/lib/weekly-report-metrics";
 import { displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 
@@ -516,6 +516,7 @@ export default function WeeklyReportBuilder() {
     : [];
   const hsdesIssueById = new Map(hsdesIssues.map((issue) => [issue.id, issue]));
   const domainSummary = Array.isArray(report?.domainSummary) ? report.domainSummary : [];
+  const failureProgress = report ? report.failureProgress ?? buildFailureProgress(report) : null;
   const domainTotals = domainSummary.reduce((totals, row) => ({
     tests: totals.tests + row.tests,
     passed: totals.passed + row.passed,
@@ -781,6 +782,30 @@ export default function WeeklyReportBuilder() {
           ) : (
             <p className="text-sm text-[#647e94]">Domain-wise data is unavailable in this saved report. Create a report with the current version to include it.</p>
           )}
+        </section>}
+
+        {report.sectionVisibility?.domainWise !== false && failureProgress && <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
+          <h2 className="mb-4 text-base font-bold text-[#204e76]">Progress on Failed Tests</h2>
+          <div className="overflow-x-auto border border-[#b8cadb]">
+            <table className="w-full min-w-[1100px] border-collapse text-sm">
+              <thead className="bg-[#204e76] text-xs font-semibold text-white">
+                <tr>
+                  <th scope="col" className="border border-[#b8cadb] px-3 py-3 text-left">Domain</th>
+                  {failureProgress.days.map((day) => <th key={day.date} scope="col" title={day.date} className="border border-[#b8cadb] px-3 py-3 text-center">Failure Count ({day.label})</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {failureProgress.rows.map((row) => <tr key={row.domain} className="bg-white even:bg-[#edf3f9]">
+                  <th scope="row" className="border border-[#b8cadb] px-3 py-2 text-left font-semibold text-[#244c70]">{formatValidationGroup(row.domain)}</th>
+                  {row.counts.map((count, index) => <td key={failureProgress.days[index].date} title={count === null ? "No saved domain snapshot" : failureProgress.days[index].date} className="border border-[#b8cadb] px-3 py-2 text-center tabular-nums">{count === null ? "\u2014" : count.toLocaleString()}</td>)}
+                </tr>)}
+                {!failureProgress.rows.length && <tr><td colSpan={failureProgress.days.length + 1} className="px-3 py-6 text-center text-[#647e94]">No domain failure snapshots available.</td></tr>}
+              </tbody>
+              <tfoot className="bg-[#fff1bd] font-bold text-[#594416]">
+                <tr><th scope="row" className="border border-[#b8cadb] px-3 py-2 text-left">Total Failure</th>{failureProgress.days.map((day) => <td key={day.date} title={day.total === null ? "No saved snapshot" : day.date} className="border border-[#b8cadb] px-3 py-2 text-center tabular-nums">{day.total === null ? "\u2014" : day.total.toLocaleString()}</td>)}</tr>
+              </tfoot>
+            </table>
+          </div>
         </section>}
 
         {report.sectionVisibility?.overallFailureBreakdown !== false && <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />}

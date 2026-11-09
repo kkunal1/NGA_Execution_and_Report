@@ -3,6 +3,7 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promise
 import path from "node:path";
 import { config } from "./config";
 import type { WeeklyReport } from "./weekly-report";
+import { buildFailureProgress } from "./weekly-report-metrics";
 
 const reportsPath = path.join(config.dataDir, "weekly-reports");
 
@@ -71,4 +72,19 @@ async function writeReport(key: string, report: WeeklyReport) {
     await rm(temporaryPath, { force: true });
     throw error;
   }
+}
+
+export async function withFailureProgress(
+  report: WeeklyReport,
+  loadDailyReport: (key: string) => Promise<WeeklyReport | null> = loadSavedWeeklyReport,
+): Promise<WeeklyReport> {
+  const days = buildFailureProgress(report).days;
+  const history = await Promise.all(days.slice(0, -1).map(async (day) => ({
+    date: day.date,
+    report: await loadDailyReport(day.date),
+  })));
+  return {
+    ...report,
+    failureProgress: buildFailureProgress(report, history.flatMap((snapshot) => snapshot.report ? [{ date: snapshot.date, report: snapshot.report }] : [])),
+  };
 }

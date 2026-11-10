@@ -13,7 +13,7 @@ import { canAccessWeeklyReportFeature } from "../src/lib/weekly-report-access.ts
 import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
 import { poolMembershipFilter } from "../src/lib/pool-systems.ts";
-import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
+import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
 import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
@@ -363,6 +363,7 @@ assert.deepEqual(hsdSummary.hsdFailureSummaries, [
 assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2 });
 const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   ...weeklyReport,
+  customTables: [{ id: "custom-execution-summary", title: "Custom Execution Summary", columns: ["Team", "X1", "X4", "Total"], rows: [["BKC", "6", "2", "8"], ["Total", "56", "13", "69"]] }],
   hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
   hsdFailureTitles: { "15020010517": "Bucketized Security title", "14028767291": "Bucketized RAS title" },
   hsdFailureStatuses: { "15020010517": "Open", "14028767291": "Root caused" },
@@ -393,6 +394,12 @@ assert.ok(!weeklyEmailHtml.includes("Weekly Execution Report"));
 assert.ok(weeklyEmailHtml.includes("DOMAIN-WISE DATA"));
 assert.ok(weeklyEmailHtml.indexOf("DOMAIN-WISE DATA") < weeklyEmailHtml.indexOf("Progress on Failed Tests"));
 assert.ok(weeklyEmailHtml.indexOf("Progress on Failed Tests") < weeklyEmailHtml.indexOf("Overall Validation Group <span"));
+const customTableStart = weeklyEmailHtml.indexOf("Custom Execution Summary");
+const openHsdesStart = weeklyEmailHtml.indexOf("Open HSDES Issues by Domain");
+assert.ok(customTableStart >= 0 && customTableStart < openHsdesStart, "custom tables render in the email and HTML attachment");
+assert.ok(weeklyEmailHtml.includes("BKC") && weeklyEmailHtml.includes("69"));
+assert.match(weeklyEmailHtml.slice(customTableStart, openHsdesStart), /<th[^>]*background:#dce8f4[^>]*>Total<\/th>/, "Total column is highlighted in custom tables");
+assert.match(weeklyEmailHtml.slice(customTableStart, openHsdesStart), /<td[^>]*background:#dce8f4[^>]*color:#173f60;font-weight:700;[^>]*>Total<\/td>/, "Total row is highlighted in custom tables");
 const emailWithFailureProgress = renderWeeklyReportEmailHtml({ ...weeklyReport, failureProgress });
 assert.ok(emailWithFailureProgress.includes("Failure Count (WW45.1)"));
 assert.ok(emailWithFailureProgress.includes("Failure Count (WW45.3)"));
@@ -538,6 +545,10 @@ assert.equal(normalizeWeeklyReportHsdesLink("https://example.com/appstore/genera
 assert.deepEqual(normalizeWeeklyReportLinks(customReportLinks), customReportLinks);
 assert.deepEqual(normalizeWeeklyReportLinks([]), []);
 assert.equal(normalizeWeeklyReportLinks([{ label: "Not secure", url: "http://example.intel.com" }]), null);
+const customTableFixture = [{ id: "summary_table", title: "Summary", columns: ["Metric", "Count"], rows: [["Passed", "10"]] }];
+assert.deepEqual(normalizeCustomReportTables(customTableFixture), customTableFixture);
+assert.equal(normalizeCustomReportTables([{ ...customTableFixture[0], rows: [["one cell"]] }]), null);
+assert.equal(normalizeCustomReportTables([{ ...customTableFixture[0], columns: ["Metric", "metric"] }]), null);
 assert.equal(canonicalizeSightingDomain("pm_subsystem_validation"), "pv_power_management");
 assert.equal(canonicalizeSightingDomain("io_subsystem_validation"), "pv_serial_io");
 assert.equal(canonicalizeSightingDomain("managebility_subsystem_validation"), "pv_manageability");

@@ -46,5 +46,6 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
     hsdFailureStatuses,
     hsdFailureReportTypes,
     sightingWarning: sightingResult.warning,
+    customTables: settings.customTables,
   });
 }

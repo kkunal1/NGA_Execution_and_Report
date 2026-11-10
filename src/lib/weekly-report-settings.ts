@@ -10,7 +10,8 @@ export const DEFAULT_CPU_BASE_LABELS = { team: "Team", x1: "X1", x4: "X4" };
 export type CpuBaseLabels = { team: string; x1: string; x4: string };
 export type TeamPlatformCount = { team: string; x1: number; x4: number; extraCounts?: number[] };
 export type WeeklyReportLink = { label: string; url: string };
-export type WeeklyReportSettings = { bkc: string; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBaseLabels: CpuBaseLabels; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[] };
+export type CustomReportTable = { id: string; title: string; columns: string[]; rows: string[][] };
+export type WeeklyReportSettings = { bkc: string; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBaseLabels: CpuBaseLabels; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[]; customTables: CustomReportTable[] };
 export const DEFAULT_TEAM_PLATFORM_COUNTS: TeamPlatformCount[] = [
   { team: "PV.BKC", x1: 6, x4: 2 },
   { team: "DM", x1: 2, x4: 0 },
@@ -105,10 +106,42 @@ export function normalizeWeeklyReportLinks(value: unknown): WeeklyReportLink[] |
   return links;
 }
 
+export function normalizeCustomReportTables(value: unknown): CustomReportTable[] | null {
+  if (!Array.isArray(value) || value.length > 10) return null;
+  const ids = new Set<string>();
+  const tables: CustomReportTable[] = [];
+  for (const item of value) {
+    if (typeof item !== "object" || item === null) return null;
+    const row = item as Record<string, unknown>;
+    if (typeof row.id !== "string" || !/^[A-Za-z0-9_-]{1,80}$/.test(row.id) || ids.has(row.id)) return null;
+    if (typeof row.title !== "string" || !row.title.trim() || row.title.trim().length > 120 || /[\r\n]/.test(row.title)) return null;
+    if (!Array.isArray(row.columns) || row.columns.length < 1 || row.columns.length > 12) return null;
+    const columns: string[] = [];
+    const columnNames = new Set<string>();
+    for (const column of row.columns) {
+      if (typeof column !== "string" || !column.trim() || column.trim().length > 60 || /[\r\n]/.test(column)) return null;
+      const key = column.trim().toLowerCase();
+      if (columnNames.has(key)) return null;
+      columnNames.add(key);
+      columns.push(column.trim());
+    }
+    if (!Array.isArray(row.rows) || row.rows.length > 100) return null;
+    const rows: string[][] = [];
+    for (const cells of row.rows) {
+      if (!Array.isArray(cells) || cells.length !== columns.length || cells.some((cell) => typeof cell !== "string" || cell.length > 500)) return null;
+      rows.push([...cells] as string[]);
+    }
+    ids.add(row.id);
+    tables.push({ id: row.id, title: row.title.trim(), columns, rows });
+  }
+  return tables;
+}
+
 export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
   try {
     const saved = JSON.parse(await readFile(settingsPath, "utf8")) as Partial<WeeklyReportSettings>;
     const cpuColumns = normalizeCpuColumns(saved.cpuColumns ?? []) ?? [];
+    const customTables = normalizeCustomReportTables(saved.customTables ?? []) ?? [];
     return {
       bkc: normalizeWeeklyReportBkc(saved.bkc) ?? DEFAULT_WEEKLY_REPORT_BKC,
       teamPlatformCounts: normalizeTeamPlatformCounts(saved.teamPlatformCounts, cpuColumns) ?? DEFAULT_TEAM_PLATFORM_COUNTS.map((row) => cpuColumns.length ? { ...row, extraCounts: cpuColumns.map(() => 0) } : { ...row }),
@@ -117,6 +150,7 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
       cpuBreakdownTitle: normalizeCpuBreakdownTitle(saved.cpuBreakdownTitle) ?? DEFAULT_CPU_BREAKDOWN_TITLE,
       hsdesLink: normalizeWeeklyReportHsdesLink(saved.hsdesLink) ?? DEFAULT_WEEKLY_REPORT_HSDES_LINK,
       links: normalizeWeeklyReportLinks(saved.links) ?? DEFAULT_WEEKLY_REPORT_LINKS.map((link) => ({ ...link })),
+      customTables,
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -128,11 +162,12 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
       cpuBreakdownTitle: DEFAULT_CPU_BREAKDOWN_TITLE,
       hsdesLink: DEFAULT_WEEKLY_REPORT_HSDES_LINK,
       links: DEFAULT_WEEKLY_REPORT_LINKS.map((link) => ({ ...link })),
+      customTables: [],
     };
   }
 }
 
-export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS): Promise<WeeklyReportSettings> {
+export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS, customTablesValue?: unknown): Promise<WeeklyReportSettings> {
   const bkc = normalizeWeeklyReportBkc(bkcValue);
   const cpuColumns = normalizeCpuColumns(columnsValue);
   const cpuBaseLabels = normalizeCpuBaseLabels(baseLabelsValue);
@@ -140,6 +175,9 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
   const teamPlatformCounts = cpuColumns && normalizeTeamPlatformCounts(countsValue, cpuColumns);
   const hsdesLink = normalizeWeeklyReportHsdesLink(hsdesLinkValue);
   const links = normalizeWeeklyReportLinks(linksValue);
+  const customTables = customTablesValue === undefined
+    ? (await getWeeklyReportSettings()).customTables
+    : normalizeCustomReportTables(customTablesValue);
   if (!bkc) throw new TypeError("Enter a BKC value such as BKC#40 or BKC#WW41.");
   if (!cpuColumns) throw new TypeError("Enter up to 10 unique CPU column names (not Team, X1, or X4).");
   if (!cpuBaseLabels || cpuColumns.some((column) => Object.values(cpuBaseLabels).some((label) => label.toLowerCase() === column.toLowerCase()))) {
@@ -149,8 +187,9 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
   if (!teamPlatformCounts) throw new TypeError("Enter one to 20 unique teams with whole-number X1 and X4 counts from 0 to 1,000,000.");
   if (!hsdesLink) throw new TypeError("Enter an HSDES General Apps link containing a numeric queryId.");
   if (!links) throw new TypeError("Enter up to 20 report links with a label and valid HTTPS URL.");
+  if (!customTables) throw new TypeError("Enter up to 10 custom tables with up to 12 columns and 100 rows each.");
   await mkdir(config.dataDir, { recursive: true });
-  const settings = { bkc, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, hsdesLink, links };
+  const settings = { bkc, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, hsdesLink, links, customTables };
   await writeFile(settingsPath, JSON.stringify(settings, null, 2), { encoding: "utf8", mode: 0o600 });
   return settings;
 }

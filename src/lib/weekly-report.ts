@@ -4,6 +4,7 @@ import { getNgaiApiToken } from "./ngai-token";
 import { bucketOf, isCountedPendingRerunAttempt } from "./normalize";
 import { resolveDispatcher } from "./proxy";
 import type { AgedHsdesIssue, HsdesIssue } from "./hsdes-sightings";
+import type { CustomReportTable } from "./weekly-report-settings";
 import type { WeeklyReportSectionSettings } from "./dashboard-settings";
 import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_LINKS, type CpuBaseLabels, type TeamPlatformCount, type WeeklyReportLink } from "./weekly-report-settings";
 
@@ -116,6 +117,7 @@ export type WeeklyReport = {
   sightingWarning?: string;
   hsdesIssues: HsdesIssue[];
   agedHsdesIssues: AgedHsdesIssue[];
+  customTables?: CustomReportTable[];
   hsdFailureTitles?: Record<string, string>;
   hsdFailureStatuses?: Record<string, string>;
   hsdFailureReportTypes?: Record<string, string>;

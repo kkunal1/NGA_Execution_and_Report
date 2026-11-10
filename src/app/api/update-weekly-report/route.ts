@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeWeeklyReportFeature } from "@/lib/weekly-report-access";
-import { getWeeklyReportSettings, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks, saveWeeklyReportSettings } from "@/lib/weekly-report-settings";
+import { getWeeklyReportSettings, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks, saveWeeklyReportSettings } from "@/lib/weekly-report-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +15,7 @@ export async function PUT(req: Request) {
   const denied = await authorizeWeeklyReportFeature(req, "weeklyReportUpdate");
   if (denied) return denied;
   try {
-    const body = (await req.json()) as { bkc?: unknown; teamPlatformCounts?: unknown; cpuColumns?: unknown; cpuBaseLabels?: unknown; cpuBreakdownTitle?: unknown; hsdesLink?: unknown; links?: unknown };
+    const body = (await req.json()) as { bkc?: unknown; teamPlatformCounts?: unknown; cpuColumns?: unknown; cpuBaseLabels?: unknown; cpuBreakdownTitle?: unknown; hsdesLink?: unknown; links?: unknown; customTables?: unknown };
     const bkc = normalizeWeeklyReportBkc(body.bkc);
     const cpuColumns = normalizeCpuColumns(body.cpuColumns);
     const cpuBaseLabels = normalizeCpuBaseLabels(body.cpuBaseLabels);
@@ -23,10 +23,11 @@ export async function PUT(req: Request) {
     const teamPlatformCounts = cpuColumns && normalizeTeamPlatformCounts(body.teamPlatformCounts, cpuColumns);
     const hsdesLink = normalizeWeeklyReportHsdesLink(body.hsdesLink);
     const links = normalizeWeeklyReportLinks(body.links);
-    if (!bkc || !cpuColumns || !cpuBaseLabels || !cpuBreakdownTitle || !teamPlatformCounts || !hsdesLink || !links) {
+    const customTables = body.customTables === undefined ? undefined : normalizeCustomReportTables(body.customTables);
+    if (!bkc || !cpuColumns || !cpuBaseLabels || !cpuBreakdownTitle || !teamPlatformCounts || !hsdesLink || !links || (body.customTables !== undefined && !customTables)) {
       return NextResponse.json({ error: "Enter a valid BKC, CPU breakdown title, HSDES query link, report links, and 1 to 20 teams with up to 10 unique CPU columns and whole-number counts." }, { status: 400 });
     }
-    return NextResponse.json(await saveWeeklyReportSettings(bkc, teamPlatformCounts, hsdesLink, links, cpuColumns, cpuBreakdownTitle, cpuBaseLabels));
+    return NextResponse.json(await saveWeeklyReportSettings(bkc, teamPlatformCounts, hsdesLink, links, cpuColumns, cpuBreakdownTitle, cpuBaseLabels, customTables));
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not save Weekly Report settings." },

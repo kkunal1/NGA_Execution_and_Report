@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type FormEvent } from "react";
 import { Check, Pencil, Plus, Trash2 } from "lucide-react";
-import type { CpuBaseLabels, TeamPlatformCount, WeeklyReportLink } from "@/lib/weekly-report-settings";
+import type { CpuBaseLabels, CustomReportTable, TeamPlatformCount, WeeklyReportLink } from "@/lib/weekly-report-settings";
 import { DEFAULT_CPU_ALLOCATION_TITLE, displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 
 type EditableTeamPlatformCount = { id: string; team: string; x1: string; x4: string; extraCounts: string[] };
@@ -23,6 +23,7 @@ export default function UpdateWeeklyReportPage() {
   const [cpuTitleEditing, setCpuTitleEditing] = useState(false);
   const [hsdesLink, setHsdesLink] = useState("");
   const [links, setLinks] = useState<EditableWeeklyReportLink[]>([]);
+  const [customTables, setCustomTables] = useState<CustomReportTable[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -40,6 +41,7 @@ export default function UpdateWeeklyReportPage() {
           cpuBreakdownTitle?: string;
           hsdesLink?: string;
           links?: WeeklyReportLink[];
+          customTables?: CustomReportTable[];
           error?: string;
         };
         if (!response.ok) throw new Error(result.error || "Could not load the saved BKC value.");
@@ -51,6 +53,7 @@ export default function UpdateWeeklyReportPage() {
           setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: createRowId(), team: row.team, x1: String(row.x1), x4: String(row.x4), extraCounts: (row.extraCounts ?? []).map(String) })));
           setHsdesLink(result.hsdesLink ?? "");
           setLinks((result.links ?? []).map((link) => ({ ...link, id: createRowId() })));
+          setCustomTables(result.customTables ?? []);
         }
       })
       .catch((cause: unknown) => {
@@ -79,6 +82,7 @@ export default function UpdateWeeklyReportPage() {
           cpuBreakdownTitle,
           hsdesLink,
           links: links.map((link) => ({ label: link.label, url: link.url })),
+          customTables,
         }),
       });
       const result = (await response.json()) as {
@@ -89,6 +93,7 @@ export default function UpdateWeeklyReportPage() {
         cpuBreakdownTitle?: string;
         hsdesLink?: string;
         links?: WeeklyReportLink[];
+        customTables?: CustomReportTable[];
         error?: string;
       };
       if (!response.ok) throw new Error(result.error || "Could not save the BKC value.");
@@ -101,6 +106,7 @@ export default function UpdateWeeklyReportPage() {
       setTeamPlatformCounts((result.teamPlatformCounts ?? []).map((row) => ({ id: createRowId(), team: row.team, x1: String(row.x1), x4: String(row.x4), extraCounts: (row.extraCounts ?? []).map(String) })));
       setHsdesLink(result.hsdesLink ?? hsdesLink.trim());
       setLinks((result.links ?? []).map((link) => ({ ...link, id: createRowId() })));
+      setCustomTables(result.customTables ?? customTables);
       setSaved(true);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save the BKC value.");
@@ -123,6 +129,21 @@ export default function UpdateWeeklyReportPage() {
 
   const updateLink = (index: number, field: keyof EditableWeeklyReportLink, value: string) => {
     setLinks((current) => current.map((link, linkIndex) => linkIndex === index ? { ...link, [field]: value } : link));
+    setSaved(false);
+  };
+
+  const updateCustomTable = (index: number, update: (table: CustomReportTable) => CustomReportTable) => {
+    setCustomTables((current) => current.map((table, tableIndex) => tableIndex === index ? update(table) : table));
+    setSaved(false);
+  };
+
+  const addCustomTable = () => {
+    setCustomTables((current) => [...current, {
+      id: createRowId(),
+      title: `Custom Table ${current.length + 1}`,
+      columns: ["Column 1"],
+      rows: [[""]],
+    }]);
     setSaved(false);
   };
 
@@ -275,6 +296,62 @@ export default function UpdateWeeklyReportPage() {
               </tbody>
             </table>
           </div>
+        </section>
+        <section className="space-y-5 border-t border-[var(--border)] pt-5">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-[var(--text)]">Custom Report Tables</h2>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">New tables appear in newly generated reports, email, and HTML attachments.</p>
+            </div>
+            <button type="button" disabled={loading || saving || customTables.length >= 10} onClick={addCustomTable} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60">
+              <Plus className="h-4 w-4" aria-hidden="true" />Create table
+            </button>
+          </div>
+          {customTables.map((table, tableIndex) => (
+            <section key={table.id} className="space-y-4 border border-[var(--border)] bg-[var(--surface)] p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="min-w-60 flex-1 text-sm font-medium text-[var(--text)]">Table title
+                  <input required maxLength={120} value={table.title} onChange={(event) => updateCustomTable(tableIndex, (current) => ({ ...current, title: event.target.value }))} aria-label={`Custom table ${tableIndex + 1} title`} className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" />
+                </label>
+                <button type="button" disabled={loading || saving} onClick={() => { setCustomTables((current) => current.filter((_, index) => index !== tableIndex)); setSaved(false); }} aria-label={`Remove custom table ${tableIndex + 1}`} title="Remove table" className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
+                <div className="flex gap-2">
+                  <button type="button" disabled={loading || saving || table.rows.length >= 100} onClick={() => updateCustomTable(tableIndex, (current) => ({ ...current, rows: [...current.rows, current.columns.map(() => "")] }))} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60"><Plus className="h-4 w-4" aria-hidden="true" />Add row</button>
+                  <button type="button" disabled={loading || saving || table.columns.length >= 12} onClick={() => updateCustomTable(tableIndex, (current) => ({ ...current, columns: [...current.columns, `Column ${current.columns.length + 1}`], rows: current.rows.map((row) => [...row, ""]) }))} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60"><Plus className="h-4 w-4" aria-hidden="true" />Add column</button>
+                </div>
+              </div>
+              <div className="overflow-x-auto border border-[var(--border)]">
+                <table className="w-full min-w-[520px] border-collapse text-left text-sm">
+                  <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]">
+                    <tr>
+                      {table.columns.map((column, columnIndex) => (
+                        <th key={`${table.id}-column-${columnIndex}`} className="min-w-40 px-3 py-2">
+                          <div className="flex items-center gap-1">
+                            <input required maxLength={60} value={column} onChange={(event) => updateCustomTable(tableIndex, (current) => ({ ...current, columns: current.columns.map((label, index) => index === columnIndex ? event.target.value : label) }))} aria-label={`Custom table ${tableIndex + 1} column ${columnIndex + 1}`} className="h-9 min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" />
+                            <button type="button" disabled={loading || saving || table.columns.length <= 1} onClick={() => updateCustomTable(tableIndex, (current) => ({ ...current, columns: current.columns.filter((_, index) => index !== columnIndex), rows: current.rows.map((row) => row.filter((_, index) => index !== columnIndex)) }))} aria-label={`Remove custom table ${tableIndex + 1} column ${columnIndex + 1}`} title="Remove column" className="flex h-8 w-8 shrink-0 items-center justify-center text-[var(--text-muted)] hover:text-red-700 disabled:opacity-40"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
+                          </div>
+                        </th>
+                      ))}
+                      <th className="w-14 px-3 py-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {table.rows.map((row, rowIndex) => (
+                      <tr key={`${table.id}-row-${rowIndex}`} className="border-t border-[var(--border)]">
+                        {table.columns.map((_, columnIndex) => (
+                          <td key={`${table.id}-row-${rowIndex}-cell-${columnIndex}`} className="px-3 py-2">
+                            <input maxLength={500} value={row[columnIndex] ?? ""} onChange={(event) => updateCustomTable(tableIndex, (current) => ({ ...current, rows: current.rows.map((cells, index) => index === rowIndex ? cells.map((cell, cellIndex) => cellIndex === columnIndex ? event.target.value : cell) : cells) }))} aria-label={`Custom table ${tableIndex + 1} row ${rowIndex + 1} column ${columnIndex + 1}`} className="h-9 w-full min-w-32 rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" />
+                          </td>
+                        ))}
+                        <td className="px-3 py-2"><button type="button" disabled={loading || saving} onClick={() => updateCustomTable(tableIndex, (current) => ({ ...current, rows: current.rows.filter((_, index) => index !== rowIndex) }))} aria-label={`Remove custom table ${tableIndex + 1} row ${rowIndex + 1}`} title="Remove row" className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 className="h-4 w-4" aria-hidden="true" /></button></td>
+                      </tr>
+                    ))}
+                    {!table.rows.length && <tr><td colSpan={table.columns.length + 1} className="px-3 py-6 text-center text-sm text-[var(--text-muted)]">No rows. Add a row to enter table data.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
+          {!customTables.length && <p className="text-sm text-[var(--text-muted)]">No custom tables. Create a table to add one to future reports.</p>}
         </section>
         <div className="flex flex-wrap items-center gap-3">
           <button type="submit" disabled={loading || saving} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-60">

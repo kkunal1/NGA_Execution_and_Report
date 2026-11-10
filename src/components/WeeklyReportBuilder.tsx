@@ -782,6 +782,35 @@ export default function WeeklyReportBuilder() {
               </tfoot>}
             </table>
           </div>
+          {(report.customTables ?? []).map((customTable) => (
+            <section key={customTable.id} className="mt-6">
+              <h4 className="mb-3 text-sm font-bold text-[#204e76]">{customTable.title}</h4>
+              <div className="overflow-x-auto border border-[#b8cadb]">
+                <table className="w-full min-w-[520px] border-collapse text-left text-sm">
+                  <thead className="bg-[#204e76] text-xs font-semibold text-white">
+                    <tr>{customTable.columns.map((column, index) => {
+                      const isTotalColumn = column.trim().toLowerCase() === "total";
+                      return <th key={`${customTable.id}-header-${index}`} className={`px-3 py-2.5 ${isTotalColumn ? "bg-[#dce8f4] font-bold text-[#173f60]" : ""}`}>{column}</th>;
+                    })}</tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#cfdae5]">
+                    {customTable.rows.map((row, rowIndex) => {
+                      const isTotalRow = row.some((value) => value.trim().toLowerCase() === "total");
+                      return (
+                        <tr key={`${customTable.id}-row-${rowIndex}`} className="even:bg-[#edf3f9]">
+                          {customTable.columns.map((column, columnIndex) => {
+                            const isTotal = isTotalRow || column.trim().toLowerCase() === "total";
+                            return <td key={`${customTable.id}-cell-${rowIndex}-${columnIndex}`} className={`px-3 py-2 ${isTotal ? "bg-[#dce8f4] font-bold text-[#173f60]" : ""}`}>{row[columnIndex] ?? ""}</td>;
+                          })}
+                        </tr>
+                      );
+                    })}
+                    {!customTable.rows.length && <tr><td colSpan={customTable.columns.length} className="px-3 py-6 text-center text-sm text-[#647e94]">No rows configured.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          ))}
           </>}
         </section>
 

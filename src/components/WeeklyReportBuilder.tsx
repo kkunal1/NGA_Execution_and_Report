@@ -177,8 +177,20 @@ export default function WeeklyReportBuilder() {
   const [bucketizedHsdDomainFilter, setBucketizedHsdDomainFilter] = useState("all");
   const [bucketizedHsdReportTypeFilter, setBucketizedHsdReportTypeFilter] = useState<string[] | null>(null);
   const [bucketizedHsdStatusFilter, setBucketizedHsdStatusFilter] = useState<string[] | null>(null);
+  const bucketizedFiltersRef = useRef<HTMLDivElement>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    const closeOutsideMenus = (event: PointerEvent) => {
+      const target = event.target;
+      bucketizedFiltersRef.current?.querySelectorAll<HTMLDetailsElement>("details[open]").forEach((menu) => {
+        if (!(target instanceof Node) || !menu.contains(target)) menu.open = false;
+      });
+    };
+    document.addEventListener("pointerdown", closeOutsideMenus);
+    return () => document.removeEventListener("pointerdown", closeOutsideMenus);
+  }, []);
 
   useEffect(() => {
     try {
@@ -864,7 +876,7 @@ export default function WeeklyReportBuilder() {
             <>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                 <p className="text-xs text-[#57718a]">Showing {filteredBucketizedHsdIssues.length} of {bucketizedHsdIssues.length} bucketized HSDs across {bucketizedHsdDomains.length} domains.</p>
-                <div className="flex flex-wrap items-center gap-4">
+                <div ref={bucketizedFiltersRef} className="flex flex-wrap items-center gap-4">
                   <label className="flex items-center gap-2 text-xs font-semibold text-[#244c70]">Domain
                     <select value={activeBucketizedHsdDomain} onChange={(event) => setBucketizedHsdDomainFilter(event.target.value)} className="h-8 rounded-md border border-[#b8cadb] bg-white px-2 text-xs font-normal text-[#253646]">
                       <option value="all">All domains ({bucketizedHsdIssues.length})</option>

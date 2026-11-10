@@ -12,6 +12,7 @@ const WEEKLY_REPORT_SECTION_OPTIONS: [keyof WeeklyReportSectionSettings, string]
   ["hsdFailureSummary", "HSDs with 5 or More Failed Runs"],
   ["domainWise", "Domain-wise data"],
   ["overallFailureBreakdown", "Overall Validation group-wise failure breakdown"],
+  ["openHsdesIssues", "Open HSDES Issues by Domain"],
 ];
 
 type NgaiTokenStatus = {
@@ -627,7 +628,7 @@ export default function SettingsPage() {
           ))}
         </div>
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {dashboardSettingsSaved ? "Weekly Report section settings saved." : "Changes apply to future reports for all users."}
+          {dashboardSettingsSaved ? "Weekly Report section settings saved." : "Changes apply to loaded, generated, and emailed reports for all users."}
         </p>
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>

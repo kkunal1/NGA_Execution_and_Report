@@ -87,6 +87,7 @@ assert.deepEqual(DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, {
   hsdFailureSummary: true,
   domainWise: true,
   overallFailureBreakdown: true,
+  openHsdesIssues: false,
 });
 assert.deepEqual(DEFAULT_POOL_NAMES, ["pv_dmr-ap-ap1-b0"]);
 assert.deepEqual(normalizePoolNames([" pv_dmr-ap-ap1-b0 ", "another_pool"]), ["pv_dmr-ap-ap1-b0", "another_pool"]);
@@ -408,6 +409,7 @@ assert.match(weeklyEmailHtml, />Domain<\/th><th[^>]*>HSD<\/th><th[^>]*>Failed Te
 assert.match(weeklyEmailHtml, /15020010517[\s\S]*?<\/td><td[^>]*>6<\/td><td[^>]*>[\s\S]*?Status: Open<\/strong><\/td>/, "HSD failure summary preserves the failed count after HSD and status in the final column");
 assert.ok(weeklyEmailHtml.includes("Open HSDES Issues by Domain"), "email and attachment label the open-only issue section accurately");
 assert.ok(weeklyEmailHtml.includes("16000000001") && weeklyEmailHtml.includes("Open issue title"), "email and attachment include open HSDES issues");
+assert.ok(!renderWeeklyReportEmailHtml({ ...weeklyReport, sectionVisibility: { ...DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, openHsdesIssues: false }, hsdesIssues: [{ id: "16000000001", title: "Open issue title", reportType: "presighting", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 }] }).includes("Open HSDES Issues by Domain"), "the open HSDES issue setting hides the section from email and attachment output");
 assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title<\/th>/, "open HSDES issues retain Report Type immediately after HSDES ID");
 assert.match(weeklyEmailHtml, /16000000001[\s\S]*?<\/td><td[^>]*>presighting<\/td><td[^>]*>Open issue title<\/td>/, "open HSDES issues display their actual report type");
 const hsdFailureTableHtml = weeklyEmailHtml.match(/>HSDs with 5 or More Failed Runs<\/h2>([\s\S]*?)<\/table>/)?.[1];
@@ -443,7 +445,7 @@ assert.ok(!weeklyEmailHtml.includes("Failure Breakdown in Selected Window"));
 assert.ok(weeklyEmailHtml.includes("Overall Validation Group <span style=\"color:#dc2626\">Failure Breakdown</span>"));
 const emailWithoutOptionalSections = renderWeeklyReportEmailHtml({
   ...weeklyReport,
-  sectionVisibility: { cpuAllocation: false, hsdFailureSummary: false, domainWise: false, overallFailureBreakdown: false },
+  sectionVisibility: { cpuAllocation: false, hsdFailureSummary: false, domainWise: false, overallFailureBreakdown: false, openHsdesIssues: false },
 });
 assert.ok(!emailWithoutOptionalSections.includes("DMR System Allocation Across Teams"));
 assert.ok(!emailWithoutOptionalSections.includes("DOMAIN-WISE DATA"));
@@ -452,7 +454,7 @@ assert.ok(!emailWithoutOptionalSections.includes("HSDs with 5 or More Failed Run
 const emailWithDomainRowsAndStaleVisibility = renderWeeklyReportEmailHtml({
   ...weeklyReport,
   domainSummary: domainSummaryReport.domainSummary,
-  sectionVisibility: { cpuAllocation: false, hsdFailureSummary: false, domainWise: false, overallFailureBreakdown: false },
+  sectionVisibility: { cpuAllocation: false, hsdFailureSummary: false, domainWise: false, overallFailureBreakdown: false, openHsdesIssues: false },
 });
 assert.ok(emailWithDomainRowsAndStaleVisibility.includes("DOMAIN-WISE DATA"));
 assert.ok(emailWithDomainRowsAndStaleVisibility.includes("Security"));
@@ -593,9 +595,10 @@ assert.deepEqual(extractHsdesIssues(allIssueRecords).map(({ id, title, domain })
 ]);
 assert.equal(extractHsdesArticleTitle({ data: [{ title: "Direct HSD article title" }] }), "Direct HSD article title");
 assert.equal(extractHsdesArticleTitle({ data: [{ title: " " }] }), null);
-assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: " Direct HSD title ", status: " Open ", report_type: " presighting " }] }), { title: "Direct HSD title", status: "Open", reportType: "presighting" });
-assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct HSD title" }] }), { title: "Direct HSD title", status: "Unknown", reportType: "Unknown" });
-assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "SAF SoftLockup", status: "open", "bug.report_type": "sighting" }] }), { title: "SAF SoftLockup", status: "open", reportType: "sighting" });
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: " Direct HSD title ", status: " Open ", report_type: " presighting ", "server_platf.bug.days_open": "14" }] }), { title: "Direct HSD title", status: "Open", reportType: "presighting", daysOpen: 14 });
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct sighting title", "sighting_central.sighting.days_open": "40" }] }), { title: "Direct sighting title", status: "Unknown", reportType: "Unknown", daysOpen: 40 });
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct HSD title" }] }), { title: "Direct HSD title", status: "Unknown", reportType: "Unknown", daysOpen: null });
+assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "SAF SoftLockup", status: "open", "bug.report_type": "sighting", days_open: 0 }] }), { title: "SAF SoftLockup", status: "open", reportType: "sighting", daysOpen: 0 });
 assert.equal(extractHsdesArticleDetails({ data: [{ title: "HSD", report_type: "Unknown", "bug.report_type": " presighting " }] })?.reportType, "presighting");
 assert.deepEqual(extractHsdesIssuesOlderThan(allIssueRecords).map(({ id }) => id), ["aged-security"]);
 const pagedIssueRecords = Array.from({ length: 20001 }, (_, index) => ({ id: `paged-${index + 1}` }));

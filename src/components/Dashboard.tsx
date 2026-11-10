@@ -20,6 +20,7 @@ import { summarize } from "@/lib/summarize";
 import { DATA_PROVIDER_KEY, readNgaiNetworkOverride, type DataProvider } from "@/lib/provider";
 import { THEME_KEY } from "@/lib/theme";
 import { buildReportFilename } from "@/lib/report-html";
+import { B0_SUITES, B2_SUITES } from "@/lib/execution-suites";
 import { useAppRole } from "@/components/auth-context";
 import { useRefreshSchedule } from "@/components/refresh-context";
 
@@ -27,6 +28,21 @@ const SUITE_INPUT_KEY = "nga-suite-name-input";
 const NGAI_RUN_KEY = "nga-ngai-last-run";
 const NGAI_ABORTED_KEY = "nga-ngai-aborted-cache";
 const LATEST_EXECUTED_DISPLAY_LIMIT = 100;
+type ExecutionProfile = "b0" | "b2";
+const DEFAULT_PROFILE_SUITES: Record<ExecutionProfile, string[]> = {
+  b0: [B0_SUITES.P1, B0_SUITES.P2],
+  b2: [B2_SUITES.P1, B2_SUITES.P2],
+};
+
+function suiteMatchesProfile(suite: string, profile: ExecutionProfile) {
+  return new RegExp(`_B${profile.slice(1)}_`, "i").test(suite);
+}
+
+function runMatchesProfile(run: RunResult | null | undefined, profile: ExecutionProfile) {
+  if (!run) return false;
+  return normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])
+    .some((suite) => suiteMatchesProfile(suite, profile));
+}
 
 const COLORS: Record<string, string> = {
   Passed: "#16a34a",
@@ -101,7 +117,10 @@ function Card({
   );
 }
 
-export default function Dashboard() {
+export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfile }) {
+  const suiteInputKey = profile === "b0" ? SUITE_INPUT_KEY : `${SUITE_INPUT_KEY}-${profile}`;
+  const runCacheKey = profile === "b0" ? NGAI_RUN_KEY : `${NGAI_RUN_KEY}-${profile}`;
+  const abortedCacheKey = profile === "b0" ? NGAI_ABORTED_KEY : `${NGAI_ABORTED_KEY}-${profile}`;
   // Restored lazily in an effect (not during render) so the client's first render matches SSR - reading
   // sessionStorage synchronously during the initial render/state-initializers caused a hydration mismatch.
   const restoredNgaiRef = useRef<{ suiteName?: string; suiteNames?: string[]; run: RunResult } | null>(null);
@@ -139,6 +158,16 @@ export default function Dashboard() {
   const [dashboardSettings, setDashboardSettings] = useState({ executionStatusSplit: true, rawStateValues: true, showManualAborts: true });
   const autoRefreshInFlight = useRef(false);
 
+  const cacheProfileRun = useCallback((nextRun: RunResult | null) => {
+    setRun(nextRun);
+    try {
+      if (nextRun) window.sessionStorage.setItem(runCacheKey, JSON.stringify({ run: nextRun }));
+      else window.sessionStorage.removeItem(runCacheKey);
+    } catch {
+      // Keep the dashboard usable when browser storage is unavailable.
+    }
+  }, [runCacheKey]);
+
   useEffect(() => {
     if (!testDetailsOpen) return;
     const dialog = notRunDialogRef.current;
@@ -156,16 +185,22 @@ export default function Dashboard() {
     const res = await fetch(`/api/runs${runId ? `?runId=${runId}` : ""}`);
     const data = (await res.json()) as { run: RunResult | null; runs: string[]; version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
     setRuns(data.runs);
-    if (runId || data.run || !restoredNgaiRef.current) setRun(data.run);
+    const restoredRun = restoredNgaiRef.current?.run;
+    const selectedRun = runId
+      ? data.run
+      : runMatchesProfile(data.run, profile)
+        ? data.run
+        : runMatchesProfile(restoredRun, profile) ? restoredRun ?? null : null;
+    cacheProfileRun(selectedRun);
     setLatestVersion(data.version);
     setNextRefreshAt(data.nextRefreshAt);
     setRefreshIntervalSeconds(data.intervalSeconds);
-    if (data.run) setPersisted(data.run.meta.source !== "network");
-  }, []);
+    setPersisted(selectedRun ? selectedRun.meta.source !== "network" : false);
+  }, [cacheProfileRun, profile]);
 
   useEffect(() => {
     try {
-      const raw = window.sessionStorage.getItem(NGAI_RUN_KEY);
+      const raw = window.sessionStorage.getItem(runCacheKey);
       if (raw) {
         const parsed = JSON.parse(raw) as { suiteName?: string; suiteNames?: string[]; run: RunResult };
         restoredNgaiRef.current = parsed;
@@ -176,23 +211,23 @@ export default function Dashboard() {
       /* ignore corrupt cache */
     }
     try {
-      const raw = window.sessionStorage.getItem(NGAI_ABORTED_KEY);
+      const raw = window.sessionStorage.getItem(abortedCacheKey);
       if (raw) setAbortedRows((JSON.parse(raw) as { suiteName: string; rows: TestRow[] }).rows);
     } catch {
       /* ignore corrupt cache */
     }
-    const savedSuites = window.sessionStorage.getItem(SUITE_INPUT_KEY);
+    const savedSuites = window.sessionStorage.getItem(suiteInputKey);
     setSuiteNames(normalizeSuiteNames(
-      savedSuites ?? restoredNgaiRef.current?.suiteNames ?? restoredNgaiRef.current?.suiteName,
+      savedSuites ?? restoredNgaiRef.current?.suiteNames ?? restoredNgaiRef.current?.suiteName ?? DEFAULT_PROFILE_SUITES[profile],
     ));
     setSuiteStateRestored(true);
     void load();
-  }, [load]);
+  }, [abortedCacheKey, load, profile, runCacheKey, suiteInputKey]);
 
   useEffect(() => {
     if (!suiteStateRestored) return;
-    window.sessionStorage.setItem(SUITE_INPUT_KEY, suiteNames.join("\n"));
-  }, [suiteNames, suiteStateRestored]);
+    window.sessionStorage.setItem(suiteInputKey, suiteNames.join("\n"));
+  }, [suiteInputKey, suiteNames, suiteStateRestored]);
 
   const selectedSuiteNames = normalizeSuiteNames([...suiteNames, suiteDraft]);
   const autoRefreshSuites = useMemo(
@@ -259,7 +294,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(data.error ?? "Capture failed");
       setRun(data as RunResult);
       setPersisted(true);
-      window.sessionStorage.removeItem(NGAI_RUN_KEY);
+      window.sessionStorage.removeItem(runCacheKey);
       await load((data as RunResult).meta.runId);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -319,9 +354,9 @@ export default function Dashboard() {
       // Don't cache a zero-match result (usually a typo'd suite name) - otherwise it keeps
       // auto-restoring on reload, hiding the input box's real value and blocking new attempts.
       if (rows.length > 0) {
-        window.sessionStorage.setItem(NGAI_RUN_KEY, JSON.stringify({ suiteNames: suites, run: adapted }));
+        window.sessionStorage.setItem(runCacheKey, JSON.stringify({ suiteNames: suites, run: adapted }));
       } else {
-        window.sessionStorage.removeItem(NGAI_RUN_KEY);
+        window.sessionStorage.removeItem(runCacheKey);
       }
       await loadAbortedTests(suites);
     } catch (e) {
@@ -342,7 +377,7 @@ export default function Dashboard() {
       if (!res.ok) throw new Error(data.error ?? "Could not load aborted tests");
       const rows = data.rows ?? [];
       setAbortedRows(rows);
-      window.sessionStorage.setItem(NGAI_ABORTED_KEY, JSON.stringify({ suiteNames: data.suiteNames ?? suites, rows }));
+      window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: data.suiteNames ?? suites, rows }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -362,7 +397,7 @@ export default function Dashboard() {
         if (cancelled) return;
         const rows = snapshot.rows ?? [];
         setAbortedRows(rows);
-        window.sessionStorage.setItem(NGAI_ABORTED_KEY, JSON.stringify({ suiteNames: snapshot.suiteNames ?? [], rows }));
+        window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: snapshot.suiteNames ?? [], rows }));
         const cachedSuites = new Set((snapshot.suiteNames ?? []).map((suite) => suite.toLowerCase()));
         if (isAdmin && (!snapshot.hasSnapshot || autoRefreshSuites.some((suite) => !cachedSuites.has(suite.toLowerCase())))) {
           await loadAbortedTests(autoRefreshSuites);
@@ -404,9 +439,9 @@ export default function Dashboard() {
         const latestResponse = await fetch("/api/runs?latestOnly=1", { cache: "no-store" });
         if (!latestResponse.ok) return;
         const data = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
-        if (data.run) {
-          setRun(data.run);
-          setPersisted(data.run.meta.source !== "network");
+        if (runMatchesProfile(data.run, profile)) {
+          cacheProfileRun(data.run);
+          setPersisted(data.run!.meta.source !== "network");
         }
         setLatestVersion(data.version);
         setNextRefreshAt(data.nextRefreshAt);
@@ -419,7 +454,7 @@ export default function Dashboard() {
     };
     const timer = window.setInterval(() => void checkForUpdate(), 5000);
     return () => window.clearInterval(timer);
-  }, [latestVersion]);
+  }, [cacheProfileRun, latestVersion, profile]);
 
   useEffect(() => {
     if (!isAdmin || refreshIntervalSeconds === 0 || run?.meta.stateColumn !== "State" || autoRefreshSuites.length === 0) return;
@@ -451,8 +486,8 @@ export default function Dashboard() {
           const latestResponse = await fetch("/api/runs?latestOnly=1", { cache: "no-store" });
           if (latestResponse.ok) {
             const latest = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null };
-            if (latest.run) {
-              setRun(latest.run);
+            if (runMatchesProfile(latest.run, profile)) {
+              cacheProfileRun(latest.run);
               setPersisted(false);
               setLatestVersion(latest.version);
               setNextRefreshAt(latest.nextRefreshAt);
@@ -495,11 +530,12 @@ export default function Dashboard() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [isAdmin, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
+  }, [cacheProfileRun, isAdmin, profile, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
 
   const availableSuites = useMemo(() => run
     ? normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])
-    : [], [run]);
+      .filter((suite) => suiteMatchesProfile(suite, profile))
+    : [], [profile, run]);
 
   useEffect(() => {
     setCheckedDataSuites(availableSuites);
@@ -514,11 +550,10 @@ export default function Dashboard() {
   const runHasSuite = normalizeSuiteNames(run?.meta.filter.value).length > 0;
 
   const visibleRows = useMemo(() => {
-    if (!runHasSuite) return [];
+    if (!runHasSuite || availableSuites.length === 0) return [];
     const rows = run?.rows ?? [];
-    if (availableSuites.length < 2 || checkedDataSuites.length === availableSuites.length) return rows;
-    return rows.filter((row) => checkedSuiteKeys.has(row.suite.trim().toLowerCase()));
-  }, [run, runHasSuite, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
+    return rows.filter((row) => suiteMatchesProfile(row.suite, profile) && checkedSuiteKeys.has(row.suite.trim().toLowerCase()));
+  }, [run, runHasSuite, availableSuites.length, checkedSuiteKeys, profile]);
 
   const visibleSummary = useMemo(
     () => run ? summarize(visibleRows) : undefined,
@@ -535,7 +570,7 @@ export default function Dashboard() {
         },
       }
     : null;
-  const allSuitesSelected = availableSuites.length < 2 || checkedDataSuites.length === availableSuites.length;
+  const allSuitesSelected = availableSuites.length > 0 && checkedDataSuites.length === availableSuites.length;
 
   const downloadReport = async () => {
     if (!displayedRun) return;
@@ -608,8 +643,7 @@ export default function Dashboard() {
     const fromMs = abortFrom ? new Date(abortFrom).getTime() : null;
     const toMs = abortTo ? new Date(abortTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
     return domainResolvedAbortedRows.filter((r) => {
-      if (availableSuites.length > 1 && checkedDataSuites.length !== availableSuites.length &&
-        !checkedSuiteKeys.has(r.suite.trim().toLowerCase())) return false;
+      if (!suiteMatchesProfile(r.suite, profile) || !checkedSuiteKeys.has(r.suite.trim().toLowerCase())) return false;
       if (!fromMs && !toMs) return true;
       if (!r.date) return false;
       const ms = new Date(r.date).getTime();
@@ -618,7 +652,7 @@ export default function Dashboard() {
       if (toMs != null && ms > toMs) return false;
       return true;
     });
-  }, [runHasSuite, domainResolvedAbortedRows, abortFrom, abortTo, availableSuites.length, checkedDataSuites.length, checkedSuiteKeys]);
+  }, [runHasSuite, domainResolvedAbortedRows, abortFrom, abortTo, checkedSuiteKeys, profile]);
 
   const visibleAbortedRows = useMemo(
     () => dashboardSettings.showManualAborts ? dateFilteredAbortedRows : dateFilteredAbortedRows.filter((row) => row.abortStep && row.abortStep !== "Aborted Manually"),
@@ -706,7 +740,7 @@ export default function Dashboard() {
                 ? `${run.meta.filter.entity} / ${run.meta.filter.field} / ${run.meta.filter.operator} /`
                 : "TestLine / Suite / Equal /"}{" "}
                 <code className="rounded-md bg-[var(--surface-alt)] px-1.5 py-0.5 text-xs text-[var(--text-muted)]">
-                {run?.meta.filter.value ??
+                {checkedDataSuites.length ? checkedDataSuites.join("\n") : suiteNames.length ? suiteNames.join("\n") : run?.meta.filter.value ??
                   "Oak_Stream_Platform_1_DMR-Platform_Beta-PAIV-Platform-AP1_Beta_Regression_Cycle"}
               </code>
             </p>

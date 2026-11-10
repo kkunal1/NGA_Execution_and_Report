@@ -22,7 +22,8 @@ export async function PUT(req: Request) {
       typeof (weeklyReportSections as WeeklyReportSectionSettings).cpuAllocation === "boolean" &&
       typeof (weeklyReportSections as WeeklyReportSectionSettings).hsdFailureSummary === "boolean" &&
       typeof (weeklyReportSections as WeeklyReportSectionSettings).domainWise === "boolean" &&
-      typeof (weeklyReportSections as WeeklyReportSectionSettings).overallFailureBreakdown === "boolean";
+      typeof (weeklyReportSections as WeeklyReportSectionSettings).overallFailureBreakdown === "boolean" &&
+      typeof (weeklyReportSections as WeeklyReportSectionSettings).openHsdesIssues === "boolean";
     if (typeof body.executionStatusSplit !== "boolean" || typeof body.rawStateValues !== "boolean" ||
       typeof body.showManualAborts !== "boolean" ||
       typeof body.poolSystems !== "boolean" || typeof body.weeklyReport !== "boolean" || typeof body.executionTime !== "boolean" ||

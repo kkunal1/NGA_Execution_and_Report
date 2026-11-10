@@ -73,6 +73,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [loginBusy, setLoginBusy] = useState(false);
   const [menuVisibility, setMenuVisibility] = useState<MenuVisibility>({ poolSystems: false, weeklyReport: false, weeklyReportUpdate: false, weeklyReportEmail: false, weeklyReportHsdDetails: false, executionTime: false, ngaiTestRunData: false });
   const [menuVisibilityReady, setMenuVisibilityReady] = useState(false);
+  const [executionReportExpanded, setExecutionReportExpanded] = useState(false);
   const [weeklyReportExpanded, setWeeklyReportExpanded] = useState(false);
   const [now, setNow] = useState<Date | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -187,6 +188,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [menuVisibility, menuVisibilityReady, pathname, role, router]);
 
   useEffect(() => {
+    if (pathname === "/" || pathname.startsWith("/execution/")) setExecutionReportExpanded(true);
     if (pathname === "/weekly-report" || pathname.startsWith("/weekly-report/") || pathname === "/update-weekly-report" || pathname === "/update-hsd-details") {
       setWeeklyReportExpanded(true);
     }
@@ -348,6 +350,41 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             }
             return !item.visibilityKey || menuVisibility[item.visibilityKey];
           }).map(({ href, label, icon: Icon }) => {
+            if (href === "/") {
+              const active = pathname === "/" || pathname.startsWith("/execution/");
+              return (
+                <div key={href}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (sidebarCollapsed) {
+                        window.localStorage.setItem(SIDEBAR_COLLAPSED_KEY, "0");
+                        setSidebarCollapsed(false);
+                      }
+                      setExecutionReportExpanded((expanded) => !expanded);
+                    }}
+                    title={sidebarCollapsed ? label : undefined}
+                    aria-label={label}
+                    aria-expanded={executionReportExpanded}
+                    aria-controls="execution-report-submenu"
+                    className={`flex w-full items-center gap-3 rounded-lg py-2.5 text-left text-sm font-medium transition ${sidebarCollapsed ? "justify-center px-2" : "px-3"} ${active ? "bg-[var(--accent)] text-[var(--accent-text)] shadow-sm" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!sidebarCollapsed && <><span className="min-w-0 flex-1 truncate">{label}</span>{executionReportExpanded ? <ChevronDown className="h-4 w-4 shrink-0" /> : <ChevronRight className="h-4 w-4 shrink-0" />}</>}
+                  </button>
+                  {executionReportExpanded && !sidebarCollapsed && (
+                    <div id="execution-report-submenu" className="ml-4 mt-1 space-y-1 border-l border-white/15 pl-2">
+                      <Link href="/" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
+                        <Server className="h-3.5 w-3.5 shrink-0" /><span>DMR AP1 PV B0 Execution</span>
+                      </Link>
+                      <Link href="/execution/b2" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/execution/b2" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
+                        <Server className="h-3.5 w-3.5 shrink-0" /><span>DMR AP1 PV B2 Execution</span>
+                      </Link>
+                    </div>
+                  )}
+                </div>
+              );
+            }
             if (href === "/weekly-report") {
               const active = pathname === href || pathname.startsWith("/weekly-report/") || pathname === "/update-weekly-report" || pathname === "/update-hsd-details";
               return (

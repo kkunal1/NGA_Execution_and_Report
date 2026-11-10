@@ -3,6 +3,7 @@ export type WeeklyReportSectionSettings = {
   hsdFailureSummary: boolean;
   domainWise: boolean;
   overallFailureBreakdown: boolean;
+  openHsdesIssues: boolean;
 };
 
 export const DEFAULT_WEEKLY_REPORT_SECTIONS: WeeklyReportSectionSettings = {
@@ -10,4 +11,5 @@ export const DEFAULT_WEEKLY_REPORT_SECTIONS: WeeklyReportSectionSettings = {
   hsdFailureSummary: true,
   domainWise: true,
   overallFailureBreakdown: true,
+  openHsdesIssues: false,
 };

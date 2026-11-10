@@ -119,6 +119,7 @@ export type WeeklyReport = {
   hsdFailureTitles?: Record<string, string>;
   hsdFailureStatuses?: Record<string, string>;
   hsdFailureReportTypes?: Record<string, string>;
+  hsdFailureDaysOpen?: Record<string, number>;
   stageDetails: StageDetail[];
 };
 

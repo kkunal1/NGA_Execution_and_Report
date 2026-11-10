@@ -172,20 +172,38 @@ async function fetchHsdesQueryPage(baseUrl: URL, startAt: number, maxResults: nu
   }
 }
 
-export type HsdesArticleDetails = { title: string; status: string; reportType: string };
+export type HsdesArticleDetails = { title: string; status: string; reportType: string; daysOpen: number | null };
 
 export function extractHsdesArticleDetails(value: unknown): HsdesArticleDetails | null {
   if (typeof value !== "object" || value === null) return null;
   const records = (value as { data?: unknown }).data;
   if (!Array.isArray(records) || typeof records[0] !== "object" || records[0] === null) return null;
-  const record = records[0] as { title?: unknown; status?: unknown; report_type?: unknown; "bug.report_type"?: unknown };
+  const record = records[0] as {
+    title?: unknown;
+    status?: unknown;
+    report_type?: unknown;
+    "bug.report_type"?: unknown;
+    days_open?: unknown;
+    "server_platf.bug.days_open"?: unknown;
+    "sighting_central.sighting.days_open"?: unknown;
+  };
   if (typeof record.title !== "string" || !record.title.trim()) return null;
   const reportType = [record.report_type, record["bug.report_type"]]
     .find((value): value is string => typeof value === "string" && Boolean(value.trim()) && value.trim().toLowerCase() !== "unknown");
+  const rawDaysOpen = record["server_platf.bug.days_open"]
+    ?? record["sighting_central.sighting.days_open"]
+    ?? record.days_open
+    ?? Object.entries(record).find(([key]) => key.endsWith(".days_open"))?.[1];
+  const parsedDaysOpen = typeof rawDaysOpen === "number"
+    ? rawDaysOpen
+    : typeof rawDaysOpen === "string" && rawDaysOpen.trim()
+      ? Number(rawDaysOpen)
+      : Number.NaN;
   return {
     title: record.title.trim(),
     status: typeof record.status === "string" && record.status.trim() ? record.status.trim() : "Unknown",
     reportType: reportType?.trim() ?? "Unknown",
+    daysOpen: Number.isFinite(parsedDaysOpen) ? parsedDaysOpen : null,
   };
 }
 

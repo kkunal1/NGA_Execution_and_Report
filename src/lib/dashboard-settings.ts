@@ -54,6 +54,7 @@ export async function getDashboardSettings(): Promise<DashboardSettings> {
         hsdFailureSummary: saved.weeklyReportSections?.hsdFailureSummary ?? DEFAULT_WEEKLY_REPORT_SECTIONS.hsdFailureSummary,
         domainWise: saved.weeklyReportSections?.domainWise ?? DEFAULT_WEEKLY_REPORT_SECTIONS.domainWise,
         overallFailureBreakdown: saved.weeklyReportSections?.overallFailureBreakdown ?? DEFAULT_WEEKLY_REPORT_SECTIONS.overallFailureBreakdown,
+        openHsdesIssues: saved.weeklyReportSections?.openHsdesIssues ?? DEFAULT_WEEKLY_REPORT_SECTIONS.openHsdesIssues,
       },
       weeklyReportMode: saved.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
       executionTime: saved.executionTime ?? DEFAULT_DASHBOARD_SETTINGS.executionTime,

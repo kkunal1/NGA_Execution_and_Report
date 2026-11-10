@@ -22,6 +22,7 @@ export async function GET(req: Request) {
         hsdFailureTitles: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.title])),
         hsdFailureStatuses: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.status])),
         hsdFailureReportTypes: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.reportType])),
+        hsdFailureDaysOpen: Object.fromEntries(Object.entries(details).flatMap(([id, article]) => article.daysOpen === null ? [] : [[id, article.daysOpen]])),
       });
     }
     return NextResponse.json(await fetchHsdesIssueData(reportSettings.hsdesLink));

@@ -3,6 +3,8 @@ import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
 import { getPoolSystemSettings } from "./pool-system-settings";
 import { resolveDispatcher } from "./proxy";
+import { B0_SUITES } from "./execution-suites";
+export { B0_SUITES, B2_SUITES } from "./execution-suites";
 
 export type PoolSystem = {
   id: string;
@@ -56,11 +58,6 @@ export async function fetchPoolSystems(poolNames?: string[]): Promise<PoolSystem
     .filter((system) => system.id && system.name)
     .sort((left, right) => left.name.localeCompare(right.name));
 }
-
-export const B0_SUITES = {
-  P1: "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B0_P1_Tests_Cycle",
-  P2: "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B0_P2_Tests_Cycle",
-} as const;
 
 export type UncoveredConfig = {
   config: string;

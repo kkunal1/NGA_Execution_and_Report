@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, Copy, Download, FileText, FolderOpen, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronDown, Copy, Download, FileText, FolderOpen, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
 import { buildFailureProgress, weeklyReportYetToAttemptCount } from "@/lib/weekly-report-metrics";
 import { displayCpuAllocationTitle } from "@/lib/weekly-report-display";
@@ -174,6 +174,9 @@ export default function WeeklyReportBuilder() {
   const [hsdesDetailsLoading, setHsdesDetailsLoading] = useState(false);
   const [hsdesDetailsError, setHsdesDetailsError] = useState("");
   const [hsdesDomainFilter, setHsdesDomainFilter] = useState("all");
+  const [bucketizedHsdDomainFilter, setBucketizedHsdDomainFilter] = useState("all");
+  const [bucketizedHsdReportTypeFilter, setBucketizedHsdReportTypeFilter] = useState<string[] | null>(null);
+  const [bucketizedHsdStatusFilter, setBucketizedHsdStatusFilter] = useState<string[] | null>(null);
   const [copyStatus, setCopyStatus] = useState("");
   const [error, setError] = useState("");
 
@@ -205,32 +208,55 @@ export default function WeeklyReportBuilder() {
   }, []);
 
   const missingHsdDetailsIds = (report?.hsdFailureSummaries ?? [])
-    .filter((summary) => summary.failedRuns >= 5 && (!report?.hsdFailureTitles?.[summary.hsdId] || !report?.hsdFailureStatuses?.[summary.hsdId]))
+    .filter((summary) => {
+      const issue = report?.hsdesIssues?.find((item) => item.id === summary.hsdId);
+      const title = report?.hsdFailureTitles?.[summary.hsdId] || issue?.title;
+      const status = report?.hsdFailureStatuses?.[summary.hsdId] || issue?.status;
+      const daysOpen = report?.hsdFailureDaysOpen?.[summary.hsdId] ?? issue?.daysOpen;
+      return !title || !status || status.trim().toLowerCase() === "unknown" || daysOpen == null;
+    })
     .map((summary) => summary.hsdId);
-  const missingHsdDetailsKey = missingHsdDetailsIds.join("|");
+  const missingHsdDetailsKey = [...new Set(missingHsdDetailsIds)].join("|");
 
   useEffect(() => {
-    if (!report || !missingHsdDetailsIds.length) return;
+    const uniqueIds = [...new Set(missingHsdDetailsIds)];
+    if (!report || !uniqueIds.length) return;
     let cancelled = false;
-    const query = new URLSearchParams();
-    missingHsdDetailsIds.forEach((id) => query.append("hsdId", id));
+    const batches: string[][] = [];
+    for (let index = 0; index < uniqueIds.length; index += 25) batches.push(uniqueIds.slice(index, index + 25));
     setHsdesDetailsLoading(true);
     setHsdesDetailsError("");
-    void fetch(`/api/weekly-report?${query.toString()}`, { cache: "no-store" })
-      .then(async (response) => {
-        const result = (await response.json()) as { hsdFailureTitles?: Record<string, string>; hsdFailureStatuses?: Record<string, string>; error?: string };
-        if (!response.ok) throw new Error(result.error || "Could not retrieve HSD details.");
-        if (!result.hsdFailureTitles || !result.hsdFailureStatuses || missingHsdDetailsIds.some((id) => !result.hsdFailureTitles?.[id] || !result.hsdFailureStatuses?.[id])) {
-          throw new Error("HSDES did not return details for every HSD in this report.");
-        }
-        return { titles: result.hsdFailureTitles, statuses: result.hsdFailureStatuses };
+    void Promise.all(batches.map(async (ids) => {
+      const query = new URLSearchParams();
+      ids.forEach((id) => query.append("hsdId", id));
+      const response = await fetch(`/api/weekly-report?${query.toString()}`, { cache: "no-store" });
+      const result = (await response.json()) as {
+        hsdFailureTitles?: Record<string, string>;
+        hsdFailureStatuses?: Record<string, string>;
+        hsdFailureReportTypes?: Record<string, string>;
+        hsdFailureDaysOpen?: Record<string, number>;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error || "Could not retrieve HSD details.");
+      return result;
+    }))
+      .then((results) => {
+        const titles = Object.assign({}, ...results.map((result) => result.hsdFailureTitles));
+        const statuses = Object.assign({}, ...results.map((result) => result.hsdFailureStatuses));
+        const reportTypes = Object.assign({}, ...results.map((result) => result.hsdFailureReportTypes));
+        const daysOpen = Object.assign({}, ...results.map((result) => result.hsdFailureDaysOpen));
+        const unresolvedIds = uniqueIds.filter((id) => !titles[id] || !statuses[id] || statuses[id].trim().toLowerCase() === "unknown" || daysOpen[id] == null);
+        if (unresolvedIds.length) throw new Error(`HSDES did not return title, status, and days open for: ${unresolvedIds.join(", ")}`);
+        return { titles, statuses, reportTypes, daysOpen };
       })
-      .then(({ titles, statuses }) => {
+      .then(({ titles, statuses, reportTypes, daysOpen }) => {
         if (cancelled) return;
         const refreshedReport = {
           ...report,
           hsdFailureTitles: { ...report.hsdFailureTitles, ...titles },
           hsdFailureStatuses: { ...report.hsdFailureStatuses, ...statuses },
+          hsdFailureReportTypes: { ...report.hsdFailureReportTypes, ...reportTypes },
+          hsdFailureDaysOpen: { ...report.hsdFailureDaysOpen, ...daysOpen },
         };
         setReport(refreshedReport);
         try {
@@ -515,6 +541,28 @@ export default function WeeklyReportBuilder() {
     ? report.hsdFailureSummaries.filter((summary) => summary.failedRuns >= 5)
     : [];
   const hsdesIssueById = new Map(hsdesIssues.map((issue) => [issue.id, issue]));
+  const bucketizedHsdIssues = (report?.hsdFailureSummaries ?? []).flatMap((summary) => {
+    const issue = hsdesIssueById.get(summary.hsdId);
+    return summary.domains.map(({ domain }) => ({
+      id: summary.hsdId,
+      domain,
+      reportType: report?.hsdFailureReportTypes?.[summary.hsdId] || issue?.reportType || "Unknown",
+      title: report?.hsdFailureTitles?.[summary.hsdId] || issue?.title || (hsdesDetailsLoading ? "Loading…" : "Not found"),
+      status: report?.hsdFailureStatuses?.[summary.hsdId] || issue?.status || (hsdesDetailsLoading ? "Loading…" : "Not found"),
+      daysOpen: report?.hsdFailureDaysOpen?.[summary.hsdId] ?? issue?.daysOpen ?? null,
+    }));
+  }).sort((left, right) => left.domain.localeCompare(right.domain) || left.id.localeCompare(right.id));
+  const bucketizedHsdDomains = [...new Set(bucketizedHsdIssues.map((issue) => issue.domain))].sort((left, right) => left.localeCompare(right));
+  const bucketizedHsdReportTypes = [...new Set(bucketizedHsdIssues.map((issue) => issue.reportType))].sort((left, right) => left.localeCompare(right));
+  const bucketizedHsdStatuses = [...new Set(bucketizedHsdIssues.map((issue) => issue.status))].sort((left, right) => left.localeCompare(right));
+  const activeBucketizedHsdDomain = bucketizedHsdDomains.includes(bucketizedHsdDomainFilter) ? bucketizedHsdDomainFilter : "all";
+  const activeBucketizedHsdReportTypes = bucketizedHsdReportTypeFilter?.filter((type) => bucketizedHsdReportTypes.includes(type)) ?? null;
+  const activeBucketizedHsdStatuses = bucketizedHsdStatusFilter?.filter((status) => bucketizedHsdStatuses.includes(status)) ?? null;
+  const filteredBucketizedHsdIssues = bucketizedHsdIssues.filter((issue) =>
+    (activeBucketizedHsdDomain === "all" || issue.domain === activeBucketizedHsdDomain)
+    && (activeBucketizedHsdReportTypes === null || activeBucketizedHsdReportTypes.includes(issue.reportType))
+    && (activeBucketizedHsdStatuses === null || activeBucketizedHsdStatuses.includes(issue.status)),
+  );
   const domainSummary = Array.isArray(report?.domainSummary) ? report.domainSummary : [];
   const failureProgress = report ? report.failureProgress ?? buildFailureProgress(report) : null;
   const domainTotals = domainSummary.reduce((totals, row) => ({
@@ -810,7 +858,121 @@ export default function WeeklyReportBuilder() {
 
         {report.sectionVisibility?.overallFailureBreakdown !== false && <Breakdown title="Overall Validation group-wise failure breakdown" rows={report.backlogFailures} prebootAbortCounts={report.prebootAbortCounts} highlightFailureBreakdown />}
         {hsdFailureSection}
-        <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
+        {report.sectionVisibility?.hsdFailureSummary !== false && <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
+          <h2 className="mb-1 text-base font-bold text-[#204e76]">HSDES Issues Linked to Failed Tests</h2>
+          {bucketizedHsdIssues.length ? (
+            <>
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <p className="text-xs text-[#57718a]">Showing {filteredBucketizedHsdIssues.length} of {bucketizedHsdIssues.length} bucketized HSDs across {bucketizedHsdDomains.length} domains.</p>
+                <div className="flex flex-wrap items-center gap-4">
+                  <label className="flex items-center gap-2 text-xs font-semibold text-[#244c70]">Domain
+                    <select value={activeBucketizedHsdDomain} onChange={(event) => setBucketizedHsdDomainFilter(event.target.value)} className="h-8 rounded-md border border-[#b8cadb] bg-white px-2 text-xs font-normal text-[#253646]">
+                      <option value="all">All domains ({bucketizedHsdIssues.length})</option>
+                      {bucketizedHsdDomains.map((domain) => <option key={domain} value={domain}>{formatValidationGroup(domain)} ({bucketizedHsdIssues.filter((issue) => issue.domain === domain).length})</option>)}
+                    </select>
+                  </label>
+                  <details className="relative text-xs">
+                    <summary className="flex h-8 cursor-pointer list-none items-center gap-2 rounded-md border border-[#b8cadb] bg-white px-2 text-[#244c70]">
+                      <span className="font-semibold">Report Type</span>
+                      <span className="text-[#253646]">{activeBucketizedHsdReportTypes === null ? `All types (${bucketizedHsdReportTypes.length})` : `${activeBucketizedHsdReportTypes.length} selected`}</span>
+                      <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    </summary>
+                    <div className="absolute right-0 z-20 mt-1 max-h-64 w-56 overflow-y-auto border border-[#b8cadb] bg-white py-1 shadow-lg">
+                      <label className="flex cursor-pointer items-center gap-2 border-b border-[#d4e0eb] px-3 py-2 font-semibold text-[#244c70]">
+                        <input
+                          type="checkbox"
+                          checked={activeBucketizedHsdReportTypes === null}
+                          onChange={() => setBucketizedHsdReportTypeFilter((current) => current === null ? [] : null)}
+                          className="accent-[#204e76]"
+                        />
+                        All report types ({bucketizedHsdReportTypes.length})
+                      </label>
+                      {bucketizedHsdReportTypes.map((reportType) => {
+                        const checked = activeBucketizedHsdReportTypes === null || activeBucketizedHsdReportTypes.includes(reportType);
+                        return (
+                          <label key={reportType} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[#253646] hover:bg-[#edf3f9]">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => setBucketizedHsdReportTypeFilter((current) => {
+                                const next = new Set(current ?? bucketizedHsdReportTypes);
+                                if (event.target.checked) next.add(reportType);
+                                else next.delete(reportType);
+                                return next.size === bucketizedHsdReportTypes.length ? null : [...next];
+                              })}
+                              className="accent-[#204e76]"
+                            />
+                            {reportType}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </details>
+                  <details className="relative text-xs">
+                    <summary className="flex h-8 cursor-pointer list-none items-center gap-2 rounded-md border border-[#b8cadb] bg-white px-2 text-[#244c70]">
+                      <span className="font-semibold">Status</span>
+                      <span className="text-[#253646]">{activeBucketizedHsdStatuses === null ? `All statuses (${bucketizedHsdStatuses.length})` : `${activeBucketizedHsdStatuses.length} selected`}</span>
+                      <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" />
+                    </summary>
+                    <div className="absolute right-0 z-20 mt-1 max-h-64 w-56 overflow-y-auto border border-[#b8cadb] bg-white py-1 shadow-lg">
+                      <label className="flex cursor-pointer items-center gap-2 border-b border-[#d4e0eb] px-3 py-2 font-semibold text-[#244c70]">
+                        <input
+                          type="checkbox"
+                          checked={activeBucketizedHsdStatuses === null}
+                          onChange={() => setBucketizedHsdStatusFilter((current) => current === null ? [] : null)}
+                          className="accent-[#204e76]"
+                        />
+                        All statuses ({bucketizedHsdStatuses.length})
+                      </label>
+                      {bucketizedHsdStatuses.map((status) => {
+                        const checked = activeBucketizedHsdStatuses === null || activeBucketizedHsdStatuses.includes(status);
+                        return (
+                          <label key={status} className="flex cursor-pointer items-center gap-2 px-3 py-2 text-[#253646] hover:bg-[#edf3f9]">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(event) => setBucketizedHsdStatusFilter((current) => {
+                                const next = new Set(current ?? bucketizedHsdStatuses);
+                                if (event.target.checked) next.add(status);
+                                else next.delete(status);
+                                return next.size === bucketizedHsdStatuses.length ? null : [...next];
+                              })}
+                              className="accent-[#204e76]"
+                            />
+                            {status}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </details>
+                </div>
+              </div>
+              <div data-copy-expand className="max-h-[32rem] overflow-auto overscroll-contain border border-[#b8cadb]">
+                <table className="w-full min-w-[850px] border-collapse text-left text-xs" style={{ fontFamily: '"Courier New", Courier, monospace' }}>
+                  <thead className="sticky top-0 z-10 bg-[#204e76] text-[11px] font-semibold text-white">
+                    <tr><th className="w-40 px-2.5 py-2">Domain</th><th className="w-36 px-2.5 py-2">HSDES ID</th><th className="w-32 px-2.5 py-2">Report Type</th><th className="px-2.5 py-2">Title</th><th className="w-28 px-2.5 py-2">Status</th><th className="w-24 px-2.5 py-2">Days open</th></tr>
+                  </thead>
+                  <tbody className="divide-y divide-[#cfdae5]">
+                    {filteredBucketizedHsdIssues.map((issue) => (
+                      <tr key={`${issue.id}-${issue.domain}`} className="even:bg-[#edf3f9]">
+                        <td className="px-2.5 py-2">{formatValidationGroup(issue.domain)}</td>
+                        <td className="break-all px-2.5 py-2"><a href={`https://hsdes.intel.com/appstore/article-one/#/${encodeURIComponent(issue.id)}`} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2">{issue.id}</a></td>
+                        <td className="break-words px-2.5 py-2">{issue.reportType}</td>
+                        <td className="break-words px-2.5 py-2">{issue.title}</td>
+                        <td className="px-2.5 py-2">{issue.status}</td>
+                        <td className="px-2.5 py-2 tabular-nums">{issue.daysOpen ?? "—"}</td>
+                      </tr>
+                    ))}
+                    {!filteredBucketizedHsdIssues.length && <tr><td colSpan={6} className="px-3 py-6 text-center text-[#647e94]">No HSDs match the selected filters.</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <p className="mt-3 text-sm text-[#647e94]">No bucketized HSDs found for this report.</p>
+          )}
+        </section>}
+        {report.sectionVisibility?.openHsdesIssues !== false && <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
           <h2 className="mb-1 text-base font-bold text-[#204e76]">Open HSDES Issues by Domain</h2>
           {hsdesDetailsLoading ? (
             <p role="status" className="mt-3 text-sm text-[#647e94]">Refreshing HSDES details for this saved report…</p>
@@ -853,7 +1015,7 @@ export default function WeeklyReportBuilder() {
           ) : (
             <p className="mt-3 text-sm text-[#647e94]">No open HSDES issues found.</p>
           )}
-        </section>
+        </section>}
       </article>}
     </div>
   );

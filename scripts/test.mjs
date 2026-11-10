@@ -407,6 +407,14 @@ const emailWithFailureProgress = renderWeeklyReportEmailHtml({ ...weeklyReport, 
 assert.ok(emailWithFailureProgress.includes("Failure Count (WW45.1)"));
 assert.ok(emailWithFailureProgress.includes("Failure Count (WW45.3)"));
 assert.ok(emailWithFailureProgress.includes("Total Failure"));
+const failureProgressStart = emailWithFailureProgress.indexOf("Progress on Failed Tests");
+const failureProgressEnd = emailWithFailureProgress.indexOf("Overall Validation Group <span", failureProgressStart);
+const failureProgressHtml = emailWithFailureProgress.slice(failureProgressStart, failureProgressEnd);
+assert.match(failureProgressHtml, /<th[^>]*text-align:left[^>]*>Domain<\/th>/, "Progress on Failed Tests keeps the Domain header left-aligned");
+assert.match(failureProgressHtml, /<th[^>]*text-align:center[^>]*>Failure Count/ , "failure-count headers are centered in email and HTML output");
+assert.match(failureProgressHtml, /<td[^>]*text-align:left[^>]*>Security<\/td>/, "domain names stay left-aligned in email and HTML output");
+assert.match(failureProgressHtml, /<td[^>]*text-align:center[^>]*>60<\/td>/, "failure counts are centered in email and HTML output");
+assert.match(failureProgressHtml, /<td[^>]*text-align:center">Total Failure<\/td>/, "the Total Failure label remains centered");
 assert.ok(emailWithFailureProgress.includes("55</td>"), "current failure total is exported unchanged");
 for (const showYetToAttempt of [true, false]) {
   const twoWeekHtml = renderWeeklyReportEmailHtml({ ...weeklyReport, failureProgress: twoWeekProgress }, { showYetToAttempt });

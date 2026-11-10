@@ -364,8 +364,10 @@ assert.deepEqual(weeklyReport.prebootAbortCounts, { pv_memory: 1, pv_security: 2
 const weeklyEmailHtml = renderWeeklyReportEmailHtml({
   ...weeklyReport,
   hsdFailureSummaries: hsdSummary.hsdFailureSummaries,
-  hsdFailureStatuses: { "15020010517": "Open" },
+  hsdFailureTitles: { "15020010517": "Bucketized Security title", "14028767291": "Bucketized RAS title" },
+  hsdFailureStatuses: { "15020010517": "Open", "14028767291": "Root caused" },
   hsdFailureReportTypes: { "15020010517": "sighting" },
+  hsdFailureDaysOpen: { "15020010517": 12, "14028767291": 41 },
   hsdesIssues: [
     { id: "16000000001", title: "Open issue title", reportType: "presighting", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 },
     { id: "16000000002", title: "Rejected issue title", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Rejected", daysOpen: 2 },
@@ -408,6 +410,12 @@ assert.ok(weeklyEmailHtml.includes("<br><strong>Status: Open</strong>"));
 assert.match(weeklyEmailHtml, />Domain<\/th><th[^>]*>HSD<\/th><th[^>]*>Failed Test<\/th><th[^>]*>Title &amp; Status<\/th>/, "HSD failure summary places Failed Test immediately after HSD");
 assert.match(weeklyEmailHtml, /15020010517[\s\S]*?<\/td><td[^>]*>6<\/td><td[^>]*>[\s\S]*?Status: Open<\/strong><\/td>/, "HSD failure summary preserves the failed count after HSD and status in the final column");
 assert.ok(weeklyEmailHtml.includes("Open HSDES Issues by Domain"), "email and attachment label the open-only issue section accurately");
+const bucketizedHsdTableStart = weeklyEmailHtml.indexOf("HSDES Issues Linked to Failed Tests");
+const openHsdesTableStart = weeklyEmailHtml.indexOf("Open HSDES Issues by Domain");
+assert.ok(bucketizedHsdTableStart >= 0 && bucketizedHsdTableStart < openHsdesTableStart, "failed-test-linked HSD table appears before the open HSDES table");
+const bucketizedHsdTableHtml = weeklyEmailHtml.slice(bucketizedHsdTableStart, openHsdesTableStart);
+assert.ok(bucketizedHsdTableHtml.includes("Bucketized Security title") && bucketizedHsdTableHtml.includes("Bucketized RAS title"));
+assert.ok(bucketizedHsdTableHtml.includes("Days open") && bucketizedHsdTableHtml.includes("15020010517") && bucketizedHsdTableHtml.includes("12"));
 assert.ok(weeklyEmailHtml.includes("16000000001") && weeklyEmailHtml.includes("Open issue title"), "email and attachment include open HSDES issues");
 assert.ok(!renderWeeklyReportEmailHtml({ ...weeklyReport, sectionVisibility: { ...DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, openHsdesIssues: false }, hsdesIssues: [{ id: "16000000001", title: "Open issue title", reportType: "presighting", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 }] }).includes("Open HSDES Issues by Domain"), "the open HSDES issue setting hides the section from email and attachment output");
 assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title<\/th>/, "open HSDES issues retain Report Type immediately after HSDES ID");

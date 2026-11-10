@@ -396,7 +396,10 @@ assert.ok(weeklyEmailHtml.indexOf("DOMAIN-WISE DATA") < weeklyEmailHtml.indexOf(
 assert.ok(weeklyEmailHtml.indexOf("Progress on Failed Tests") < weeklyEmailHtml.indexOf("Overall Validation Group <span"));
 const customTableStart = weeklyEmailHtml.indexOf("Custom Execution Summary");
 const openHsdesStart = weeklyEmailHtml.indexOf("Open HSDES Issues by Domain");
-assert.ok(customTableStart >= 0 && customTableStart < openHsdesStart, "custom tables render in the email and HTML attachment");
+const allocationTitleStart = weeklyEmailHtml.indexOf("DMR System Allocation Across Teams");
+const allocationTableEnd = weeklyEmailHtml.indexOf("</table></div>", allocationTitleStart);
+const overallFailureStart = weeklyEmailHtml.indexOf("Overall Validation Group <span");
+assert.ok(allocationTableEnd >= 0 && allocationTableEnd < customTableStart && customTableStart < overallFailureStart && customTableStart < openHsdesStart, "custom tables render immediately after System Allocation in email and HTML attachment");
 assert.ok(weeklyEmailHtml.includes("BKC") && weeklyEmailHtml.includes("69"));
 assert.match(weeklyEmailHtml.slice(customTableStart, openHsdesStart), /<th[^>]*background:#dce8f4[^>]*>Total<\/th>/, "Total column is highlighted in custom tables");
 assert.match(weeklyEmailHtml.slice(customTableStart, openHsdesStart), /<td[^>]*background:#dce8f4[^>]*color:#173f60;font-weight:700;[^>]*>Total<\/td>/, "Total row is highlighted in custom tables");

@@ -858,7 +858,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
         </div>
       </header>
 
-      {availableSuites.length > 1 && (
+      {availableSuites.length > 0 && (
         <fieldset aria-label="Filter dashboard by loaded suite" className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Loaded suites</legend>
           {availableSuites.map((suite) => (

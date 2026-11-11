@@ -138,7 +138,7 @@ export default function PoolSystemsTable({ onSelectedPoolNamesChange }: { onSele
         </div>
       </div>
 
-      {poolNames.length > 0 && <fieldset className="border-b border-[var(--border)] bg-[var(--surface)] px-5 py-3">
+      {poolNames.length > 0 && <fieldset className="border-b border-[var(--border)] bg-[var(--surface)] px-5 pb-3 pt-4">
         <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Show systems from pools</legend>
         <div className="flex flex-wrap items-center gap-2">
           {poolNames.map((poolName) => (

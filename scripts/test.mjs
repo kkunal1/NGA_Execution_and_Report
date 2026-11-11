@@ -20,7 +20,6 @@ import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
 import { buildReportFilename } from "../src/lib/report-filename.ts";
 import { renderReportHtml } from "../src/lib/report-html.ts";
-import { visibleReportSections } from "../src/lib/report-sections.ts";
 import { getDailyReportLabel, getISTDayRange, getWorkWeeks } from "../src/lib/work-weeks.ts";
 import { isDailyReportDate, isSavedReportKey, isWorkWeekKey, withFailureProgress } from "../src/lib/saved-weekly-reports.ts";
 
@@ -80,7 +79,6 @@ assert.equal(canAccessWeeklyReportFeature("viewer", "weeklyReportEmail", { weekl
 assert.equal(canAccessWeeklyReportFeature("admin", "weeklyReportEmail", { weeklyReportUpdate: false, weeklyReportEmail: false }), true);
 assert.equal(isValidAdminPassword("abcd"), true);
 assert.equal(isValidAdminPassword("abc"), false);
-assert.equal(DEFAULT_DASHBOARD_SETTINGS.showManualAborts, true);
 assert.equal(DEFAULT_DASHBOARD_SETTINGS.weeklyReportHsdDetails, false);
 assert.deepEqual(DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, {
   cpuAllocation: true,
@@ -247,21 +245,6 @@ assert.equal(s.progressPct, 66.7);
 assert.equal(s.passRatePct, 33.3);
 assert.equal(s.byTestline[0].testline, "TL1");
 assert.equal(s.failures.length, 1);
-const reportSections = visibleReportSections(
-  { executionStatusSplit: false, rawStateValues: false },
-  { executionStatusSplit: "<h2>Execution status split</h2>", rawStateValues: '<h2>Raw "State" values</h2>' },
-);
-assert.ok(!reportSections.includes("Execution status split"), "disabled execution split must be omitted from exported HTML");
-assert.ok(!reportSections.includes('Raw "State" values'), "disabled raw states must be omitted from exported HTML");
-assert.equal(
-  visibleReportSections(
-    { executionStatusSplit: true, rawStateValues: false },
-    { executionStatusSplit: "execution chart", rawStateValues: "raw values" },
-  ),
-  "execution chart",
-  "each HTML section follows its matching shared visibility setting",
-);
-
 const attemptedSummary = summarize([
   { ...rows[0], bucket: "Passed", state: "Passed", rerunIndex: 0 },
   { ...rows[1], bucket: "Failed", state: "Failed", rerunIndex: 0 },

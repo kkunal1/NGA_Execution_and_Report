@@ -2,7 +2,6 @@ import type { RunResult, TestRow } from "./types";
 import { THEMES, type ThemeId } from "./theme";
 import { buildReportFilename } from "./report-filename";
 import { formatValidationGroupName } from "./normalize";
-import { visibleReportSections, type ReportSectionVisibility } from "./report-sections";
 export { buildReportFilename } from "./report-filename";
 
 const pctOfTotal = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
@@ -16,41 +15,6 @@ const esc = (v: unknown) =>
         string
       >)[c],
   );
-
-const COLORS: Record<string, string> = {
-  Passed: "#16a34a",
-  Failed: "#dc2626",
-  Blocked: "#f59e0b",
-  "In Progress": "#0ea5e9",
-  "Not Run": "#94a3b8",
-  Other: "#8b5cf6",
-};
-
-function donut(byState: { name: string; value: number }[]) {
-  const total = byState.reduce((a, s) => a + s.value, 0) || 1;
-  const r = 70;
-  const c = 2 * Math.PI * r;
-  let offset = 0;
-  const rings = byState
-    .map((s) => {
-      const len = (s.value / total) * c;
-      const seg = `<circle cx="100" cy="100" r="${r}" fill="none" stroke="${
-        COLORS[s.name] ?? "#64748b"
-      }" stroke-width="28" stroke-dasharray="${len} ${c - len}" stroke-dashoffset="${-offset}" transform="rotate(-90 100 100)"></circle>`;
-      offset += len;
-      return seg;
-    })
-    .join("");
-  const legend = byState
-    .map(
-      (s) =>
-        `<li><i style="background:${COLORS[s.name] ?? "#64748b"}"></i>${esc(s.name)} <b>${
-          s.value
-        }</b> <span>(${Math.round((s.value / total) * 100)}%)</span></li>`,
-    )
-    .join("");
-  return `<div class="donut"><svg viewBox="0 0 200 200" width="200" height="200">${rings}</svg><ul class="legend">${legend}</ul></div>`;
-}
 
 function testsTable(rows: TestRow[]) {
   const sorted = [...rows].sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime());
@@ -97,7 +61,6 @@ export function renderReportHtml(
   latestExecutedRows: TestRow[] = [],
   testRangeLabel = "",
   latestExecutedTotal?: number,
-  sections: ReportSectionVisibility = { executionStatusSplit: true, rawStateValues: true },
 ): string {
   const t = THEMES[theme] ?? THEMES.professional;
   const { meta, summary } = run;
@@ -120,15 +83,6 @@ export function renderReportHtml(
     )
     .join("");
 
-  const rawRows = summary.byRawState
-    .map(
-      (s) =>
-        `<tr><td class="name">${esc(s.name)}</td><td class="num">${s.value}</td><td class="num">${
-          summary.tests ? Math.round((s.value / summary.tests) * 1000) / 10 : 0
-        }%</td></tr>`,
-    )
-    .join("");
-
   const verification = meta.filterVerified
     ? `<div class="ok"><b>Filter verified</b> &mdash; row read back as <code>${esc(
         meta.appliedCondition.join(" / "),
@@ -142,11 +96,6 @@ export function renderReportHtml(
         .map((w) => `<li>${esc(w)}</li>`)
         .join("")}</ul></div>`
     : "";
-  const visibleSections = visibleReportSections(sections, {
-    executionStatusSplit: `<h2>Execution status split</h2><div class="panel">${donut(summary.byState)}</div>`,
-    rawStateValues: `<h2>Raw "${esc(meta.stateColumn)}" values</h2><table class="grid"><thead><tr><th>State</th><th>Tests</th><th>Share</th></tr></thead><tbody>${rawRows || '<tr><td colspan="3" class="empty">No states.</td></tr>'}</tbody></table>`,
-  });
-
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>NGA Execution Report - ${esc(meta.runId)}</title>
@@ -214,8 +163,6 @@ ${verification}
   ${card("Not run", summary.notRun)}
   ${summary.other > 0 ? card("Other", summary.other) : ""}
 </div>
-
-${visibleSections}
 
 <h2>Domain-wise data</h2>
 <table class="grid">

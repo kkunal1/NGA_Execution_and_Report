@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
-import { getDashboardSettings } from "@/lib/dashboard-settings";
 import { buildReportFilename, renderReportHtml } from "@/lib/report-html";
 import { loadLatest, loadRun, saveReport } from "@/lib/store";
 import { isThemeId } from "@/lib/theme";
@@ -24,8 +23,7 @@ export async function GET(req: Request) {
     );
   }
 
-  const dashboardSettings = await getDashboardSettings();
-  const html = renderReportHtml(run, [], "", undefined, [], "", undefined, dashboardSettings);
+  const html = renderReportHtml(run);
   await saveReport(run.meta.runId, html);
 
   return new NextResponse(html, {
@@ -75,8 +73,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "No run data provided." }, { status: 400 });
   }
 
-  const dashboardSettings = await getDashboardSettings();
-  const html = renderReportHtml(run, abortedRows, abortRangeLabel, isThemeId(theme) ? theme : undefined, latestExecutedRows, testRangeLabel, latestExecutedTotal, dashboardSettings);
+  const html = renderReportHtml(run, abortedRows, abortRangeLabel, isThemeId(theme) ? theme : undefined, latestExecutedRows, testRangeLabel, latestExecutedTotal);
   return new NextResponse(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",

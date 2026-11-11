@@ -6,8 +6,6 @@ export { DEFAULT_WEEKLY_REPORT_SECTIONS } from "./weekly-report-visibility";
 export type { WeeklyReportSectionSettings } from "./weekly-report-visibility";
 
 export type DashboardSettings = {
-  executionStatusSplit: boolean;
-  rawStateValues: boolean;
   showManualAborts: boolean;
   poolSystems: boolean;
   weeklyReport: boolean;
@@ -21,9 +19,7 @@ export type DashboardSettings = {
 };
 
 export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
-  executionStatusSplit: true,
-  rawStateValues: true,
-  showManualAborts: true,
+  showManualAborts: false,
   poolSystems: false,
   weeklyReport: false,
   weeklyReportUpdate: false,
@@ -41,8 +37,6 @@ export async function getDashboardSettings(): Promise<DashboardSettings> {
   try {
     const saved = JSON.parse(await readFile(settingsPath, "utf8")) as Partial<DashboardSettings>;
     return {
-      executionStatusSplit: saved.executionStatusSplit ?? DEFAULT_DASHBOARD_SETTINGS.executionStatusSplit,
-      rawStateValues: saved.rawStateValues ?? DEFAULT_DASHBOARD_SETTINGS.rawStateValues,
       showManualAborts: saved.showManualAborts ?? DEFAULT_DASHBOARD_SETTINGS.showManualAborts,
       poolSystems: saved.poolSystems ?? DEFAULT_DASHBOARD_SETTINGS.poolSystems,
       weeklyReport: saved.weeklyReport ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReport,

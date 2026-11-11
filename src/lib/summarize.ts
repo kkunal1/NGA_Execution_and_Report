@@ -25,15 +25,6 @@ function domainOf(row: TestRow): string {
 const pct = (part: number, whole: number) =>
   whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0;
 
-const BUCKETS: StateBucket[] = [
-  "Passed",
-  "Failed",
-  "Blocked",
-  "In Progress",
-  "Not Run",
-  "Other",
-];
-
 function countBuckets(rows: TestRow[]) {
   const c: Record<StateBucket, number> = {
     Passed: 0,
@@ -65,9 +56,6 @@ function countBucketized(rows: TestRow[]) {
 export function summarize(rows: TestRow[]): Summary {
   const c = countBuckets(rows);
   const executed = c.Passed + c.Failed + c.Blocked;
-
-  const rawCounts = new Map<string, number>();
-  for (const r of rows) rawCounts.set(r.state, (rawCounts.get(r.state) ?? 0) + 1);
 
   const lineMap = new Map<string, TestRow[]>();
   for (const r of rows) {
@@ -136,10 +124,6 @@ export function summarize(rows: TestRow[]): Summary {
     executed,
     progressPct: pct(executed, rows.length),
     passRatePct: pct(c.Passed, rows.length),
-    byState: BUCKETS.map((b) => ({ name: b, value: c[b] })).filter((s) => s.value > 0),
-    byRawState: [...rawCounts.entries()]
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value),
     byTestline,
     byDomain,
     failures: rows.filter((r) => r.bucket === "Failed" || r.bucket === "Blocked"),

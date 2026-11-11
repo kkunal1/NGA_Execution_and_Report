@@ -24,9 +24,7 @@ export async function PUT(req: Request) {
       typeof (weeklyReportSections as WeeklyReportSectionSettings).domainWise === "boolean" &&
       typeof (weeklyReportSections as WeeklyReportSectionSettings).overallFailureBreakdown === "boolean" &&
       typeof (weeklyReportSections as WeeklyReportSectionSettings).openHsdesIssues === "boolean";
-    if (typeof body.executionStatusSplit !== "boolean" || typeof body.rawStateValues !== "boolean" ||
-      typeof body.showManualAborts !== "boolean" ||
-      typeof body.poolSystems !== "boolean" || typeof body.weeklyReport !== "boolean" || typeof body.executionTime !== "boolean" ||
+    if (typeof body.showManualAborts !== "boolean" || typeof body.poolSystems !== "boolean" || typeof body.weeklyReport !== "boolean" || typeof body.executionTime !== "boolean" ||
       (body.weeklyReportUpdate !== undefined && typeof body.weeklyReportUpdate !== "boolean") ||
       (body.weeklyReportEmail !== undefined && typeof body.weeklyReportEmail !== "boolean") ||
       (body.weeklyReportHsdDetails !== undefined && typeof body.weeklyReportHsdDetails !== "boolean") ||
@@ -35,8 +33,6 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Invalid dashboard or Weekly Report settings." }, { status: 400 });
     }
     const settings: DashboardSettings = {
-      executionStatusSplit: body.executionStatusSplit,
-      rawStateValues: body.rawStateValues,
       showManualAborts: body.showManualAborts,
       poolSystems: body.poolSystems,
       weeklyReport: body.weeklyReport,

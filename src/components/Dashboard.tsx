@@ -1,18 +1,6 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Cell,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { BarChart3, CheckCircle2, ChevronDown, ChevronRight, Clock, Download as DownloadIcon, Info, ListChecks, PlayCircle, Plus, ShieldBan, Trash2, X, XCircle } from "lucide-react";
 import type { RunResult, Summary, TestRow } from "@/lib/types";
 import { formatValidationGroupName, normalizeSuiteNames } from "@/lib/normalize";
@@ -43,21 +31,6 @@ function runMatchesProfile(run: RunResult | null | undefined, profile: Execution
   return normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])
     .some((suite) => suiteMatchesProfile(suite, profile));
 }
-
-const COLORS: Record<string, string> = {
-  Passed: "#16a34a",
-  Failed: "#dc2626",
-  Blocked: "#f59e0b",
-  "In Progress": "#0ea5e9",
-  "Not Run": "#94a3b8",
-  Other: "#8b5cf6",
-};
-
-const RAW_STATE_COLORS: Record<string, string> = {
-  inprogress: "#f59e0b",
-  passed: "#16a34a",
-  failed: "#dc2626",
-};
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
 
@@ -155,7 +128,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
   const [notRunTab, setNotRunTab] = useState<"not-run" | "yet-to-attempt">("not-run");
   const notRunDialogRef = useRef<HTMLDialogElement>(null);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
-  const [dashboardSettings, setDashboardSettings] = useState({ executionStatusSplit: true, rawStateValues: true, showManualAborts: true });
+  const [dashboardSettings, setDashboardSettings] = useState({ showManualAborts: false });
   const autoRefreshInFlight = useRef(false);
 
   const cacheProfileRun = useCallback((nextRun: RunResult | null) => {
@@ -265,12 +238,10 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       try {
         const response = await fetch("/api/settings/dashboard", { cache: "no-store" });
         if (!response.ok) return;
-        const data = (await response.json()) as { executionStatusSplit?: boolean; rawStateValues?: boolean; showManualAborts?: boolean };
-        if (!cancelled && typeof data.executionStatusSplit === "boolean" && typeof data.rawStateValues === "boolean") {
-          setDashboardSettings({ executionStatusSplit: data.executionStatusSplit, rawStateValues: data.rawStateValues, showManualAborts: data.showManualAborts !== false });
-        }
+        const data = (await response.json()) as { showManualAborts?: boolean };
+        if (!cancelled) setDashboardSettings({ showManualAborts: data.showManualAborts === true });
       } catch {
-        // Keep the charts enabled if shared settings are temporarily unavailable.
+        // Keep manual aborts hidden if shared settings are temporarily unavailable.
       }
     };
     void loadDashboardSettings();
@@ -999,77 +970,6 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
               </div>
             </div>
           </dialog>
-
-          {(dashboardSettings.executionStatusSplit || dashboardSettings.rawStateValues) && (
-          <section className="mt-6 grid gap-4 lg:grid-cols-2">
-            {dashboardSettings.executionStatusSplit && <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Execution status split
-              </h2>
-              <div className="flex items-center gap-4">
-                <div className="h-64 w-1/2 shrink-0">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={s.byState}
-                        dataKey="value"
-                        nameKey="name"
-                        innerRadius={60}
-                        outerRadius={100}
-                        paddingAngle={2}
-                      >
-                        {s.byState.map((entry) => (
-                          <Cell key={entry.name} fill={COLORS[entry.name] ?? "#64748b"} />
-                        ))}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </div>
-                <ul className="flex-1 space-y-2 text-sm">
-                  {s.byState.map((entry) => (
-                    <li key={entry.name} className="flex items-center justify-between gap-2">
-                      <span className="flex items-center gap-2 text-[var(--text-muted)]">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ background: COLORS[entry.name] ?? "#64748b" }}
-                        />
-                        {entry.name}
-                      </span>
-                      <span className="font-semibold tabular-nums text-[var(--text)]">
-                        {entry.value} <span className="font-normal text-[var(--text-muted)]">({pctOf(entry.value, s.tests)}%)</span>
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>}
-
-            {dashboardSettings.rawStateValues && <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] p-4 shadow-sm">
-              <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-                Raw “{run.meta.stateColumn}” values
-              </h2>
-              <div className="h-72">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={s.byRawState.slice(0, 12)} layout="vertical">
-                    <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-                    <XAxis type="number" />
-                    <YAxis type="category" dataKey="name" width={140} tick={{ fontSize: 11 }} />
-                    <Tooltip />
-                    <Bar dataKey="value" fill="#0ea5e9">
-                      {s.byRawState.slice(0, 12).map((entry) => (
-                        <Cell
-                          key={entry.name}
-                          fill={RAW_STATE_COLORS[entry.name.replace(/\s+/g, "").toLowerCase()] ?? "#0ea5e9"}
-                        />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>}
-          </section>
-          )}
 
           {(s.byDomain ?? []).length > 1 && (
             <section className="mt-6">

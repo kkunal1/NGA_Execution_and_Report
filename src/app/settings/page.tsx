@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Info, SunMoon } from "lucide-react";
 import { DATA_PROVIDERS, DATA_PROVIDER_KEY, NGAI_PROXY_KEY, NGAI_VPN_KEY, type DataProvider } from "@/lib/provider";
 import { THEMES, THEME_KEY, isThemeId, type ThemeId } from "@/lib/theme";
 import WeeklyReportMailPanel from "@/components/WeeklyReportMailPanel";
@@ -35,8 +36,6 @@ type GraphMailForm = {
 };
 
 type DashboardSettings = {
-  executionStatusSplit: boolean;
-  rawStateValues: boolean;
   showManualAborts: boolean;
   poolSystems: boolean;
   weeklyReport: boolean;
@@ -69,6 +68,8 @@ export default function SettingsPage() {
   const [theme, setTheme] = useState<ThemeId>("professional");
   const [themeSaved, setThemeSaved] = useState(false);
   const [themeError, setThemeError] = useState("");
+  const [themePickerOpen, setThemePickerOpen] = useState(false);
+  const themePickerRef = useRef<HTMLDivElement>(null);
   const [ngaiToken, setNgaiToken] = useState("");
   const [ngaiTokenStatus, setNgaiTokenStatus] = useState<NgaiTokenStatus | null>(null);
   const [ngaiTokenMessage, setNgaiTokenMessage] = useState("");
@@ -83,9 +84,7 @@ export default function SettingsPage() {
   const [poolSettingsSaved, setPoolSettingsSaved] = useState(false);
   const [poolSettingsError, setPoolSettingsError] = useState("");
   const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>({
-    executionStatusSplit: true,
-    rawStateValues: true,
-    showManualAborts: true,
+    showManualAborts: false,
     poolSystems: false,
     weeklyReport: false,
     weeklyReportUpdate: false,
@@ -122,6 +121,24 @@ export default function SettingsPage() {
   const [mailBusy, setMailBusy] = useState(false);
   const [mailMessage, setMailMessage] = useState("");
   const [mailError, setMailError] = useState("");
+
+  useEffect(() => {
+    if (!themePickerOpen) return;
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.target instanceof Node && !themePickerRef.current?.contains(event.target)) {
+        setThemePickerOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setThemePickerOpen(false);
+    };
+    document.addEventListener("pointerdown", handlePointerDown);
+    document.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown);
+      document.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [themePickerOpen]);
 
   useEffect(() => {
     const stored = window.localStorage.getItem(DATA_PROVIDER_KEY);
@@ -168,9 +185,7 @@ export default function SettingsPage() {
         const data = (await response.json()) as DashboardSettings & { error?: string };
         if (!response.ok) throw new Error(data.error || "Could not load dashboard settings.");
         setDashboardSettings({
-          executionStatusSplit: data.executionStatusSplit,
-          rawStateValues: data.rawStateValues,
-          showManualAborts: data.showManualAborts !== false,
+          showManualAborts: data.showManualAborts === true,
           poolSystems: data.poolSystems,
           weeklyReport: data.weeklyReport === true,
           weeklyReportUpdate: data.weeklyReportUpdate === true,
@@ -423,10 +438,50 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-start gap-5 px-5 py-6 lg:grid-cols-2">
-      <header className="mb-1 border-b border-[var(--border)] pb-5 lg:col-span-2">
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-muted)]">Administration / Workspace</p>
-        <h1 className="text-2xl font-semibold text-[var(--text)]">Settings</h1>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">Manage report content, data sources, delivery, and workspace access.</p>
+      <header className="mb-1 flex items-start justify-between gap-4 border-b border-[var(--border)] pb-5 lg:col-span-2">
+        <div>
+          <p className="mb-2 text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-muted)]">Administration / Workspace</p>
+          <h1 className="text-2xl font-semibold text-[var(--text)]">Settings</h1>
+          <p className="mt-2 text-sm text-[var(--text-muted)]">Manage report content, data sources, delivery, and workspace access.</p>
+        </div>
+        <div ref={themePickerRef} className="relative shrink-0">
+          <button
+            type="button"
+            aria-label="Choose theme"
+            aria-haspopup="dialog"
+            aria-controls="settings-theme-picker"
+            aria-expanded={themePickerOpen}
+            title="Choose theme"
+            onClick={() => setThemePickerOpen((open) => !open)}
+            className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] transition hover:bg-[var(--surface-alt)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"
+          >
+            <SunMoon className="h-5 w-5" aria-hidden="true" />
+          </button>
+          {themePickerOpen && (
+            <div id="settings-theme-picker" role="dialog" aria-label="Choose theme" className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-2.5rem)] rounded-lg border border-[var(--border)] bg-[var(--surface)] p-4 shadow-xl">
+              <h2 className="text-sm font-semibold text-[var(--text)]">Theme</h2>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {THEME_OPTIONS.map(([id, tokens]) => (
+                  <label key={id} className={`min-w-0 cursor-pointer rounded-md border p-2 transition ${theme === id ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}>
+                    <span className="flex min-h-9 items-start gap-1.5">
+                      <input type="radio" name="settings-theme" value={id} checked={theme === id} onChange={() => void saveTheme(id)} className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[var(--accent)]" />
+                      <span className="text-xs font-medium leading-4 text-[var(--text)]">{tokens.label}</span>
+                    </span>
+                    <span className="mt-2 flex gap-1 pl-5">
+                      <span className="h-3.5 w-3.5 rounded-full border border-black/10" style={{ background: tokens.pageBg }} />
+                      <span className="h-3.5 w-3.5 rounded-full border border-black/10" style={{ background: tokens.sidebarBg }} />
+                      <span className="h-3.5 w-3.5 rounded-full border border-black/10" style={{ background: tokens.accent }} />
+                    </span>
+                  </label>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-[var(--text-muted)]" role="status" aria-live="polite">
+                {themeSaved ? "Shared theme saved." : `Current shared theme: ${THEMES[theme].label}`}
+              </p>
+              {themeError && <p className="mt-2 text-xs text-red-600" role="alert">{themeError}</p>}
+            </div>
+          )}
+        </div>
       </header>
       <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="navigation-visibility-heading">
         <div className="mb-3">
@@ -460,6 +515,69 @@ export default function SettingsPage() {
         </div>
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">{dashboardSettingsSaved ? "Navigation visibility saved." : "Changes apply to all signed-in users."}</p>
       </section>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="execution-report-setting-heading">
+        <h2 id="execution-report-setting-heading" className="text-base font-semibold text-[var(--text)]">Execution Report Setting</h2>
+        <div className="mt-4 overflow-x-auto rounded-md border border-[var(--border)]">
+          <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+            <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]"><tr><th className="px-3 py-2.5">Setting</th><th className="px-3 py-2.5">Description</th><th className="w-24 px-3 py-2.5 text-center">Show</th></tr></thead>
+            <tbody className="divide-y divide-[var(--border)]"><tr><td className="px-3 py-3 font-medium text-[var(--text)]">Show Aborted Manually in Aborted Tests</td><td className="px-3 py-3 text-sm text-[var(--text-muted)]">Include manual aborts in the table and total.</td><td className="px-3 py-3 text-center"><input type="checkbox" role="switch" checked={dashboardSettings.showManualAborts} onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, showManualAborts: event.target.checked })} aria-label="Show aborted manually in aborted tests" className="h-4 w-4 accent-[var(--accent)]" /></td></tr></tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">{dashboardSettingsSaved ? "Execution Report setting saved." : dashboardSettings.showManualAborts ? "Manual aborts are shown." : "Manual aborts are hidden from the table and total."}</p>
+        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
+      </section>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="add-admin-heading">
+        <h2 id="add-admin-heading" className="text-base font-semibold text-[var(--text)]">Add Admin</h2>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Create an additional administrator account. Passwords are stored as salted hashes, never as plain text. New accounts can sign in immediately.</p>
+        <form onSubmit={addAdmin} className="mt-4 grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="new-admin-username">Username
+            <input
+              id="new-admin-username"
+              required
+              minLength={3}
+              maxLength={128}
+              pattern="[A-Za-z0-9][A-Za-z0-9._@+-]*"
+              autoComplete="off"
+              value={newAdminUsername}
+              onChange={(event) => setNewAdminUsername(event.target.value)}
+              disabled={adminUsersBusy}
+              className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
+            />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="new-admin-password">Password
+            <input
+              id="new-admin-password"
+              required
+              type="password"
+              minLength={4}
+              maxLength={256}
+              autoComplete="new-password"
+              value={newAdminPassword}
+              onChange={(event) => setNewAdminPassword(event.target.value)}
+              disabled={adminUsersBusy}
+              className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
+            />
+          </label>
+          <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
+            <button type="submit" disabled={adminUsersBusy} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-text)] disabled:opacity-60">
+              {adminUsersBusy ? "Adding…" : "Add Admin"}
+            </button>
+            <p role="status" aria-live="polite" className={`text-sm ${adminUsersError ? "text-red-600" : "text-[var(--text-muted)]"}`}>
+              {adminUsersError || adminUsersMessage}
+            </p>
+          </div>
+        </form>
+        <div className="mt-5 border-t border-[var(--border)] pt-4">
+          <h3 className="text-sm font-semibold text-[var(--text)]">Additional admin accounts</h3>
+          {adminUsers.length ? (
+            <ul className="mt-2 space-y-1 text-sm text-[var(--text-muted)]">
+              {adminUsers.map((admin) => <li key={admin.username}>{admin.username} <span className="text-xs">(added {new Date(admin.createdAt).toLocaleDateString()})</span></li>)}
+            </ul>
+          ) : (
+            <p className="mt-2 text-sm text-[var(--text-muted)]">No additional admin accounts have been added.</p>
+          )}
+        </div>
+      </section>
       <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="weekly-report-settings-heading">
         <h2 id="weekly-report-settings-heading" className="text-base font-semibold text-[var(--text)]">Weekly Report Settings</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">The server generates the previous day&apos;s report at 12:05 AM IST and saves it centrally. Automatic reports use the B0 P1 and P2 suites.</p>
@@ -483,13 +601,20 @@ export default function SettingsPage() {
         <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
           <div>
             <h3 className="text-sm font-semibold text-[var(--text)]">Data provider</h3>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {DATA_PROVIDERS.map((option) => (
-                <label key={option.value} className={`cursor-pointer rounded-md border p-3 transition ${provider === option.value ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}>
-                  <input type="radio" name="provider" value={option.value} checked={provider === option.value} onChange={() => save(option.value)} className="mr-2 accent-[var(--accent)]" />
-                  <span className="text-sm font-medium text-[var(--text)]">{option.label}</span>
-                  <p className="mt-2 pl-6 text-xs leading-5 text-[var(--text-muted)]">{option.description}</p>
-                </label>
+                <div key={option.value} className={`relative flex min-h-11 items-center justify-between gap-3 rounded-md border px-3 py-2 transition ${provider === option.value ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}>
+                  <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-sm font-medium text-[var(--text)]">
+                    <input type="radio" name="provider" value={option.value} checked={provider === option.value} onChange={() => save(option.value)} className="h-4 w-4 shrink-0 accent-[var(--accent)]" />
+                    <span className="truncate">{option.label}</span>
+                  </label>
+                  <span className="group relative flex shrink-0">
+                    <button type="button" aria-label={`${option.label} information`} className="flex h-6 w-6 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--border)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
+                      <Info className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <span role="tooltip" className="invisible pointer-events-none absolute right-0 top-full z-30 mt-2 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs font-normal leading-5 text-[var(--text)] opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">{option.description}</span>
+                  </span>
+                </div>
               ))}
             </div>
             <p className="mt-3 text-xs text-[var(--text-muted)]" role="status" aria-live="polite">
@@ -519,13 +644,21 @@ export default function SettingsPage() {
             <h3 className="text-sm font-semibold text-[var(--text)]">Intel NGAi network</h3>
             <p className="mt-1 text-xs text-[var(--text-muted)]">VPN connection uses a direct route; turn it off to use the proxy below.</p>
             <div className="mt-3 grid gap-5 lg:grid-cols-2">
-              <div className="flex flex-wrap gap-2">
-                <label className={`cursor-pointer rounded-md border px-3 py-2 text-xs font-medium transition ${vpnConnected ? "border-[var(--accent)] bg-[var(--surface-alt)] text-[var(--text)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}>
-                  <input type="radio" name="vpn" className="mr-2 accent-[var(--accent)]" checked={vpnConnected} onChange={() => setVpnConnected(true)} />Connected · direct
-                </label>
-                <label className={`cursor-pointer rounded-md border px-3 py-2 text-xs font-medium transition ${!vpnConnected ? "border-[var(--accent)] bg-[var(--surface-alt)] text-[var(--text)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}>
-                  <input type="radio" name="vpn" className="mr-2 accent-[var(--accent)]" checked={!vpnConnected} onChange={() => setVpnConnected(false)} />Proxy
-                </label>
+              <div className="flex flex-wrap items-start gap-2">
+                <div className={`group relative inline-flex w-fit items-center gap-1 rounded-md border px-3 py-2 transition ${vpnConnected ? "border-[var(--accent)] bg-[var(--surface-alt)] text-[var(--text)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}>
+                  <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap text-xs font-medium">
+                    <input type="radio" name="vpn" className="h-4 w-4 accent-[var(--accent)]" checked={vpnConnected} onChange={() => setVpnConnected(true)} />Connected · direct
+                  </label>
+                  <button type="button" aria-label="Connected via VPN information" className="flex h-5 w-5 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--border)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"><Info className="h-3.5 w-3.5" aria-hidden="true" /></button>
+                  <span role="tooltip" className="invisible pointer-events-none absolute left-0 top-full z-30 mt-2 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs font-normal leading-5 text-[var(--text)] opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">When VPN is connected, NGAi requests use a direct network route.</span>
+                </div>
+                <div className={`group relative inline-flex w-fit items-center gap-1 rounded-md border px-3 py-2 transition ${!vpnConnected ? "border-[var(--accent)] bg-[var(--surface-alt)] text-[var(--text)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}>
+                  <label className="inline-flex cursor-pointer items-center gap-2 whitespace-nowrap text-xs font-medium">
+                    <input type="radio" name="vpn" className="h-4 w-4 accent-[var(--accent)]" checked={!vpnConnected} onChange={() => setVpnConnected(false)} />Proxy
+                  </label>
+                  <button type="button" aria-label="Proxy routing information" className="flex h-5 w-5 items-center justify-center rounded-full text-[var(--text-muted)] hover:bg-[var(--border)] hover:text-[var(--text)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]"><Info className="h-3.5 w-3.5" aria-hidden="true" /></button>
+                  <span role="tooltip" className="invisible pointer-events-none absolute left-0 top-full z-30 mt-2 w-64 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 text-xs font-normal leading-5 text-[var(--text)] opacity-0 shadow-lg transition group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100">When VPN is off, NGAi requests use the proxy URL configured alongside this option.</span>
+                </div>
               </div>
               <div>
                 <label className="block text-xs font-semibold text-[var(--text-muted)]">Proxy URL
@@ -592,121 +725,6 @@ export default function SettingsPage() {
         {poolSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{poolSettingsError}</p>}
       </section>
 
-      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="execution-report-setting-heading">
-        <h2 id="execution-report-setting-heading" className="text-base font-semibold text-[var(--text)]">Execution Report Setting</h2>
-        <div className="mt-4 overflow-x-auto rounded-md border border-[var(--border)]">
-          <table className="w-full min-w-[480px] border-collapse text-left text-sm">
-            <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]"><tr><th className="px-3 py-2.5">Setting</th><th className="px-3 py-2.5">Description</th><th className="w-24 px-3 py-2.5 text-center">Show</th></tr></thead>
-            <tbody className="divide-y divide-[var(--border)]"><tr><td className="px-3 py-3 font-medium text-[var(--text)]">Show Aborted Manually in Aborted Tests</td><td className="px-3 py-3 text-sm text-[var(--text-muted)]">Include manual aborts in the table and total.</td><td className="px-3 py-3 text-center"><input type="checkbox" role="switch" checked={dashboardSettings.showManualAborts} onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, showManualAborts: event.target.checked })} aria-label="Show aborted manually in aborted tests" className="h-4 w-4 accent-[var(--accent)]" /></td></tr></tbody>
-          </table>
-        </div>
-        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {dashboardSettingsSaved ? "Execution Report setting saved." : dashboardSettings.showManualAborts ? "Manual aborts are shown." : "Manual aborts are hidden from the table and total."}
-        </p>
-        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
-      </section>
-
-      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="dashboard-heading">
-        <h2 id="dashboard-heading" className="text-base font-semibold text-[var(--text)]">Dashboard charts</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">Chart toggles apply to all signed-in users. Viewer menu access is controlled here; administrators always have access.</p>
-        <div className="mt-4 overflow-x-auto rounded-md border border-[var(--border)]">
-          <table className="w-full min-w-[480px] border-collapse text-left text-sm">
-            <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]"><tr><th className="px-3 py-2.5">Chart option</th><th className="w-24 px-3 py-2.5 text-center">Enabled</th></tr></thead>
-            <tbody className="divide-y divide-[var(--border)]">{([ ["executionStatusSplit", "Execution status split"], ["rawStateValues", "Raw state values"] ] as const).map(([key, label]) => <tr key={key}><td className="px-3 py-3 font-medium text-[var(--text)]">{label}</td><td className="px-3 py-3 text-center"><input type="checkbox" role="switch" checked={dashboardSettings[key]} onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, [key]: event.target.checked })} aria-label={`${label} enabled`} className="h-4 w-4 accent-[var(--accent)]" /></td></tr>)}</tbody>
-          </table>
-        </div>
-        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {dashboardSettingsSaved ? "Dashboard chart settings saved." : "Changes apply to all signed-in users."}
-        </p>
-        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
-      </section>
-
-      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="add-admin-heading">
-        <h2 id="add-admin-heading" className="text-base font-semibold text-[var(--text)]">Add Admin</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">Create an additional administrator account. Passwords are stored as salted hashes, never as plain text. New accounts can sign in immediately.</p>
-        <form onSubmit={addAdmin} className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="new-admin-username">Username
-            <input
-              id="new-admin-username"
-              required
-              minLength={3}
-              maxLength={128}
-              pattern="[A-Za-z0-9][A-Za-z0-9._@+-]*"
-              autoComplete="off"
-              value={newAdminUsername}
-              onChange={(event) => setNewAdminUsername(event.target.value)}
-              disabled={adminUsersBusy}
-              className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
-            />
-          </label>
-          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="new-admin-password">Password
-            <input
-              id="new-admin-password"
-              required
-              type="password"
-              minLength={4}
-              maxLength={256}
-              autoComplete="new-password"
-              value={newAdminPassword}
-              onChange={(event) => setNewAdminPassword(event.target.value)}
-              disabled={adminUsersBusy}
-              className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
-            />
-          </label>
-          <div className="flex flex-wrap items-center gap-3 sm:col-span-2">
-            <button type="submit" disabled={adminUsersBusy} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-text)] disabled:opacity-60">
-              {adminUsersBusy ? "Adding…" : "Add Admin"}
-            </button>
-            <p role="status" aria-live="polite" className={`text-sm ${adminUsersError ? "text-red-600" : "text-[var(--text-muted)]"}`}>
-              {adminUsersError || adminUsersMessage}
-            </p>
-          </div>
-        </form>
-        <div className="mt-5 border-t border-[var(--border)] pt-4">
-          <h3 className="text-sm font-semibold text-[var(--text)]">Additional admin accounts</h3>
-          {adminUsers.length ? (
-            <ul className="mt-2 space-y-1 text-sm text-[var(--text-muted)]">
-              {adminUsers.map((admin) => <li key={admin.username}>{admin.username} <span className="text-xs">(added {new Date(admin.createdAt).toLocaleDateString()})</span></li>)}
-            </ul>
-          ) : (
-            <p className="mt-2 text-sm text-[var(--text-muted)]">No additional admin accounts have been added.</p>
-          )}
-        </div>
-      </section>
-
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="login-audit-heading">
-        <h2 id="login-audit-heading" className="text-base font-semibold text-[var(--text)]">User login audit</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">Successful logins captured by this server. System name uses reverse DNS when available.</p>
-        {loginAuditError && <p className="mt-3 text-sm text-red-600" role="alert">{loginAuditError}</p>}
-        {!loginAuditError && loginAudit.length === 0 && <p className="mt-4 text-sm text-[var(--text-muted)]">No successful logins recorded yet.</p>}
-        {loginAudit.length > 0 && (
-          <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[760px] text-left text-sm">
-              <thead className="bg-[var(--surface-alt)] text-xs uppercase tracking-wide text-[var(--text-muted)]">
-                <tr>
-                  <th className="px-3 py-2 font-semibold">Time</th>
-                  <th className="px-3 py-2 font-semibold">User / role</th>
-                  <th className="px-3 py-2 font-semibold">System name</th>
-                  <th className="px-3 py-2 font-semibold">IP address</th>
-                  <th className="px-3 py-2 font-semibold">Client</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[var(--border)]">
-                {loginAudit.slice(0, 25).map((entry, index) => (
-                  <tr key={`${entry.loggedInAt}-${entry.username}-${index}`}>
-                    <td className="whitespace-nowrap px-3 py-2 text-[var(--text-muted)]">{new Date(entry.loggedInAt).toLocaleString()}</td>
-                    <td className="px-3 py-2 text-[var(--text)]">{entry.username} <span className="text-xs text-[var(--text-muted)]">({entry.role})</span></td>
-                    <td className="px-3 py-2 text-[var(--text)]">{entry.systemName}</td>
-                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-muted)]">{entry.ipAddress}</td>
-                    <td className="max-w-xs truncate px-3 py-2 text-xs text-[var(--text-muted)]" title={entry.userAgent}>{entry.userAgent}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-
       <div className="lg:col-span-2"><WeeklyReportMailPanel /></div>
 
       <details className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="mail-heading">
@@ -765,38 +783,37 @@ export default function SettingsPage() {
         </div>
       </details>
 
-      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="theme-heading">
-        <h2 id="theme-heading" className="text-base font-semibold text-[var(--text)]">Theme</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">
-          Changes the page background, cards, tables, and charts across the whole app - and carries over into downloaded HTML reports.
-        </p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-3">
-          {THEME_OPTIONS.map(([id, tokens]) => (
-            <label
-              key={id}
-              className={`cursor-pointer rounded-lg border p-4 transition ${theme === id ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}
-            >
-              <input
-                type="radio"
-                name="theme"
-                value={id}
-                checked={theme === id}
-                onChange={() => saveTheme(id)}
-                className="mr-3 accent-[var(--accent)]"
-              />
-              <span className="font-medium text-[var(--text)]">{tokens.label}</span>
-              <div className="mt-3 flex gap-1.5 pl-6">
-                <span className="h-5 w-5 rounded-full border border-black/10" style={{ background: tokens.pageBg }} />
-                <span className="h-5 w-5 rounded-full border border-black/10" style={{ background: tokens.sidebarBg }} />
-                <span className="h-5 w-5 rounded-full border border-black/10" style={{ background: tokens.accent }} />
-              </div>
-            </label>
-          ))}
-        </div>
-        <p className="mt-5 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {themeSaved ? "Shared theme saved." : `Current shared theme: ${THEMES[theme].label}`}
-        </p>
-        {themeError && <p className="mt-2 text-sm text-red-600" role="alert">{themeError}</p>}
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="login-audit-heading">
+        <h2 id="login-audit-heading" className="text-base font-semibold text-[var(--text)]">User login audit</h2>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Successful logins captured by this server. System name uses reverse DNS when available.</p>
+        {loginAuditError && <p className="mt-3 text-sm text-red-600" role="alert">{loginAuditError}</p>}
+        {!loginAuditError && loginAudit.length === 0 && <p className="mt-4 text-sm text-[var(--text-muted)]">No successful logins recorded yet.</p>}
+        {loginAudit.length > 0 && (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-[var(--surface-alt)] text-xs uppercase tracking-wide text-[var(--text-muted)]">
+                <tr>
+                  <th className="px-3 py-2 font-semibold">Time</th>
+                  <th className="px-3 py-2 font-semibold">User / role</th>
+                  <th className="px-3 py-2 font-semibold">System name</th>
+                  <th className="px-3 py-2 font-semibold">IP address</th>
+                  <th className="px-3 py-2 font-semibold">Client</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-[var(--border)]">
+                {loginAudit.slice(0, 25).map((entry, index) => (
+                  <tr key={`${entry.loggedInAt}-${entry.username}-${index}`}>
+                    <td className="whitespace-nowrap px-3 py-2 text-[var(--text-muted)]">{new Date(entry.loggedInAt).toLocaleString()}</td>
+                    <td className="px-3 py-2 text-[var(--text)]">{entry.username} <span className="text-xs text-[var(--text-muted)]">({entry.role})</span></td>
+                    <td className="px-3 py-2 text-[var(--text)]">{entry.systemName}</td>
+                    <td className="px-3 py-2 font-mono text-xs text-[var(--text-muted)]">{entry.ipAddress}</td>
+                    <td className="max-w-xs truncate px-3 py-2 text-xs text-[var(--text-muted)]" title={entry.userAgent}>{entry.userAgent}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
     </div>
   );

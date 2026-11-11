@@ -2,7 +2,6 @@ import { request as undiciRequest } from "undici";
 import { buildReportFilename, renderReportHtml } from "./report-html";
 import { loadAbortedSnapshot, loadLatest } from "./store";
 import { getSharedTheme } from "./app-theme";
-import { getDashboardSettings } from "./dashboard-settings";
 import { normalizeSuiteNames } from "./normalize";
 import type { TestRow } from "./types";
 import type { GraphMailSettings } from "./graph-mail-settings";
@@ -89,8 +88,7 @@ export async function sendLatestGraphReport(
   const abortedRows: TestRow[] = (abortedSnapshot?.rows ?? []).filter((row) => suites.has(row.suite.toLowerCase()));
   const executedRows = run.rows.filter((row) => row.bucket === "Passed" || row.bucket === "Failed");
   const theme = await getSharedTheme() ?? "professional";
-  const dashboardSettings = await getDashboardSettings();
-  const html = renderReportHtml(run, abortedRows, "", theme, executedRows, "", undefined, dashboardSettings);
+  const html = renderReportHtml(run, abortedRows, "", theme, executedRows);
   const filename = buildReportFilename(run.meta.filter.value);
   const sentAt = new Date().toLocaleString("en-US", { timeZone: settings.timeZone, dateStyle: "medium", timeStyle: "short" });
   const suiteList = normalizeSuiteNames(run.meta.filter.value).map(escapeHtml).join(", ");

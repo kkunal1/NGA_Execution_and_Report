@@ -48,8 +48,6 @@ export type Summary = {
   executed: number;
   progressPct: number;
   passRatePct: number;
-  byState: { name: string; value: number }[];
-  byRawState: { name: string; value: number }[];
   byTestline: {
     testline: string;
     tests: number;

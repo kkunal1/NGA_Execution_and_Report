@@ -428,81 +428,117 @@ export default function SettingsPage() {
         <h1 className="text-2xl font-semibold text-[var(--text)]">Settings</h1>
         <p className="mt-2 text-sm text-[var(--text-muted)]">Manage report content, data sources, delivery, and workspace access.</p>
       </header>
-      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="provider-heading">
-        <h2 id="provider-heading" className="text-base font-semibold text-[var(--text)]">Data provider</h2>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {DATA_PROVIDERS.map((option) => (
-            <label key={option.value} className={`cursor-pointer rounded-lg border p-4 transition ${provider === option.value ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}>
-              <input
-                type="radio"
-                name="provider"
-                value={option.value}
-                checked={provider === option.value}
-                onChange={() => save(option.value)}
-                className="mr-3 accent-[var(--accent)]"
-              />
-              <span className="font-medium text-[var(--text)]">{option.label}</span>
-              <p className="mt-2 pl-6 text-sm leading-6 text-[var(--text-muted)]">{option.description}</p>
-            </label>
-          ))}
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="navigation-visibility-heading">
+        <div className="mb-3">
+          <h2 id="navigation-visibility-heading" className="text-base font-semibold text-[var(--text)]">Navigation Visibility</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Choose which workspace tools appear for viewers. Administrators retain access to all tools.</p>
         </div>
-        <p className="mt-5 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {saved ? "Provider saved." : `Current provider: ${provider === "sso" ? "Intel SSO" : "Intel NGAi"}`}
-        </p>
+        <div className="overflow-x-auto rounded-md border border-[var(--border)]">
+          <table className="w-full min-w-[560px] border-collapse text-left text-sm">
+            <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]">
+              <tr><th className="px-3 py-2.5">Workspace area</th><th className="px-3 py-2.5">Viewer access</th><th className="w-28 px-3 py-2.5 text-center">Visible</th></tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--border)]">
+              <tr><td className="px-3 py-2.5 font-medium text-[var(--text)]">Execution Report</td><td className="px-3 py-2.5 text-[var(--text-muted)]">Read only · always available</td><td className="px-3 py-2.5 text-center"><input type="checkbox" checked disabled aria-label="Execution Report is always visible" className="h-4 w-4 accent-[var(--accent)]" /></td></tr>
+              {([
+                ["poolSystems", "All Execution Systems", "Read only"],
+                ["weeklyReport", "Daily/Weekly Report", "Read only"],
+                ["weeklyReportUpdate", "Update Weekly Report", "Viewer access"],
+                ["weeklyReportHsdDetails", "Update HSD Details", "Viewer access"],
+                ["weeklyReportEmail", "Send Report Over Email", "Viewer access"],
+                ["executionTime", "Check Execution Time", "Read only"],
+                ["ngaiTestRunData", "NGA Test Run Data", "Admin only"],
+              ] as const).map(([key, label, access]) => (
+                <tr key={key}>
+                  <td className="px-3 py-2.5 font-medium text-[var(--text)]">{label}</td>
+                  <td className="px-3 py-2.5 text-[var(--text-muted)]">{access}</td>
+                  <td className="px-3 py-2.5 text-center"><input type="checkbox" role="switch" checked={dashboardSettings[key]} onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, [key]: event.target.checked })} aria-label={`${label} visibility`} className="h-4 w-4 accent-[var(--accent)]" /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">{dashboardSettingsSaved ? "Navigation visibility saved." : "Changes apply to all signed-in users."}</p>
       </section>
-
-      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="ngai-token-heading">
-        <h2 id="ngai-token-heading" className="text-base font-semibold text-[var(--text)]">Intel NGAi API token</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">
-          The token is encrypted for this local app installation and never returned to this page. Each OS user gets a separate encryption key in their home profile.
-        </p>
-        <label className="mt-4 block text-sm font-medium text-[var(--text)]">
-          Personal access token
-          <input
-            type="password"
-            autoComplete="new-password"
-            spellCheck={false}
-            value={ngaiToken}
-            onChange={(event) => setNgaiToken(event.target.value)}
-            placeholder="Enter NGAi PAT"
-            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)]"
-          />
-        </label>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={saveNgaiToken}
-            disabled={ngaiTokenBusy || !ngaiToken.trim() || !ngaiTokenStatus?.encryptionConfigured}
-            className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Save encrypted token
-          </button>
-          {ngaiTokenStatus?.source === "settings" && (
-            <button
-              type="button"
-              onClick={removeNgaiToken}
-              disabled={ngaiTokenBusy}
-              className="rounded-lg border border-[var(--border)] px-4 py-2 text-sm font-medium text-[var(--text)] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Remove saved token
-            </button>
-          )}
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="weekly-report-settings-heading">
+        <h2 id="weekly-report-settings-heading" className="text-base font-semibold text-[var(--text)]">Weekly Report Settings</h2>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">The server generates the previous day&apos;s report at 12:05 AM IST and saves it centrally. Automatic reports use the B0 P1 and P2 suites.</p>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Choose which sections appear in manually created and automatically generated reports.</p>
+        <div className="mt-4 overflow-x-auto rounded-md border border-[var(--border)]">
+          <table className="w-full min-w-[620px] border-collapse text-left text-sm">
+            <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]"><tr><th className="px-3 py-2.5">Report section</th><th className="px-3 py-2.5">Visibility</th><th className="w-24 px-3 py-2.5 text-center">Include</th></tr></thead>
+            <tbody className="divide-y divide-[var(--border)]">{WEEKLY_REPORT_SECTION_OPTIONS.map(([key, label]) => <tr key={key}><td className="px-3 py-3 font-medium text-[var(--text)]">{label}</td><td className="px-3 py-3 text-[var(--text-muted)]">{dashboardSettings.weeklyReportSections[key] ? "Visible" : "Hidden"}</td><td className="px-3 py-3 text-center"><input type="checkbox" role="switch" checked={dashboardSettings.weeklyReportSections[key]} onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, weeklyReportSections: { ...dashboardSettings.weeklyReportSections, [key]: event.target.checked } })} aria-label={`${label} included`} className="h-4 w-4 accent-[var(--accent)]" /></td></tr>)}</tbody>
+          </table>
         </div>
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {ngaiTokenMessage || (ngaiTokenStatus?.source === "settings"
-            ? "An encrypted token is saved in app settings."
-            : ngaiTokenStatus?.source === "environment"
-              ? "Using the legacy NGAI_API_TOKEN server environment setting."
-              : ngaiTokenStatus?.source === "none"
-                ? "No NGAi token is configured."
-                : "Checking token configuration...")}
+          {dashboardSettingsSaved ? "Weekly Report section settings saved." : "Changes apply to loaded, generated, and emailed reports for all users."}
         </p>
-        {!ngaiTokenStatus?.encryptionConfigured && (
-          <p className="mt-2 text-sm text-amber-700" role="alert">
-            Encryption is unavailable. Check that this app can write to its local data directory and your OS user profile.
-          </p>
-        )}
-        {ngaiTokenError && <p className="mt-2 text-sm text-red-600" role="alert">{ngaiTokenError}</p>}
+        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
+      </section>
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="data-source-network-heading">
+        <div className="mb-5">
+          <h2 id="data-source-network-heading" className="text-base font-semibold text-[var(--text)]">Data source &amp; network</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Configure the execution data provider, NGAi token, and network route.</p>
+        </div>
+        <div className="grid gap-x-8 gap-y-6 lg:grid-cols-2">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--text)]">Data provider</h3>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+              {DATA_PROVIDERS.map((option) => (
+                <label key={option.value} className={`cursor-pointer rounded-md border p-3 transition ${provider === option.value ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}>
+                  <input type="radio" name="provider" value={option.value} checked={provider === option.value} onChange={() => save(option.value)} className="mr-2 accent-[var(--accent)]" />
+                  <span className="text-sm font-medium text-[var(--text)]">{option.label}</span>
+                  <p className="mt-2 pl-6 text-xs leading-5 text-[var(--text-muted)]">{option.description}</p>
+                </label>
+              ))}
+            </div>
+            <p className="mt-3 text-xs text-[var(--text-muted)]" role="status" aria-live="polite">
+              {saved ? "Provider saved." : `Current provider: ${provider === "sso" ? "Intel SSO" : "Intel NGAi"}`}
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--text)]">Intel NGAi API token</h3>
+            <p className="mt-1 text-xs leading-5 text-[var(--text-muted)]">Encrypted for this local app installation and never returned to this page.</p>
+            <label className="mt-3 block text-xs font-semibold text-[var(--text-muted)]">
+              Personal access token
+              <input type="password" autoComplete="new-password" spellCheck={false} value={ngaiToken} onChange={(event) => setNgaiToken(event.target.value)} placeholder="Enter NGAi PAT" className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]" />
+            </label>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button type="button" onClick={saveNgaiToken} disabled={ngaiTokenBusy || !ngaiToken.trim() || !ngaiTokenStatus?.encryptionConfigured} className="h-9 rounded-md bg-[var(--accent)] px-3 text-xs font-semibold text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-50">Save encrypted token</button>
+              {ngaiTokenStatus?.source === "settings" && <button type="button" onClick={removeNgaiToken} disabled={ngaiTokenBusy} className="h-9 rounded-md border border-[var(--border)] px-3 text-xs font-semibold text-[var(--text)] disabled:opacity-50">Remove saved token</button>}
+            </div>
+            <p className="mt-2 text-xs text-[var(--text-muted)]" role="status" aria-live="polite">
+              {ngaiTokenMessage || (ngaiTokenStatus?.source === "settings" ? "An encrypted token is saved in app settings." : ngaiTokenStatus?.source === "environment" ? "Using the legacy NGAI_API_TOKEN server environment setting." : ngaiTokenStatus?.source === "none" ? "No NGAi token is configured." : "Checking token configuration...")}
+            </p>
+            {!ngaiTokenStatus?.encryptionConfigured && <p className="mt-2 text-xs text-amber-700" role="alert">Encryption unavailable. Check local data directory and OS profile access.</p>}
+            {ngaiTokenError && <p className="mt-2 text-xs text-red-600" role="alert">{ngaiTokenError}</p>}
+          </div>
+
+          <div className="lg:col-span-2 border-t border-[var(--border)] pt-5">
+            <h3 className="text-sm font-semibold text-[var(--text)]">Intel NGAi network</h3>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">VPN connection uses a direct route; turn it off to use the proxy below.</p>
+            <div className="mt-3 grid gap-5 lg:grid-cols-2">
+              <div className="flex flex-wrap gap-2">
+                <label className={`cursor-pointer rounded-md border px-3 py-2 text-xs font-medium transition ${vpnConnected ? "border-[var(--accent)] bg-[var(--surface-alt)] text-[var(--text)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}>
+                  <input type="radio" name="vpn" className="mr-2 accent-[var(--accent)]" checked={vpnConnected} onChange={() => setVpnConnected(true)} />Connected · direct
+                </label>
+                <label className={`cursor-pointer rounded-md border px-3 py-2 text-xs font-medium transition ${!vpnConnected ? "border-[var(--accent)] bg-[var(--surface-alt)] text-[var(--text)]" : "border-[var(--border)] text-[var(--text-muted)]"}`}>
+                  <input type="radio" name="vpn" className="mr-2 accent-[var(--accent)]" checked={!vpnConnected} onChange={() => setVpnConnected(false)} />Proxy
+                </label>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-[var(--text-muted)]">Proxy URL
+                  <input type="text" value={proxyUrl} onChange={(event) => setProxyUrl(event.target.value)} placeholder="http://proxy-dmz.intel.com:912" className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]" />
+                </label>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <button type="button" onClick={saveNetwork} className="h-9 rounded-md bg-[var(--accent)] px-3 text-xs font-semibold text-[var(--accent-text)]">Save network settings</button>
+                  <p className="text-xs text-[var(--text-muted)]" role="status" aria-live="polite">{networkSaved ? "Network settings saved." : "Applies to future NGAi requests from this browser."}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="refresh-heading">
@@ -558,16 +594,12 @@ export default function SettingsPage() {
 
       <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="execution-report-setting-heading">
         <h2 id="execution-report-setting-heading" className="text-base font-semibold text-[var(--text)]">Execution Report Setting</h2>
-        <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
-          <span>Show Aborted Manually in Aborted Tests</span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={dashboardSettings.showManualAborts}
-            onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, showManualAborts: event.target.checked })}
-            className="h-5 w-5 accent-[var(--accent)]"
-          />
-        </label>
+        <div className="mt-4 overflow-x-auto rounded-md border border-[var(--border)]">
+          <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+            <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]"><tr><th className="px-3 py-2.5">Setting</th><th className="px-3 py-2.5">Description</th><th className="w-24 px-3 py-2.5 text-center">Show</th></tr></thead>
+            <tbody className="divide-y divide-[var(--border)]"><tr><td className="px-3 py-3 font-medium text-[var(--text)]">Show Aborted Manually in Aborted Tests</td><td className="px-3 py-3 text-sm text-[var(--text-muted)]">Include manual aborts in the table and total.</td><td className="px-3 py-3 text-center"><input type="checkbox" role="switch" checked={dashboardSettings.showManualAborts} onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, showManualAborts: event.target.checked })} aria-label="Show aborted manually in aborted tests" className="h-4 w-4 accent-[var(--accent)]" /></td></tr></tbody>
+          </table>
+        </div>
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
           {dashboardSettingsSaved ? "Execution Report setting saved." : dashboardSettings.showManualAborts ? "Manual aborts are shown." : "Manual aborts are hidden from the table and total."}
         </p>
@@ -577,59 +609,14 @@ export default function SettingsPage() {
       <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="dashboard-heading">
         <h2 id="dashboard-heading" className="text-base font-semibold text-[var(--text)]">Dashboard charts</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">Chart toggles apply to all signed-in users. Viewer menu access is controlled here; administrators always have access.</p>
-        <div className="mt-4 space-y-3">
-          {([
-            ["executionStatusSplit", "Execution status split"],
-            ["rawStateValues", "Raw state values"],
-            ["poolSystems", "All Execution Systems menu"],
-            ["weeklyReport", "Daily/Weekly Report menu (root/viewer access)"],
-            ["weeklyReportUpdate", "Update Weekly Report submenu for root/viewers"],
-            ["weeklyReportHsdDetails", "Update HSD Details submenu for root/viewers"],
-            ["weeklyReportEmail", "Send Report Over Email submenu for root/viewers"],
-            ["executionTime", "Check Execution Time menu"],
-            ["ngaiTestRunData", "NGA Test Run Data menu (admin only)"],
-          ] as const).map(([key, label]) => (
-            <label key={key} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={dashboardSettings[key]}
-                onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, [key]: event.target.checked })}
-                className="h-5 w-5 accent-[var(--accent)]"
-              />
-            </label>
-          ))}
+        <div className="mt-4 overflow-x-auto rounded-md border border-[var(--border)]">
+          <table className="w-full min-w-[480px] border-collapse text-left text-sm">
+            <thead className="bg-[var(--surface-alt)] text-xs font-semibold text-[var(--text-muted)]"><tr><th className="px-3 py-2.5">Chart option</th><th className="w-24 px-3 py-2.5 text-center">Enabled</th></tr></thead>
+            <tbody className="divide-y divide-[var(--border)]">{([ ["executionStatusSplit", "Execution status split"], ["rawStateValues", "Raw state values"] ] as const).map(([key, label]) => <tr key={key}><td className="px-3 py-3 font-medium text-[var(--text)]">{label}</td><td className="px-3 py-3 text-center"><input type="checkbox" role="switch" checked={dashboardSettings[key]} onChange={(event) => void saveDashboardSettings({ ...dashboardSettings, [key]: event.target.checked })} aria-label={`${label} enabled`} className="h-4 w-4 accent-[var(--accent)]" /></td></tr>)}</tbody>
+          </table>
         </div>
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
           {dashboardSettingsSaved ? "Dashboard chart settings saved." : "Changes apply to all signed-in users."}
-        </p>
-        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
-      </section>
-
-      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="weekly-report-settings-heading">
-        <h2 id="weekly-report-settings-heading" className="text-base font-semibold text-[var(--text)]">Weekly Report Settings</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">The server generates the previous day&apos;s report at 12:05 AM IST and saves it centrally. Automatic reports use the B0 P1 and P2 suites.</p>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">Choose which sections appear in manually created and automatically generated reports.</p>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          {WEEKLY_REPORT_SECTION_OPTIONS.map(([key, label]) => (
-            <label key={key} className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
-              <span>{label}</span>
-              <input
-                type="checkbox"
-                role="switch"
-                checked={dashboardSettings.weeklyReportSections[key]}
-                onChange={(event) => void saveDashboardSettings({
-                  ...dashboardSettings,
-                  weeklyReportSections: { ...dashboardSettings.weeklyReportSections, [key]: event.target.checked },
-                })}
-                className="h-5 w-5 accent-[var(--accent)]"
-              />
-            </label>
-          ))}
-        </div>
-        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {dashboardSettingsSaved ? "Weekly Report section settings saved." : "Changes apply to loaded, generated, and emailed reports for all users."}
         </p>
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>
@@ -777,43 +764,6 @@ export default function SettingsPage() {
           {(mailError || graphMail.lastError) && <p className="mt-2 text-sm text-red-600" role="alert">{mailError || graphMail.lastError}</p>}
         </div>
       </details>
-
-      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="network-heading">
-        <h2 id="network-heading" className="text-base font-semibold text-[var(--text)]">Intel NGAi network</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">
-          Controls how NGAi requests reach Intel&apos;s server. When connected via VPN, requests go direct. When off VPN, they route through the proxy address below.
-        </p>
-        <div className="mt-4 flex flex-wrap gap-3">
-          <label className={`cursor-pointer rounded-lg border p-4 transition ${vpnConnected ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}>
-            <input type="radio" name="vpn" className="mr-3 accent-[var(--accent)]" checked={vpnConnected} onChange={() => setVpnConnected(true)} />
-            <span className="text-[var(--text)]">Connected via VPN (go direct)</span>
-          </label>
-          <label className={`cursor-pointer rounded-lg border p-4 transition ${!vpnConnected ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}>
-            <input type="radio" name="vpn" className="mr-3 accent-[var(--accent)]" checked={!vpnConnected} onChange={() => setVpnConnected(false)} />
-            <span className="text-[var(--text)]">Not on VPN (use proxy)</span>
-          </label>
-        </div>
-        <label className="mt-4 block text-sm font-medium text-[var(--text)]">
-          Proxy address (used when not on VPN)
-          <input
-            type="text"
-            value={proxyUrl}
-            onChange={(e) => setProxyUrl(e.target.value)}
-            placeholder="http://proxy-dmz.intel.com:912"
-            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)]"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={saveNetwork}
-          className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)]"
-        >
-          Save network settings
-        </button>
-        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {networkSaved ? "Network settings saved." : "Applies to future NGAi requests from this browser."}
-        </p>
-      </section>
 
       <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="theme-heading">
         <h2 id="theme-heading" className="text-base font-semibold text-[var(--text)]">Theme</h2>

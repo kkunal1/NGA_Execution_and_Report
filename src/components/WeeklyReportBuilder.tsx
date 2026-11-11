@@ -238,7 +238,6 @@ export default function WeeklyReportBuilder() {
     const uniqueIds = [...new Set(missingHsdDetailsIds)]
       .filter((id) => !attemptedHsdDetailsRef.current.has(`${reportKey}:${id}`));
     if (!report || !uniqueIds.length) return;
-    uniqueIds.forEach((id) => attemptedHsdDetailsRef.current.add(`${reportKey}:${id}`));
     let cancelled = false;
     const batches: string[][] = [];
     for (let index = 0; index < uniqueIds.length; index += 25) batches.push(uniqueIds.slice(index, index + 25));
@@ -263,6 +262,7 @@ export default function WeeklyReportBuilder() {
         const statuses = Object.assign({}, ...results.map((result) => result.hsdFailureStatuses));
         const reportTypes = Object.assign({}, ...results.map((result) => result.hsdFailureReportTypes));
         const daysOpen = Object.assign({}, ...results.map((result) => result.hsdFailureDaysOpen));
+        uniqueIds.forEach((id) => attemptedHsdDetailsRef.current.add(`${reportKey}:${id}`));
         const unresolvedIds = uniqueIds.filter((id) => !titles[id] || !statuses[id] || statuses[id].trim().toLowerCase() === "unknown" || daysOpen[id] == null);
         if (unresolvedIds.length) throw new Error(`HSDES did not return title, status, and days open for: ${unresolvedIds.join(", ")}`);
         return { titles, statuses, reportTypes, daysOpen };

@@ -2,8 +2,8 @@ import { request as undiciRequest } from "undici";
 import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
 import { getPoolSystemSettings } from "./pool-system-settings";
+import { getConfigCoverageSettings, type ConfigCoverageSuite } from "./config-coverage-settings";
 import { resolveDispatcher } from "./proxy";
-import { B0_SUITES } from "./execution-suites";
 export { B0_SUITES, B2_SUITES } from "./execution-suites";
 
 export type PoolSystem = {
@@ -63,8 +63,13 @@ export type UncoveredConfig = {
   config: string;
   domains: { domain: string; testLines: number }[];
   testLines: number;
-  p1: number;
-  p2: number;
+  suiteCounts: Record<string, number>;
+};
+
+export type UncoveredConfigResult = {
+  configs: UncoveredConfig[];
+  suites: ConfigCoverageSuite[];
+  poolNames: string[];
 };
 
 type ConfigRef = { configName?: unknown } | null | undefined;
@@ -161,26 +166,33 @@ async function fetchPoolCoveredConfigs(poolNames: string[]) {
   return covered;
 }
 
-export async function fetchUncoveredConfigs(): Promise<UncoveredConfig[]> {
-  const { poolNames } = await getPoolSystemSettings();
-  const [p1, p2, covered] = await Promise.all([
-    fetchSuiteConfigs(B0_SUITES.P1),
-    fetchSuiteConfigs(B0_SUITES.P2),
+export async function fetchUncoveredConfigs(): Promise<UncoveredConfigResult> {
+  const [{ poolNames }, { suites }] = await Promise.all([getPoolSystemSettings(), getConfigCoverageSettings()]);
+  const [suiteLines, covered] = await Promise.all([
+    Promise.all(suites.map((suite) => fetchSuiteConfigs(suite.suiteName))),
     fetchPoolCoveredConfigs(poolNames),
   ]);
   const byConfig = new Map<string, UncoveredConfig>();
-  const add = (line: { config: string; domain: string }, suite: "p1" | "p2") => {
+  const add = (line: { config: string; domain: string }, suiteName: string) => {
     if (covered.has(line.config)) return;
-    const entry = byConfig.get(line.config) ?? { config: line.config, domains: [], testLines: 0, p1: 0, p2: 0 };
+    const entry = byConfig.get(line.config) ?? {
+      config: line.config,
+      domains: [],
+      testLines: 0,
+      suiteCounts: Object.fromEntries(suites.map((suite) => [suite.suiteName, 0])),
+    };
     entry.testLines += 1;
-    entry[suite] += 1;
+    entry.suiteCounts[suiteName] += 1;
     const domain = entry.domains.find((d) => d.domain === line.domain);
     if (domain) domain.testLines += 1;
     else entry.domains.push({ domain: line.domain, testLines: 1 });
     byConfig.set(line.config, entry);
   };
-  p1.forEach((line) => add(line, "p1"));
-  p2.forEach((line) => add(line, "p2"));
+  suiteLines.forEach((lines, index) => lines.forEach((line) => add(line, suites[index].suiteName)));
   for (const entry of byConfig.values()) entry.domains.sort((a, b) => b.testLines - a.testLines);
-  return [...byConfig.values()].sort((a, b) => b.testLines - a.testLines || a.config.localeCompare(b.config));
+  return {
+    configs: [...byConfig.values()].sort((a, b) => b.testLines - a.testLines || a.config.localeCompare(b.config)),
+    suites,
+    poolNames,
+  };
 }

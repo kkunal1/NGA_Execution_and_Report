@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Info, SunMoon } from "lucide-react";
+import { Info, Plus, SunMoon, Trash2 } from "lucide-react";
 import { DATA_PROVIDERS, DATA_PROVIDER_KEY, NGAI_PROXY_KEY, NGAI_VPN_KEY, type DataProvider } from "@/lib/provider";
+import type { ConfigCoverageSuite } from "@/lib/config-coverage-settings";
 import { THEMES, THEME_KEY, isThemeId, type ThemeId } from "@/lib/theme";
 import WeeklyReportMailPanel from "@/components/WeeklyReportMailPanel";
 import { DEFAULT_WEEKLY_REPORT_SECTIONS, type WeeklyReportSectionSettings } from "@/lib/weekly-report-visibility";
@@ -83,6 +84,11 @@ export default function SettingsPage() {
   const [poolSettingsBusy, setPoolSettingsBusy] = useState(false);
   const [poolSettingsSaved, setPoolSettingsSaved] = useState(false);
   const [poolSettingsError, setPoolSettingsError] = useState("");
+  const [coverageSuites, setCoverageSuites] = useState<ConfigCoverageSuite[]>([]);
+  const [coverageSuitesLoading, setCoverageSuitesLoading] = useState(true);
+  const [coverageSuitesBusy, setCoverageSuitesBusy] = useState(false);
+  const [coverageSuitesSaved, setCoverageSuitesSaved] = useState(false);
+  const [coverageSuitesError, setCoverageSuitesError] = useState("");
   const [dashboardSettings, setDashboardSettings] = useState<DashboardSettings>({
     showManualAborts: false,
     poolSystems: false,
@@ -180,6 +186,14 @@ export default function SettingsPage() {
       })
       .catch((error: unknown) => setPoolSettingsError(error instanceof Error ? error.message : "Could not load pool system settings."))
       .finally(() => setPoolSettingsLoading(false));
+    void fetch("/api/settings/config-coverage", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { suites?: ConfigCoverageSuite[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not load coverage suites.");
+        setCoverageSuites(data.suites ?? []);
+      })
+      .catch((error: unknown) => setCoverageSuitesError(error instanceof Error ? error.message : "Could not load coverage suites."))
+      .finally(() => setCoverageSuitesLoading(false));
     void fetch("/api/settings/dashboard", { cache: "no-store" })
       .then(async (response) => {
         const data = (await response.json()) as DashboardSettings & { error?: string };
@@ -319,6 +333,27 @@ export default function SettingsPage() {
       setPoolSettingsError(error instanceof Error ? error.message : "Could not save pool system settings.");
     } finally {
       setPoolSettingsBusy(false);
+    }
+  };
+
+  const saveCoverageSuites = async () => {
+    setCoverageSuitesBusy(true);
+    setCoverageSuitesSaved(false);
+    setCoverageSuitesError("");
+    try {
+      const response = await fetch("/api/settings/config-coverage", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ suites: coverageSuites }),
+      });
+      const data = (await response.json()) as { suites?: ConfigCoverageSuite[]; error?: string };
+      if (!response.ok || !data.suites) throw new Error(data.error || "Could not save coverage suites.");
+      setCoverageSuites(data.suites);
+      setCoverageSuitesSaved(true);
+    } catch (error) {
+      setCoverageSuitesError(error instanceof Error ? error.message : "Could not save coverage suites.");
+    } finally {
+      setCoverageSuitesBusy(false);
     }
   };
 
@@ -723,6 +758,40 @@ export default function SettingsPage() {
         </button>
         {poolSettingsSaved && <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Pool system settings saved.</p>}
         {poolSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{poolSettingsError}</p>}
+      </section>
+
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="config-coverage-suites-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="config-coverage-suites-heading" className="text-base font-semibold text-[var(--text)]">Config Coverage Suites</h2>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">These suites determine the columns in All Execution Systems.</p>
+          </div>
+          <button type="button" onClick={() => { setCoverageSuites((current) => [...current, { label: `Suite ${current.length + 1}`, suiteName: "" }]); setCoverageSuitesSaved(false); }} disabled={coverageSuitesLoading || coverageSuitesBusy || coverageSuites.length >= 12} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-50">
+            <Plus className="h-4 w-4" aria-hidden="true" /> Add suite
+          </button>
+        </div>
+        <div className="mt-4 space-y-3">
+          {coverageSuites.map((suite, index) => (
+            <div key={`${index}-${suite.label}`} className="grid items-end gap-3 md:grid-cols-[minmax(8rem,0.3fr)_minmax(0,1fr)_auto]">
+              <label className="block text-sm font-medium text-[var(--text)]" htmlFor={`coverage-suite-label-${index}`}>Column label
+                <input id={`coverage-suite-label-${index}`} value={suite.label} onChange={(event) => { setCoverageSuites((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item)); setCoverageSuitesSaved(false); }} disabled={coverageSuitesLoading || coverageSuitesBusy} maxLength={40} className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)] disabled:opacity-50" />
+              </label>
+              <label className="block text-sm font-medium text-[var(--text)]" htmlFor={`coverage-suite-name-${index}`}>NGAi suite name
+                <input id={`coverage-suite-name-${index}`} value={suite.suiteName} onChange={(event) => { setCoverageSuites((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, suiteName: event.target.value } : item)); setCoverageSuitesSaved(false); }} disabled={coverageSuitesLoading || coverageSuitesBusy} maxLength={512} placeholder="Oak_Stream_Platform_1_..." className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)] disabled:opacity-50" />
+              </label>
+              <button type="button" onClick={() => { setCoverageSuites((current) => current.filter((_, itemIndex) => itemIndex !== index)); setCoverageSuitesSaved(false); }} disabled={coverageSuitesLoading || coverageSuitesBusy || coverageSuites.length <= 1} aria-label={`Remove ${suite.label || `suite ${index + 1}`}`} title="Remove suite" className="flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] hover:text-red-600 disabled:opacity-40">
+                <Trash2 className="h-4 w-4" aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={() => void saveCoverageSuites()} disabled={coverageSuitesLoading || coverageSuitesBusy} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-text)] disabled:opacity-50">
+            {coverageSuitesBusy ? "Saving…" : "Save suites"}
+          </button>
+          {coverageSuitesSaved && <p className="text-sm text-[var(--text-muted)]" role="status">Coverage suites saved.</p>}
+          {coverageSuitesError && <p className="text-sm text-red-600" role="alert">{coverageSuitesError}</p>}
+        </div>
       </section>
 
       <div className="lg:col-span-2"><WeeklyReportMailPanel /></div>

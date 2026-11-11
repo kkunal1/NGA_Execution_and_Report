@@ -11,6 +11,7 @@ import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-u
 import { parseEmailAddressList } from "../src/lib/smtp-mail.ts";
 import { canAccessWeeklyReportFeature } from "../src/lib/weekly-report-access.ts";
 import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
+import { DEFAULT_CONFIG_COVERAGE_SUITES, normalizeConfigCoverageSuites } from "../src/lib/config-coverage-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames, selectConfiguredPoolNames } from "../src/lib/pool-system-settings.ts";
 import { poolMembershipFilter } from "../src/lib/pool-systems.ts";
 import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
@@ -110,6 +111,10 @@ assert.equal(formatValidationGroupName("pv_power_management"), "Power Management
 assert.equal(formatValidationGroupName("pv_memory"), "Memory");
 assert.equal(formatValidationGroupName("pv_serial_io"), "Serial IO");
 assert.equal(formatValidationGroupName("pv_ras"), "RAS");
+assert.deepEqual(normalizeConfigCoverageSuites(DEFAULT_CONFIG_COVERAGE_SUITES), DEFAULT_CONFIG_COVERAGE_SUITES);
+assert.equal(normalizeConfigCoverageSuites([{ label: "B2", suiteName: " Custom_B2_Suite " }])?.[0].suiteName, "Custom_B2_Suite");
+assert.equal(normalizeConfigCoverageSuites([{ label: "B0", suiteName: "Suite" }, { label: "b0", suiteName: "Other" }]), null, "coverage suite labels must be unique");
+assert.equal(normalizeConfigCoverageSuites([{ label: "Suite", suiteName: "Same" }, { label: "Other", suiteName: "same" }]), null, "coverage suite names must be unique");
 const legacyB2Suite = "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B2_Tests_Cycle";
 assert.equal(isSuiteSelectedForProfile(legacyB2Suite, [B2_SUITES.P2], "b2"), true, "legacy aggregate B2 aborts belong to the selected B2 profile");
 assert.equal(isSuiteSelectedForProfile(legacyB2Suite, [B0_SUITES.P2], "b0"), false, "legacy aggregate B2 aborts must not appear in B0");

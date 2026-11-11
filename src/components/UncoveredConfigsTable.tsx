@@ -2,21 +2,26 @@
 
 import { useEffect, useState } from "react";
 import type { UncoveredConfig } from "@/lib/pool-systems";
+import type { ConfigCoverageSuite } from "@/lib/config-coverage-settings";
 
 export default function UncoveredConfigsTable() {
   const [configs, setConfigs] = useState<UncoveredConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [suites, setSuites] = useState<ConfigCoverageSuite[]>([]);
+  const [poolNames, setPoolNames] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
         const response = await fetch("/api/pool-systems/uncovered-configs", { cache: "no-store" });
-        const data = (await response.json()) as { configs?: UncoveredConfig[]; error?: string };
+        const data = (await response.json()) as { configs?: UncoveredConfig[]; suites?: ConfigCoverageSuite[]; poolNames?: string[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not load config coverage.");
         if (!cancelled) {
           setConfigs(data.configs ?? []);
+          setSuites(data.suites ?? []);
+          setPoolNames(data.poolNames ?? []);
           setError(null);
         }
       } catch (cause) {
@@ -35,8 +40,14 @@ export default function UncoveredConfigsTable() {
   }, []);
 
   const totals = configs.reduce(
-    (sum, row) => ({ testLines: sum.testLines + row.testLines, p1: sum.p1 + row.p1, p2: sum.p2 + row.p2 }),
-    { testLines: 0, p1: 0, p2: 0 },
+    (sum, row) => {
+      sum.testLines += row.testLines;
+      for (const suite of suites) {
+        sum.suiteCounts[suite.suiteName] += row.suiteCounts[suite.suiteName] ?? 0;
+      }
+      return sum;
+    },
+    { testLines: 0, suiteCounts: Object.fromEntries(suites.map((suite) => [suite.suiteName, 0])) as Record<string, number> },
   );
 
   return (
@@ -45,7 +56,7 @@ export default function UncoveredConfigsTable() {
         <div>
           <h2 className="text-lg font-semibold text-[var(--text)]">Configs Without Systems</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            B0 P1 + P2 test line configs with no primary or secondary system in pv_dmr-ap-ap1-b0
+            {suites.map((suite) => suite.label).join(" + ") || "No suites configured"} configs without primary or current secondary systems in {poolNames.join(", ") || "configured pools"}
           </p>
         </div>
         <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold tabular-nums text-red-700">
@@ -66,8 +77,7 @@ export default function UncoveredConfigsTable() {
                 <th className="px-5 py-3 font-semibold">Configuration</th>
                 <th className="px-5 py-3 font-semibold">Domain</th>
                 <th className="px-5 py-3 font-semibold">Test count</th>
-                <th className="px-5 py-3 font-semibold">P1</th>
-                <th className="px-5 py-3 font-semibold">P2</th>
+                {suites.map((suite) => <th key={suite.suiteName} className="px-5 py-3 font-semibold">{suite.label}</th>)}
                 <th className="px-5 py-3 font-semibold">System</th>
               </tr>
             </thead>
@@ -86,8 +96,7 @@ export default function UncoveredConfigsTable() {
                     </div>
                   </td>
                   <td className="px-5 py-2 tabular-nums text-[var(--text)]">{row.testLines}</td>
-                  <td className="px-5 py-2 tabular-nums text-[var(--text-muted)]">{row.p1}</td>
-                  <td className="px-5 py-2 tabular-nums text-[var(--text-muted)]">{row.p2}</td>
+                  {suites.map((suite) => <td key={suite.suiteName} className="px-5 py-2 tabular-nums text-[var(--text-muted)]">{row.suiteCounts[suite.suiteName] ?? 0}</td>)}
                   <td className="px-5 py-2">
                     <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">No System Assigned</span>
                   </td>
@@ -97,8 +106,7 @@ export default function UncoveredConfigsTable() {
                 <td className="px-5 py-2">Total</td>
                 <td className="px-5 py-2" />
                 <td className="px-5 py-2 tabular-nums">{totals.testLines}</td>
-                <td className="px-5 py-2 tabular-nums">{totals.p1}</td>
-                <td className="px-5 py-2 tabular-nums">{totals.p2}</td>
+                {suites.map((suite) => <td key={suite.suiteName} className="px-5 py-2 tabular-nums">{totals.suiteCounts[suite.suiteName]}</td>)}
                 <td className="px-5 py-2" />
               </tr>
             </tbody>

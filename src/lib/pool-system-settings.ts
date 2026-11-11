@@ -20,6 +20,18 @@ export function normalizePoolNames(value: unknown): string[] | null {
   return names;
 }
 
+export function selectConfiguredPoolNames(configured: string[], requested: unknown): string[] | null {
+  if (!Array.isArray(requested) || requested.length > 20) return null;
+  const selectedKeys = new Set<string>();
+  for (const value of requested) {
+    if (typeof value !== "string") return null;
+    const key = value.trim().toLowerCase();
+    if (!key) return null;
+    selectedKeys.add(key);
+  }
+  return configured.filter((name) => selectedKeys.has(name.toLowerCase()));
+}
+
 export async function getPoolSystemSettings(): Promise<{ poolNames: string[] }> {
   try {
     const saved = JSON.parse(await readFile(settingsPath, "utf8")) as { poolNames?: unknown };

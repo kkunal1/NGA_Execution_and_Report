@@ -10,7 +10,7 @@ const esc = (value: string | number) =>
 
 const isFlagged = (value: string) => Boolean(value) && value.toLowerCase() !== "execution";
 
-function buildHtml(systems: PoolSystem[], configs: UncoveredConfig[]) {
+function buildHtml(systems: PoolSystem[], configs: UncoveredConfig[], poolNames: string[]) {
   const groups = new Map<string, PoolSystem[]>();
   for (const system of systems) {
     const { base } = splitConfig(system.config);
@@ -68,7 +68,7 @@ tr.group td{border-top:2px solid #cbd5e1}td.cfg{background:#f8fafc;border-right:
 <p class="sub">Generated ${esc(new Date().toLocaleString())}</p>
 <section>
   <h1>B0 Pool Systems</h1>
-  <p class="sub">Systems currently added to pv_dmr-ap-ap1-b0</p>
+  <p class="sub">Systems currently added to ${esc(poolNames.join(", "))}</p>
   <p class="pills"><span class="badge idle">${groups.size} configs</span><span class="badge idle">${systems.length} systems</span><span class="badge run">${running} running</span><span class="badge idle">${systems.length - running} idle</span></p>
   <table><thead><tr><th>Configuration</th><th>Systems</th><th>Execution status</th><th>Activity</th><th>Notes</th></tr></thead>
   <tbody>${systemRows || '<tr><td colspan="5" class="muted">No systems found.</td></tr>'}</tbody></table>
@@ -83,7 +83,7 @@ tr.group td{border-top:2px solid #cbd5e1}td.cfg{background:#f8fafc;border-right:
 </body></html>`;
 }
 
-export default function PoolSystemsDownload() {
+export default function PoolSystemsDownload({ poolNames }: { poolNames: string[] }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -91,8 +91,10 @@ export default function PoolSystemsDownload() {
     setBusy(true);
     setError(null);
     try {
+      const systemsQuery = new URLSearchParams({ filterPools: "1" });
+      poolNames.forEach((poolName) => systemsQuery.append("poolName", poolName));
       const [systemsRes, configsRes] = await Promise.all([
-        fetch("/api/pool-systems", { cache: "no-store" }),
+        fetch(`/api/pool-systems?${systemsQuery.toString()}`, { cache: "no-store" }),
         fetch("/api/pool-systems/uncovered-configs", { cache: "no-store" }),
       ]);
       const systemsData = (await systemsRes.json()) as { systems?: PoolSystem[]; error?: string };
@@ -100,7 +102,7 @@ export default function PoolSystemsDownload() {
       if (!systemsRes.ok) throw new Error(systemsData.error ?? "Could not load pool systems.");
       if (!configsRes.ok) throw new Error(configsData.error ?? "Could not load config coverage.");
 
-      const blob = new Blob([buildHtml(systemsData.systems ?? [], configsData.configs ?? [])], { type: "text/html" });
+      const blob = new Blob([buildHtml(systemsData.systems ?? [], configsData.configs ?? [], poolNames)], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");
@@ -123,7 +125,7 @@ export default function PoolSystemsDownload() {
       <button
         type="button"
         onClick={() => void download()}
-        disabled={busy}
+        disabled={busy || poolNames.length === 0}
         className="flex items-center gap-1.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-1.5 text-xs font-medium text-[var(--text)] shadow-sm transition hover:opacity-80 disabled:opacity-50"
       >
         <DownloadIcon className="h-3.5 w-3.5" />

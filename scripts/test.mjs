@@ -11,7 +11,7 @@ import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-u
 import { parseEmailAddressList } from "../src/lib/smtp-mail.ts";
 import { canAccessWeeklyReportFeature } from "../src/lib/weekly-report-access.ts";
 import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
-import { DEFAULT_POOL_NAMES, normalizePoolNames } from "../src/lib/pool-system-settings.ts";
+import { DEFAULT_POOL_NAMES, normalizePoolNames, selectConfiguredPoolNames } from "../src/lib/pool-system-settings.ts";
 import { poolMembershipFilter } from "../src/lib/pool-systems.ts";
 import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
 import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
@@ -90,6 +90,9 @@ assert.deepEqual(DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, {
   openHsdesIssues: false,
 });
 assert.deepEqual(DEFAULT_POOL_NAMES, ["pv_dmr-ap-ap1-b0"]);
+assert.deepEqual(selectConfiguredPoolNames(["pool-a", "pool-b"], ["pool-b"]), ["pool-b"]);
+assert.deepEqual(selectConfiguredPoolNames(["pool-a", "pool-b"], ["pool-b", "removed-pool"]), ["pool-b"]);
+assert.deepEqual(selectConfiguredPoolNames(["pool-a", "pool-b"], []), []);
 assert.deepEqual(normalizePoolNames([" pv_dmr-ap-ap1-b0 ", "another_pool"]), ["pv_dmr-ap-ap1-b0", "another_pool"]);
 assert.equal(normalizePoolNames([]), null);
 assert.equal(normalizePoolNames(["test-pool", "TEST-POOL"]), null);

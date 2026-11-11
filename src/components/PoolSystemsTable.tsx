@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PoolSystem } from "@/lib/pool-systems";
 
 export const isRunning = (status: string) => status.toLowerCase().startsWith("run");
@@ -14,9 +14,11 @@ export function splitConfig(config: string) {
   return match ? { base: match[1], variant: match[2] } : { base: config, variant: "" };
 }
 
-export default function PoolSystemsTable() {
+export default function PoolSystemsTable({ onSelectedPoolNamesChange }: { onSelectedPoolNamesChange?: (poolNames: string[]) => void }) {
   const [systems, setSystems] = useState<PoolSystem[]>([]);
   const [poolNames, setPoolNames] = useState<string[]>([]);
+  const [selectedPoolNames, setSelectedPoolNames] = useState<string[]>([]);
+  const configuredPoolNames = useRef<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [configFilter, setConfigFilter] = useState("");
@@ -24,7 +26,8 @@ export default function PoolSystemsTable() {
   const [statusFilter, setStatusFilter] = useState("");
   const [activityFilter, setActivityFilter] = useState("");
   const [notesFilter, setNotesFilter] = useState("");
-  const hasFilters = Boolean(configFilter || systemFilter || statusFilter || activityFilter || notesFilter);
+  const hasFilters = Boolean(configFilter || systemFilter || statusFilter || activityFilter || notesFilter)
+    || (poolNames.length > 0 && selectedPoolNames.length !== poolNames.length);
 
   const activityOptions = useMemo(
     () => [...new Set(systems.map((system) => system.activity || "—"))].sort((a, b) => a.localeCompare(b)),
@@ -50,6 +53,7 @@ export default function PoolSystemsTable() {
     setStatusFilter("");
     setActivityFilter("");
     setNotesFilter("");
+    setSelectedPoolNames(poolNames);
   };
 
   const configGroups = useMemo(() => {
@@ -68,12 +72,25 @@ export default function PoolSystemsTable() {
     let cancelled = false;
     const load = async () => {
       try {
-        const response = await fetch("/api/pool-systems", { cache: "no-store" });
+        const query = new URLSearchParams();
+        if (configuredPoolNames.current.length) {
+          query.set("filterPools", "1");
+          selectedPoolNames.forEach((poolName) => query.append("poolName", poolName));
+        }
+        const response = await fetch(`/api/pool-systems${query.size ? `?${query}` : ""}`, { cache: "no-store" });
         const data = (await response.json()) as { systems?: PoolSystem[]; poolNames?: string[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not load pool systems.");
         if (!cancelled) {
+          const nextPoolNames = data.poolNames ?? [];
+          const previousNames = new Set(configuredPoolNames.current.map((name) => name.toLowerCase()));
+          setSelectedPoolNames((current) => {
+            const selected = new Set(current.map((name) => name.toLowerCase()));
+            const next = nextPoolNames.filter((name) => selected.has(name.toLowerCase()) || !previousNames.has(name.toLowerCase()));
+            return next.length === current.length && next.every((name, index) => name === current[index]) ? current : next;
+          });
+          configuredPoolNames.current = nextPoolNames;
           setSystems(data.systems ?? []);
-          setPoolNames(data.poolNames ?? []);
+          setPoolNames(nextPoolNames);
           setError(null);
         }
       } catch (cause) {
@@ -89,14 +106,18 @@ export default function PoolSystemsTable() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [selectedPoolNames]);
+
+  useEffect(() => {
+    onSelectedPoolNamesChange?.(selectedPoolNames);
+  }, [onSelectedPoolNamesChange, selectedPoolNames]);
 
   return (
     <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] shadow-sm">
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
         <div>
           <h1 className="text-lg font-semibold text-[var(--text)]">B0 Pool Systems</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">Systems currently added to {poolNames.length ? poolNames.join(", ") : "selected pools"}</p>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Configured pools: {poolNames.length ? poolNames.join(", ") : "none"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm font-semibold tabular-nums">
           {hasFilters && (
@@ -117,9 +138,29 @@ export default function PoolSystemsTable() {
         </div>
       </div>
 
+      {poolNames.length > 0 && <fieldset className="border-b border-[var(--border)] bg-[var(--surface)] px-5 py-3">
+        <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Show systems from pools</legend>
+        <div className="flex flex-wrap items-center gap-2">
+          {poolNames.map((poolName) => (
+            <label key={poolName.toLowerCase()} className="inline-flex max-w-full cursor-pointer items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface-alt)] px-3 py-2 text-xs text-[var(--text)]">
+              <input
+                type="checkbox"
+                checked={selectedPoolNames.some((name) => name.toLowerCase() === poolName.toLowerCase())}
+                onChange={(event) => setSelectedPoolNames((current) => event.target.checked
+                  ? [...current, poolName]
+                  : current.filter((name) => name.toLowerCase() !== poolName.toLowerCase()))}
+                className="h-4 w-4 shrink-0 accent-[var(--accent)]"
+              />
+              <span className="break-all">{poolName}</span>
+            </label>
+          ))}
+          <span className="ml-auto text-xs tabular-nums text-[var(--text-muted)]">{selectedPoolNames.length} / {poolNames.length} selected</span>
+        </div>
+      </fieldset>}
+
       {loading && systems.length === 0 && <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">Loading systems…</p>}
       {error && <p className="px-5 py-10 text-center text-sm text-red-600">{error}</p>}
-      {!loading && !error && systems.length === 0 && <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">No systems found.</p>}
+      {!loading && !error && systems.length === 0 && <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">{selectedPoolNames.length ? "No systems found in the selected pools." : "Select at least one pool to show systems."}</p>}
       {systems.length > 0 && (
         <div className="max-h-[calc(100vh-12rem)] overflow-auto">
           <table className="w-full min-w-[720px] border-collapse text-left text-sm">

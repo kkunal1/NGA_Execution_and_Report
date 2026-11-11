@@ -2,13 +2,53 @@ import fs from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { config } from "./config";
+import { normalizeSuiteNames } from "./normalize";
 import { summarize } from "./summarize";
 import type { RunResult } from "./types";
 
 const LATEST = "latest.json";
+const PROFILE_LATEST: Record<ExecutionProfile, string> = { b0: "latest-b0.json", b2: "latest-b2.json" };
 const ABORTED_LATEST = "aborted-latest.json";
 const SAFE_ID = /^[A-Za-z0-9_-]+$/;
 const RUN_FILE = /^(?:\d{17}|\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-\d{3}Z)\.json$/;
+export type ExecutionProfile = "b0" | "b2";
+
+function profileRun(run: RunResult | null, profile: ExecutionProfile): RunResult | null {
+  if (!run) return null;
+  const rows = run.rows.filter((row) => new RegExp(`_B${profile.slice(1)}_`, "i").test(row.suite));
+  if (!rows.length) return null;
+  const suiteNames = normalizeSuiteNames(rows.map((row) => row.suite));
+  return {
+    ...run,
+    meta: {
+      ...run.meta,
+      filter: { ...run.meta.filter, value: suiteNames.join("\n") },
+      reportedTotal: rows.length,
+      sampleRecord: rows[0]?.raw ?? null,
+    },
+    rows,
+    summary: summarize(rows),
+  };
+}
+
+async function loadProfileLatestFile(profile: ExecutionProfile): Promise<RunResult | null> {
+  try {
+    const body = await fs.readFile(path.join(config.dataDir, PROFILE_LATEST[profile]), "utf8");
+    return refreshLegacyBucketSummary(JSON.parse(body) as RunResult);
+  } catch {
+    return null;
+  }
+}
+
+async function saveProfileLatest(profile: ExecutionProfile, run: RunResult): Promise<void> {
+  const snapshot = profileRun(run, profile);
+  if (!snapshot) return;
+  const file = path.join(config.dataDir, PROFILE_LATEST[profile]);
+  const existing = await loadProfileLatestFile(profile);
+  const signature = (value: RunResult) => createHash("sha256").update(JSON.stringify(value.rows)).digest("hex");
+  if (existing && signature(existing) === signature(snapshot)) return;
+  await fs.writeFile(file, JSON.stringify(snapshot, null, 2), "utf8");
+}
 
 function refreshLegacyBucketSummary(run: RunResult): RunResult {
   const summary = run.summary as RunResult["summary"] & { bucketizedNoHsd?: number };
@@ -37,11 +77,12 @@ export async function saveLatestIfChanged(run: RunResult): Promise<{ changed: bo
   await fs.mkdir(config.dataDir, { recursive: true });
   const existing = await loadLatest();
   const signature = (value: RunResult) => createHash("sha256").update(JSON.stringify(value.rows)).digest("hex");
-  if (existing && signature(existing) === signature(run)) {
-    return { changed: false, run: existing, version: await getLatestVersion() };
+  const changed = !existing || signature(existing) !== signature(run);
+  if (changed) {
+    await fs.writeFile(path.join(config.dataDir, LATEST), JSON.stringify(run, null, 2), "utf8");
   }
-  await fs.writeFile(path.join(config.dataDir, LATEST), JSON.stringify(run, null, 2), "utf8");
-  return { changed: true, run, version: await getLatestVersion() };
+  await Promise.all((Object.keys(PROFILE_LATEST) as ExecutionProfile[]).map((profile) => saveProfileLatest(profile, run)));
+  return { changed, run: changed ? run : existing, version: await getLatestVersion() };
 }
 
 export async function getLatestVersion(): Promise<string | null> {
@@ -51,6 +92,24 @@ export async function getLatestVersion(): Promise<string | null> {
   } catch {
     return null;
   }
+}
+
+export async function getLatestVersionForProfile(profile: ExecutionProfile): Promise<string | null> {
+  try {
+    const stat = await fs.stat(path.join(config.dataDir, PROFILE_LATEST[profile]));
+    return `${stat.mtimeMs}:${stat.size}`;
+  } catch {
+    return profileRun(await loadLatest(), profile) ? getLatestVersion() : null;
+  }
+}
+
+export async function loadLatestForProfile(profile: ExecutionProfile): Promise<RunResult | null> {
+  const saved = await loadProfileLatestFile(profile);
+  if (saved) return saved;
+  const latest = await loadLatest();
+  const fallback = profileRun(latest, profile);
+  if (latest && fallback) await saveProfileLatest(profile, latest);
+  return fallback;
 }
 
 export async function loadAbortedSnapshot(): Promise<AbortedSnapshot | null> {

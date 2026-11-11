@@ -8,15 +8,25 @@ const MOCK_PORT = 4322;
 const APP_PORT = 3124;
 const SUITE = "Custom_QA_Suite_Not_The_Default";
 const SECOND_SUITE = "Second_QA_Suite";
+const B0_SUITE = "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B0_P1_Tests_Cycle";
+const B0_SECOND_SUITE = "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B0_P2_Tests_Cycle";
+const B2_SUITE = "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B2_P1_Tests_Cycle";
+const B2_SECOND_SUITE = "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B2_P2_Tests_Cycle";
 const records = [
   { testRunId: "run-1", udmTestId: "test-1", state: "Passed", testLineRevision: { testLineName: "line-a", testSuiteName: SUITE } },
   { testRunId: "run-2", udmTestId: "test-2", state: "Failed", testLineRevision: { testLineName: "line-a", testSuiteName: SUITE } },
   { testRunId: "run-3", udmTestId: "test-3", state: "Infra Error", testLineRevision: { testLineName: "line-b", testSuiteName: SUITE } },
   { testRunId: "run-4", udmTestId: "test-4", state: "Passed", testLineRevision: { testLineName: "line-c", testSuiteName: SECOND_SUITE } },
+  { testRunId: "run-b0", udmTestId: "test-b0", state: "Passed", testLineRevision: { testLineName: "line-b0", testSuiteName: B0_SUITE } },
+  { testRunId: "run-b0-p2", udmTestId: "test-b0-p2", state: "Passed", testLineRevision: { testLineName: "line-b0-p2", testSuiteName: B0_SECOND_SUITE } },
+  { testRunId: "run-b2", udmTestId: "test-b2", state: "Failed", testLineRevision: { testLineName: "line-b2", testSuiteName: B2_SUITE } },
+  { testRunId: "run-b2-p2", udmTestId: "test-b2-p2", state: "Failed", testLineRevision: { testLineName: "line-b2-p2", testSuiteName: B2_SECOND_SUITE } },
 ];
 const abortedRecords = [
   { testRunId: "abort-1", state: "Aborted", testLineRevision: { testLineName: "line-a", testSuiteName: SUITE } },
   { testRunId: "abort-2", state: "Aborted", testLineRevision: { testLineName: "line-c", testSuiteName: SECOND_SUITE } },
+  { testRunId: "abort-b0-p1", state: "Aborted", testLineRevision: { testLineName: "line-b0-p1", testSuiteName: B0_SUITE } },
+  { testRunId: "abort-b0-p2", state: "Aborted", testLineRevision: { testLineName: "line-b0-p2", testSuiteName: B0_SECOND_SUITE } },
 ];
 let sentGraphMessage;
 let graphMailSendCount = 0;
@@ -61,7 +71,7 @@ const mock = http.createServer((req, res) => {
   const skip = Number(url.searchParams.get("$skip") ?? "0");
   const isAbortedQuery = filter.includes("State eq 'Aborted'");
   const patPresent = req.headers["x-nga-pat"] === "test-token";
-  const matchedSuite = [SUITE, SECOND_SUITE].find((suite) =>
+  const matchedSuite = [SUITE, SECOND_SUITE, B0_SUITE, B0_SECOND_SUITE, B2_SUITE, B2_SECOND_SUITE].find((suite) =>
     filter.includes(`tolower(TestLine/TestSuite/TestSuiteName) eq '${suite.toLowerCase()}'`) &&
     filter.includes(`tolower(TestLineRevision/TestSuite/testSuiteName) eq '${suite.toLowerCase()}'`),
   );
@@ -194,6 +204,26 @@ try {
   assert.equal(unchangedRefresh.changed, false, "unchanged rows should not rewrite the shared snapshot");
   const latest = await (await fetch(`http://localhost:${APP_PORT}/api/runs?latestOnly=1`, { headers: { cookie } })).json();
   assert.equal(latest.run.summary.tests, 4, "viewers can load the persisted shared snapshot");
+  const saveProfile = async (suiteName) => {
+    const profileSave = await fetch(`http://localhost:${APP_PORT}/api/test-run-data`, {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ suiteNames: [suiteName], persist: true }),
+    });
+    assert.equal(profileSave.status, 200, `admin can persist ${suiteName}`);
+  };
+  await saveProfile(B0_SUITE);
+  await fs.rm(".e2e-ngai-data/latest-b0.json");
+  const legacyB0 = await (await fetch(`http://localhost:${APP_PORT}/api/runs?latestOnly=1&profile=b0`, { headers: { cookie: viewerCookie } })).json();
+  assert.deepEqual(legacyB0.run.rows.map((row) => row.suite), [B0_SUITE], "a matching legacy snapshot is migrated for existing deployments");
+  await saveProfile(B2_SUITE);
+  const [b0Snapshot, b2Snapshot] = await Promise.all(["b0", "b2"].map(async (profile) => {
+    const response = await fetch(`http://localhost:${APP_PORT}/api/runs?latestOnly=1&profile=${profile}`, { headers: { cookie: viewerCookie } });
+    assert.equal(response.status, 200, `viewer can load the shared ${profile.toUpperCase()} snapshot`);
+    return response.json();
+  }));
+  assert.deepEqual(b0Snapshot.run.rows.map((row) => row.suite), [B0_SUITE], "B0 snapshot remains available after B2 is saved");
+  assert.deepEqual(b2Snapshot.run.rows.map((row) => row.suite), [B2_SUITE], "B2 snapshot remains available after B0 and B2 are saved");
 
   const mailConfig = await fetch(`http://localhost:${APP_PORT}/api/settings/mail`, {
     method: "PUT",
@@ -258,7 +288,7 @@ try {
     }
   }, { timeout: 25_000 });
   const automaticRequest = await autoRefreshRequest;
-  assert.deepEqual(JSON.parse(automaticRequest.postData() ?? "{}").suiteNames, [SUITE, SECOND_SUITE]);
+  assert.deepEqual(JSON.parse(automaticRequest.postData() ?? "{}").suiteNames, [B0_SUITE, B0_SECOND_SUITE]);
   await page.getByRole("button", { name: "Sign out" }).click();
   await page.getByLabel("Username").fill("root");
   await page.getByLabel("Password").fill("root");

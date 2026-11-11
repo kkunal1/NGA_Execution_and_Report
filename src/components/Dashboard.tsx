@@ -155,7 +155,11 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
   }, [testDetailsOpen]);
 
   const load = useCallback(async (runId?: string) => {
-    const res = await fetch(`/api/runs${runId ? `?runId=${runId}` : ""}`);
+    const params = new URLSearchParams();
+    if (runId) params.set("runId", runId);
+    else if (provider === "ngai") params.set("profile", profile);
+    const query = params.toString();
+    const res = await fetch(`/api/runs${query ? `?${query}` : ""}`);
     const data = (await res.json()) as { run: RunResult | null; runs: string[]; version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
     setRuns(data.runs);
     const restoredRun = restoredNgaiRef.current?.run;
@@ -169,7 +173,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     setNextRefreshAt(data.nextRefreshAt);
     setRefreshIntervalSeconds(data.intervalSeconds);
     setPersisted(selectedRun ? selectedRun.meta.source !== "network" : false);
-  }, [cacheProfileRun, profile]);
+  }, [cacheProfileRun, profile, provider]);
 
   useEffect(() => {
     try {
@@ -395,19 +399,19 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
   }, [setSharedRefreshSchedule, nextRefreshAt, refreshIntervalSeconds]);
 
   useEffect(() => {
-    if (!latestVersion) return;
     let checking = false;
     const checkForUpdate = async () => {
       if (checking) return;
       checking = true;
       try {
-        const checkResponse = await fetch("/api/runs?checkOnly=1", { cache: "no-store" });
+        const profileQuery = provider === "ngai" ? `&profile=${profile}` : "";
+        const checkResponse = await fetch(`/api/runs?checkOnly=1${profileQuery}`, { cache: "no-store" });
         if (!checkResponse.ok) return;
         const check = (await checkResponse.json()) as { version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
         setNextRefreshAt(check.nextRefreshAt);
         setRefreshIntervalSeconds(check.intervalSeconds);
         if (!check.version || check.version === latestVersion) return;
-        const latestResponse = await fetch("/api/runs?latestOnly=1", { cache: "no-store" });
+        const latestResponse = await fetch(`/api/runs?latestOnly=1${profileQuery}`, { cache: "no-store" });
         if (!latestResponse.ok) return;
         const data = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
         if (runMatchesProfile(data.run, profile)) {
@@ -425,7 +429,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     };
     const timer = window.setInterval(() => void checkForUpdate(), 5000);
     return () => window.clearInterval(timer);
-  }, [cacheProfileRun, latestVersion, profile]);
+  }, [cacheProfileRun, latestVersion, profile, provider]);
 
   useEffect(() => {
     if (!isAdmin || refreshIntervalSeconds === 0 || run?.meta.stateColumn !== "State" || autoRefreshSuites.length === 0) return;
@@ -454,7 +458,8 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
         setLatestVersion(result.version ?? null);
         setNextRefreshAt(result.nextRefreshAt ?? null);
         if (result.changed) {
-          const latestResponse = await fetch("/api/runs?latestOnly=1", { cache: "no-store" });
+          const profileQuery = provider === "ngai" ? `&profile=${profile}` : "";
+          const latestResponse = await fetch(`/api/runs?latestOnly=1${profileQuery}`, { cache: "no-store" });
           if (latestResponse.ok) {
             const latest = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null };
             if (runMatchesProfile(latest.run, profile)) {
@@ -501,7 +506,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [cacheProfileRun, isAdmin, profile, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
+  }, [cacheProfileRun, isAdmin, profile, provider, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
 
   const availableSuites = useMemo(() => run
     ? normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])

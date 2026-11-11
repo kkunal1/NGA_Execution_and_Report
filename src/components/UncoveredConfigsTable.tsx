@@ -2,26 +2,44 @@
 
 import { useEffect, useState } from "react";
 import type { UncoveredConfig } from "@/lib/pool-systems";
-import type { ConfigCoverageSuite } from "@/lib/config-coverage-settings";
+import type { ConfigCoverageMapping } from "@/lib/config-coverage-settings";
 
-export default function UncoveredConfigsTable() {
+export default function UncoveredConfigsTable({ selectedPoolNames }: { selectedPoolNames: string[] }) {
   const [configs, setConfigs] = useState<UncoveredConfig[]>([]);
+  const [mappings, setMappings] = useState<ConfigCoverageMapping[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [suites, setSuites] = useState<ConfigCoverageSuite[]>([]);
   const [poolNames, setPoolNames] = useState<string[]>([]);
+  const [unmappedPoolNames, setUnmappedPoolNames] = useState<string[]>([]);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
+      if (!selectedPoolNames.length) {
+        setConfigs([]);
+        setMappings([]);
+        setPoolNames([]);
+        setUnmappedPoolNames([]);
+        setLoading(false);
+        return;
+      }
+      setConfigs([]);
+      setMappings([]);
+      setPoolNames([]);
+      setUnmappedPoolNames([]);
+      setError(null);
+      setLoading(true);
       try {
-        const response = await fetch("/api/pool-systems/uncovered-configs", { cache: "no-store" });
-        const data = (await response.json()) as { configs?: UncoveredConfig[]; suites?: ConfigCoverageSuite[]; poolNames?: string[]; error?: string };
+        const query = new URLSearchParams();
+        selectedPoolNames.forEach((poolName) => query.append("poolName", poolName));
+        const response = await fetch(`/api/pool-systems/uncovered-configs?${query}`, { cache: "no-store" });
+        const data = (await response.json()) as { configs?: UncoveredConfig[]; mappings?: ConfigCoverageMapping[]; poolNames?: string[]; unmappedPoolNames?: string[]; error?: string };
         if (!response.ok) throw new Error(data.error ?? "Could not load config coverage.");
         if (!cancelled) {
           setConfigs(data.configs ?? []);
-          setSuites(data.suites ?? []);
+          setMappings(data.mappings ?? []);
           setPoolNames(data.poolNames ?? []);
+          setUnmappedPoolNames(data.unmappedPoolNames ?? []);
           setError(null);
         }
       } catch (cause) {
@@ -37,17 +55,17 @@ export default function UncoveredConfigsTable() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [selectedPoolNames]);
 
   const totals = configs.reduce(
     (sum, row) => {
       sum.testLines += row.testLines;
-      for (const suite of suites) {
-        sum.suiteCounts[suite.suiteName] += row.suiteCounts[suite.suiteName] ?? 0;
+      for (const mapping of mappings) {
+        sum.mappingCounts[mapping.poolAlias] += row.mappingCounts[mapping.poolAlias] ?? 0;
       }
       return sum;
     },
-    { testLines: 0, suiteCounts: Object.fromEntries(suites.map((suite) => [suite.suiteName, 0])) as Record<string, number> },
+    { testLines: 0, mappingCounts: Object.fromEntries(mappings.map((mapping) => [mapping.poolAlias, 0])) as Record<string, number> },
   );
 
   return (
@@ -56,7 +74,7 @@ export default function UncoveredConfigsTable() {
         <div>
           <h2 className="text-lg font-semibold text-[var(--text)]">Configs Without Systems</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            {suites.map((suite) => suite.label).join(" + ") || "No suites configured"} configs without primary or current secondary systems in {poolNames.join(", ") || "configured pools"}
+            {mappings.map((mapping) => `${mapping.poolAlias} (${mapping.poolName})`).join(" · ") || "Pool-specific suite mappings"} · configs without primary or current secondary systems in {poolNames.join(", ") || "selected pools"}
           </p>
         </div>
         <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold tabular-nums text-red-700">
@@ -66,8 +84,17 @@ export default function UncoveredConfigsTable() {
 
       {loading && configs.length === 0 && <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">Loading configs…</p>}
       {error && <p className="px-5 py-10 text-center text-sm text-red-600">{error}</p>}
-      {!loading && !error && configs.length === 0 && (
-        <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">Every config has at least one system assigned.</p>
+      {!loading && !error && selectedPoolNames.length === 0 && (
+        <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">Select a pool above to see its configs without systems.</p>
+      )}
+      {!loading && !error && unmappedPoolNames.length > 0 && (
+        <p className="px-5 py-4 text-sm text-amber-700">No suite mapping configured for: {unmappedPoolNames.join(", ")}</p>
+      )}
+      {!loading && !error && selectedPoolNames.length > 0 && mappings.length === 0 && unmappedPoolNames.length === 0 && (
+        <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">No coverage mappings match the selected pools.</p>
+      )}
+      {!loading && !error && mappings.length > 0 && configs.length === 0 && (
+        <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">Every mapped config has a system assigned in its pool.</p>
       )}
       {configs.length > 0 && (
         <div className="overflow-auto">
@@ -76,8 +103,8 @@ export default function UncoveredConfigsTable() {
               <tr>
                 <th className="px-5 py-3 font-semibold">Configuration</th>
                 <th className="px-5 py-3 font-semibold">Domain</th>
-                <th className="px-5 py-3 font-semibold">Test count</th>
-                {suites.map((suite) => <th key={suite.suiteName} className="px-5 py-3 font-semibold">{suite.label}</th>)}
+                <th className="px-5 py-3 font-semibold">Uncovered test lines</th>
+                {mappings.map((mapping) => <th key={mapping.poolAlias} title={`${mapping.poolName} → ${mapping.suiteName}`} className="px-5 py-3 font-semibold">{mapping.poolAlias}</th>)}
                 <th className="px-5 py-3 font-semibold">System</th>
               </tr>
             </thead>
@@ -96,7 +123,7 @@ export default function UncoveredConfigsTable() {
                     </div>
                   </td>
                   <td className="px-5 py-2 tabular-nums text-[var(--text)]">{row.testLines}</td>
-                  {suites.map((suite) => <td key={suite.suiteName} className="px-5 py-2 tabular-nums text-[var(--text-muted)]">{row.suiteCounts[suite.suiteName] ?? 0}</td>)}
+                  {mappings.map((mapping) => <td key={mapping.poolAlias} className="px-5 py-2 tabular-nums text-[var(--text-muted)]">{row.mappingCounts[mapping.poolAlias] ?? 0}</td>)}
                   <td className="px-5 py-2">
                     <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">No System Assigned</span>
                   </td>
@@ -106,7 +133,7 @@ export default function UncoveredConfigsTable() {
                 <td className="px-5 py-2">Total</td>
                 <td className="px-5 py-2" />
                 <td className="px-5 py-2 tabular-nums">{totals.testLines}</td>
-                {suites.map((suite) => <td key={suite.suiteName} className="px-5 py-2 tabular-nums">{totals.suiteCounts[suite.suiteName]}</td>)}
+                {mappings.map((mapping) => <td key={mapping.poolAlias} className="px-5 py-2 tabular-nums">{totals.mappingCounts[mapping.poolAlias]}</td>)}
                 <td className="px-5 py-2" />
               </tr>
             </tbody>

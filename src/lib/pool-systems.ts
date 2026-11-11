@@ -2,7 +2,7 @@ import { request as undiciRequest } from "undici";
 import { config } from "./config";
 import { getNgaiApiToken } from "./ngai-token";
 import { getPoolSystemSettings } from "./pool-system-settings";
-import { getConfigCoverageSettings, type ConfigCoverageSuite } from "./config-coverage-settings";
+import { getConfigCoverageSettings, type ConfigCoverageMapping } from "./config-coverage-settings";
 import { resolveDispatcher } from "./proxy";
 export { B0_SUITES, B2_SUITES } from "./execution-suites";
 
@@ -63,14 +63,45 @@ export type UncoveredConfig = {
   config: string;
   domains: { domain: string; testLines: number }[];
   testLines: number;
-  suiteCounts: Record<string, number>;
+  mappingCounts: Record<string, number>;
 };
 
 export type UncoveredConfigResult = {
   configs: UncoveredConfig[];
-  suites: ConfigCoverageSuite[];
+  mappings: ConfigCoverageMapping[];
   poolNames: string[];
+  unmappedPoolNames: string[];
 };
+
+export type ConfigCoverageMappingResult = {
+  mapping: ConfigCoverageMapping;
+  lines: { config: string; domain: string }[];
+  covered: Set<string>;
+};
+
+export function aggregateUncoveredConfigs(mappingResults: ConfigCoverageMappingResult[]): UncoveredConfig[] {
+  const mappings = mappingResults.map((result) => result.mapping);
+  const byConfig = new Map<string, UncoveredConfig>();
+  for (const result of mappingResults) {
+    for (const line of result.lines) {
+      if (result.covered.has(line.config)) continue;
+      const entry = byConfig.get(line.config) ?? {
+        config: line.config,
+        domains: [],
+        testLines: 0,
+        mappingCounts: Object.fromEntries(mappings.map((mapping) => [mapping.poolAlias, 0])),
+      };
+      entry.testLines += 1;
+      entry.mappingCounts[result.mapping.poolAlias] += 1;
+      const domain = entry.domains.find((candidate) => candidate.domain === line.domain);
+      if (domain) domain.testLines += 1;
+      else entry.domains.push({ domain: line.domain, testLines: 1 });
+      byConfig.set(line.config, entry);
+    }
+  }
+  for (const entry of byConfig.values()) entry.domains.sort((left, right) => right.testLines - left.testLines);
+  return [...byConfig.values()].sort((left, right) => right.testLines - left.testLines || left.config.localeCompare(right.config));
+}
 
 type ConfigRef = { configName?: unknown } | null | undefined;
 
@@ -166,33 +197,26 @@ async function fetchPoolCoveredConfigs(poolNames: string[]) {
   return covered;
 }
 
-export async function fetchUncoveredConfigs(): Promise<UncoveredConfigResult> {
-  const [{ poolNames }, { suites }] = await Promise.all([getPoolSystemSettings(), getConfigCoverageSettings()]);
-  const [suiteLines, covered] = await Promise.all([
-    Promise.all(suites.map((suite) => fetchSuiteConfigs(suite.suiteName))),
-    fetchPoolCoveredConfigs(poolNames),
-  ]);
-  const byConfig = new Map<string, UncoveredConfig>();
-  const add = (line: { config: string; domain: string }, suiteName: string) => {
-    if (covered.has(line.config)) return;
-    const entry = byConfig.get(line.config) ?? {
-      config: line.config,
-      domains: [],
-      testLines: 0,
-      suiteCounts: Object.fromEntries(suites.map((suite) => [suite.suiteName, 0])),
-    };
-    entry.testLines += 1;
-    entry.suiteCounts[suiteName] += 1;
-    const domain = entry.domains.find((d) => d.domain === line.domain);
-    if (domain) domain.testLines += 1;
-    else entry.domains.push({ domain: line.domain, testLines: 1 });
-    byConfig.set(line.config, entry);
-  };
-  suiteLines.forEach((lines, index) => lines.forEach((line) => add(line, suites[index].suiteName)));
-  for (const entry of byConfig.values()) entry.domains.sort((a, b) => b.testLines - a.testLines);
+export async function fetchUncoveredConfigs(selectedPoolNames: string[] = []): Promise<UncoveredConfigResult> {
+  const [{ poolNames: configuredPoolNames }, { mappings }] = await Promise.all([getPoolSystemSettings(), getConfigCoverageSettings()]);
+  const requestedPoolKeys = new Set(selectedPoolNames.map((name) => name.toLowerCase()));
+  const poolNames = selectedPoolNames.length
+    ? configuredPoolNames.filter((name) => requestedPoolKeys.has(name.toLowerCase()))
+    : [];
+  const activeMappings = mappings.filter((mapping) => poolNames.some((name) => name.toLowerCase() === mapping.poolName.toLowerCase()));
+  const mappedPoolKeys = new Set(activeMappings.map((mapping) => mapping.poolName.toLowerCase()));
+  const unmappedPoolNames = poolNames.filter((name) => !mappedPoolKeys.has(name.toLowerCase()));
+  const mappingResults = await Promise.all(activeMappings.map(async (mapping) => {
+    const [lines, covered] = await Promise.all([
+      fetchSuiteConfigs(mapping.suiteName),
+      fetchPoolCoveredConfigs([mapping.poolName]),
+    ]);
+    return { mapping, lines, covered };
+  }));
   return {
-    configs: [...byConfig.values()].sort((a, b) => b.testLines - a.testLines || a.config.localeCompare(b.config)),
-    suites,
+    configs: aggregateUncoveredConfigs(mappingResults),
+    mappings: activeMappings,
     poolNames,
+    unmappedPoolNames,
   };
 }

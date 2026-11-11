@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Download as DownloadIcon } from "lucide-react";
 import type { PoolSystem, UncoveredConfig } from "@/lib/pool-systems";
-import type { ConfigCoverageSuite } from "@/lib/config-coverage-settings";
+import type { ConfigCoverageMapping } from "@/lib/config-coverage-settings";
 import { isRunning, splitConfig } from "./PoolSystemsTable";
 
 const esc = (value: string | number) =>
@@ -11,7 +11,7 @@ const esc = (value: string | number) =>
 
 const isFlagged = (value: string) => Boolean(value) && value.toLowerCase() !== "execution";
 
-function buildHtml(systems: PoolSystem[], configs: UncoveredConfig[], suites: ConfigCoverageSuite[], poolNames: string[], coveragePoolNames: string[]) {
+function buildHtml(systems: PoolSystem[], configs: UncoveredConfig[], mappings: ConfigCoverageMapping[], poolNames: string[], unmappedPoolNames: string[]) {
   const groups = new Map<string, PoolSystem[]>();
   for (const system of systems) {
     const { base } = splitConfig(system.config);
@@ -38,25 +38,24 @@ function buildHtml(systems: PoolSystem[], configs: UncoveredConfig[], suites: Co
     )
     .join("");
 
-  const totals = { testLines: 0, suiteCounts: Object.fromEntries(suites.map((suite) => [suite.suiteName, 0])) as Record<string, number> };
+  const totals = { testLines: 0, mappingCounts: Object.fromEntries(mappings.map((mapping) => [mapping.poolAlias, 0])) as Record<string, number> };
   for (const config of configs) {
     totals.testLines += config.testLines;
-    for (const suite of suites) totals.suiteCounts[suite.suiteName] += config.suiteCounts[suite.suiteName] ?? 0;
+    for (const mapping of mappings) totals.mappingCounts[mapping.poolAlias] += config.mappingCounts[mapping.poolAlias] ?? 0;
   }
   const configRows = configs
     .map(
       (r) => `<tr>
         <td><b>${esc(r.config)}</b></td>
         <td>${r.domains.map((d) => `${esc(d.domain)}${r.domains.length > 1 ? ` <span class="muted">(${d.testLines})</span>` : ""}`).join("<br>")}</td>
-        <td>${r.testLines}</td>${suites.map((suite) => `<td>${r.suiteCounts[suite.suiteName] ?? 0}</td>`).join("")}
+        <td>${r.testLines}</td>${mappings.map((mapping) => `<td>${r.mappingCounts[mapping.poolAlias] ?? 0}</td>`).join("")}
         <td><span class="badge none">No System Assigned</span></td>
       </tr>`,
     )
     .join("");
-  const suiteHeaders = suites.map((suite) => `<th>${esc(suite.label)}</th>`).join("");
-  const totalSuiteCells = suites.map((suite) => `<td>${totals.suiteCounts[suite.suiteName]}</td>`).join("");
-  const coveragePoolLabel = coveragePoolNames.map(esc).join(", ") || "configured pools";
-  const suiteLabel = suites.map((suite) => esc(suite.label)).join(" + ") || "No suites configured";
+  const mappingHeaders = mappings.map((mapping) => `<th title="${esc(`${mapping.poolName} → ${mapping.suiteName}`)}">${esc(mapping.poolAlias)}</th>`).join("");
+  const totalMappingCells = mappings.map((mapping) => `<td>${totals.mappingCounts[mapping.poolAlias]}</td>`).join("");
+  const mappingLabel = mappings.map((mapping) => `${esc(mapping.poolAlias)} (${esc(mapping.poolName)})`).join(" · ") || "No mappings for selected pools";
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>All Execution Systems</title>
@@ -84,10 +83,11 @@ tr.group td{border-top:2px solid #cbd5e1}td.cfg{background:#f8fafc;border-right:
 </section>
 <section>
   <h2>Configs Without Systems</h2>
-  <p class="sub">${suiteLabel} configs without primary or current secondary systems in ${coveragePoolLabel}</p>
-  <table><thead><tr><th>Configuration</th><th>Domain</th><th>Test count</th>${suiteHeaders}<th>System</th></tr></thead>
-  <tbody>${configRows || `<tr><td colspan="${4 + suites.length}" class="muted">Every config has at least one system assigned.</td></tr>`}</tbody>
-  ${configs.length ? `<tfoot><tr><td>Total</td><td></td><td>${totals.testLines}</td>${totalSuiteCells}<td></td></tr></tfoot>` : ""}</table>
+  <p class="sub">${mappingLabel} · configs without primary or current secondary systems</p>
+  ${unmappedPoolNames.length ? `<p class="warn">No suite mapping configured for: ${unmappedPoolNames.map(esc).join(", ")}</p>` : ""}
+  <table><thead><tr><th>Configuration</th><th>Domain</th><th>Uncovered test lines</th>${mappingHeaders}<th>System</th></tr></thead>
+  <tbody>${configRows || `<tr><td colspan="${4 + mappings.length}" class="muted">${mappings.length ? "Every mapped config has a system assigned in its pool." : "No coverage mappings for selected pools."}</td></tr>`}</tbody>
+  ${configs.length ? `<tfoot><tr><td>Total</td><td></td><td>${totals.testLines}</td>${totalMappingCells}<td></td></tr></tfoot>` : ""}</table>
 </section>
 </body></html>`;
 }
@@ -102,16 +102,18 @@ export default function PoolSystemsDownload({ poolNames }: { poolNames: string[]
     try {
       const systemsQuery = new URLSearchParams({ filterPools: "1" });
       poolNames.forEach((poolName) => systemsQuery.append("poolName", poolName));
+      const coverageQuery = new URLSearchParams();
+      poolNames.forEach((poolName) => coverageQuery.append("poolName", poolName));
       const [systemsRes, configsRes] = await Promise.all([
         fetch(`/api/pool-systems?${systemsQuery.toString()}`, { cache: "no-store" }),
-        fetch("/api/pool-systems/uncovered-configs", { cache: "no-store" }),
+        fetch(`/api/pool-systems/uncovered-configs?${coverageQuery.toString()}`, { cache: "no-store" }),
       ]);
       const systemsData = (await systemsRes.json()) as { systems?: PoolSystem[]; error?: string };
-      const configsData = (await configsRes.json()) as { configs?: UncoveredConfig[]; suites?: ConfigCoverageSuite[]; poolNames?: string[]; error?: string };
+      const configsData = (await configsRes.json()) as { configs?: UncoveredConfig[]; mappings?: ConfigCoverageMapping[]; unmappedPoolNames?: string[]; error?: string };
       if (!systemsRes.ok) throw new Error(systemsData.error ?? "Could not load pool systems.");
       if (!configsRes.ok) throw new Error(configsData.error ?? "Could not load config coverage.");
 
-      const blob = new Blob([buildHtml(systemsData.systems ?? [], configsData.configs ?? [], configsData.suites ?? [], poolNames, configsData.poolNames ?? [])], { type: "text/html" });
+      const blob = new Blob([buildHtml(systemsData.systems ?? [], configsData.configs ?? [], configsData.mappings ?? [], poolNames, configsData.unmappedPoolNames ?? [])], { type: "text/html" });
       const url = URL.createObjectURL(blob);
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, "0");

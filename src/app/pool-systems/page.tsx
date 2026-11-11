@@ -11,7 +11,7 @@ export default function PoolSystemsPage() {
     <div className="mx-auto max-w-7xl">
       <PoolSystemsDownload poolNames={selectedPoolNames} />
       <PoolSystemsTable onSelectedPoolNamesChange={setSelectedPoolNames} />
-      <UncoveredConfigsTable />
+      <UncoveredConfigsTable selectedPoolNames={selectedPoolNames} />
     </div>
   );
 }

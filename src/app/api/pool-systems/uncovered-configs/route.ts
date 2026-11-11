@@ -10,7 +10,7 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    return NextResponse.json({ configs: await fetchUncoveredConfigs() });
+    return NextResponse.json(await fetchUncoveredConfigs());
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not load config coverage." },

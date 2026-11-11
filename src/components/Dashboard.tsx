@@ -8,7 +8,7 @@ import { summarize } from "@/lib/summarize";
 import { DATA_PROVIDER_KEY, readNgaiNetworkOverride, type DataProvider } from "@/lib/provider";
 import { THEME_KEY } from "@/lib/theme";
 import { buildReportFilename } from "@/lib/report-html";
-import { B0_SUITES, B2_SUITES } from "@/lib/execution-suites";
+import { B0_SUITES, B2_SUITES, isSuiteSelectedForProfile, type ExecutionProfile } from "@/lib/execution-suites";
 import { useAppRole } from "@/components/auth-context";
 import { useRefreshSchedule } from "@/components/refresh-context";
 
@@ -16,7 +16,6 @@ const SUITE_INPUT_KEY = "nga-suite-name-input";
 const NGAI_RUN_KEY = "nga-ngai-last-run";
 const NGAI_ABORTED_KEY = "nga-ngai-aborted-cache";
 const LATEST_EXECUTED_DISPLAY_LIMIT = 100;
-type ExecutionProfile = "b0" | "b2";
 const DEFAULT_PROFILE_SUITES: Record<ExecutionProfile, string[]> = {
   b0: [B0_SUITES.P1, B0_SUITES.P2],
   b2: [B2_SUITES.P1, B2_SUITES.P2],
@@ -33,8 +32,7 @@ function runMatchesProfile(run: RunResult | null | undefined, profile: Execution
 }
 
 function filterAbortedRowsForSuites(rows: TestRow[], suites: string[], profile: ExecutionProfile) {
-  const suiteKeys = new Set(normalizeSuiteNames(suites).map((suite) => suite.toLowerCase()));
-  return rows.filter((row) => suiteMatchesProfile(row.suite, profile) && suiteKeys.has(row.suite.trim().toLowerCase()));
+  return rows.filter((row) => suiteMatchesProfile(row.suite, profile) && isSuiteSelectedForProfile(row.suite, suites, profile));
 }
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
@@ -629,7 +627,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     const fromMs = abortFrom ? new Date(abortFrom).getTime() : null;
     const toMs = abortTo ? new Date(abortTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
     return domainResolvedAbortedRows.filter((r) => {
-      if (!suiteMatchesProfile(r.suite, profile) || !checkedSuiteKeys.has(r.suite.trim().toLowerCase())) return false;
+      if (!suiteMatchesProfile(r.suite, profile) || !isSuiteSelectedForProfile(r.suite, checkedDataSuites, profile)) return false;
       if (!fromMs && !toMs) return true;
       if (!r.date) return false;
       const ms = new Date(r.date).getTime();
@@ -638,7 +636,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       if (toMs != null && ms > toMs) return false;
       return true;
     });
-  }, [runHasSuite, domainResolvedAbortedRows, abortFrom, abortTo, checkedSuiteKeys, profile]);
+  }, [runHasSuite, domainResolvedAbortedRows, abortFrom, abortTo, checkedDataSuites, profile]);
 
   const visibleAbortedRows = useMemo(
     () => dashboardSettings.showManualAborts ? dateFilteredAbortedRows : dateFilteredAbortedRows.filter((row) => row.abortStep && row.abortStep !== "Aborted Manually"),

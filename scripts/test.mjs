@@ -18,6 +18,7 @@ import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsde
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
+import { B0_SUITES, B2_SUITES, isSuiteSelectedForProfile } from "../src/lib/execution-suites.ts";
 import { buildReportFilename } from "../src/lib/report-filename.ts";
 import { renderReportHtml } from "../src/lib/report-html.ts";
 import { getDailyReportLabel, getISTDayRange, getWorkWeeks } from "../src/lib/work-weeks.ts";
@@ -109,6 +110,10 @@ assert.equal(formatValidationGroupName("pv_power_management"), "Power Management
 assert.equal(formatValidationGroupName("pv_memory"), "Memory");
 assert.equal(formatValidationGroupName("pv_serial_io"), "Serial IO");
 assert.equal(formatValidationGroupName("pv_ras"), "RAS");
+const legacyB2Suite = "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B2_Tests_Cycle";
+assert.equal(isSuiteSelectedForProfile(legacyB2Suite, [B2_SUITES.P2], "b2"), true, "legacy aggregate B2 aborts belong to the selected B2 profile");
+assert.equal(isSuiteSelectedForProfile(legacyB2Suite, [B0_SUITES.P2], "b0"), false, "legacy aggregate B2 aborts must not appear in B0");
+assert.equal(isSuiteSelectedForProfile(B2_SUITES.P2, [B2_SUITES.P2], "b2"), true, "exact suite selection remains supported");
 const multiSuiteFilename = buildReportFilename("Suite_One\nSuite_Two");
 assert.ok(!/[\r\n\t]/.test(multiSuiteFilename), "report filename must not contain control characters");
 assert.ok(multiSuiteFilename.startsWith("Suite_One_Suite_Two_"));

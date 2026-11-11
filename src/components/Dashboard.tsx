@@ -32,6 +32,11 @@ function runMatchesProfile(run: RunResult | null | undefined, profile: Execution
     .some((suite) => suiteMatchesProfile(suite, profile));
 }
 
+function filterAbortedRowsForSuites(rows: TestRow[], suites: string[], profile: ExecutionProfile) {
+  const suiteKeys = new Set(normalizeSuiteNames(suites).map((suite) => suite.toLowerCase()));
+  return rows.filter((row) => suiteMatchesProfile(row.suite, profile) && suiteKeys.has(row.suite.trim().toLowerCase()));
+}
+
 const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
 
 function Card({
@@ -189,7 +194,10 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     }
     try {
       const raw = window.sessionStorage.getItem(abortedCacheKey);
-      if (raw) setAbortedRows((JSON.parse(raw) as { suiteName: string; rows: TestRow[] }).rows);
+      if (raw) {
+        const cached = JSON.parse(raw) as { suiteName?: string; suiteNames?: string[]; rows: TestRow[] };
+        setAbortedRows(filterAbortedRowsForSuites(cached.rows, cached.suiteNames ?? cached.suiteName?.split("\n") ?? DEFAULT_PROFILE_SUITES[profile], profile));
+      }
     } catch {
       /* ignore corrupt cache */
     }
@@ -350,9 +358,9 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       });
       const data = (await res.json()) as { error?: string; rows?: TestRow[]; suiteNames?: string[] };
       if (!res.ok) throw new Error(data.error ?? "Could not load aborted tests");
-      const rows = data.rows ?? [];
+      const rows = filterAbortedRowsForSuites(data.rows ?? [], suites, profile);
       setAbortedRows(rows);
-      window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: data.suiteNames ?? suites, rows }));
+      window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: suites, rows }));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -370,9 +378,9 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
         if (!response.ok) return;
         const snapshot = (await response.json()) as { rows?: TestRow[]; suiteNames?: string[]; hasSnapshot?: boolean };
         if (cancelled) return;
-        const rows = snapshot.rows ?? [];
+        const rows = filterAbortedRowsForSuites(snapshot.rows ?? [], autoRefreshSuites, profile);
         setAbortedRows(rows);
-        window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: snapshot.suiteNames ?? [], rows }));
+        window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: autoRefreshSuites, rows }));
         const cachedSuites = new Set((snapshot.suiteNames ?? []).map((suite) => suite.toLowerCase()));
         if (isAdmin && (!snapshot.hasSnapshot || autoRefreshSuites.some((suite) => !cachedSuites.has(suite.toLowerCase())))) {
           await loadAbortedTests(autoRefreshSuites);
@@ -382,7 +390,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       }
     })();
     return () => { cancelled = true; };
-  }, [run?.meta.runId, run?.meta.stateColumn, isAdmin, autoRefreshSuites]);
+  }, [abortedCacheKey, run?.meta.runId, run?.meta.stateColumn, isAdmin, autoRefreshSuites, profile]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -476,7 +484,9 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
           });
           if (abortedResponse.ok) {
             const aborted = (await abortedResponse.json()) as { rows?: TestRow[] };
-            setAbortedRows(aborted.rows ?? []);
+            const rows = filterAbortedRowsForSuites(aborted.rows ?? [], autoRefreshSuites, profile);
+            setAbortedRows(rows);
+            window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: autoRefreshSuites, rows }));
           }
         }
       } catch (error) {
@@ -506,7 +516,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [cacheProfileRun, isAdmin, profile, provider, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
+  }, [abortedCacheKey, cacheProfileRun, isAdmin, profile, provider, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
 
   const availableSuites = useMemo(() => run
     ? normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])

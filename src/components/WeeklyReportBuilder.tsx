@@ -6,6 +6,7 @@ import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
 import { buildFailureProgress, weeklyReportYetToAttemptCount } from "@/lib/weekly-report-metrics";
 import { displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
+import { normalizeHsdesReportType } from "@/lib/hsdes-report-type";
 
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
 const percentage = (count: number, total: number) => total ? `${(count / total * 100).toFixed(1)}%` : "0%";
@@ -173,6 +174,7 @@ export default function WeeklyReportBuilder() {
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [hsdesDetailsLoading, setHsdesDetailsLoading] = useState(false);
   const [hsdesDetailsError, setHsdesDetailsError] = useState("");
+  const attemptedHsdDetailsRef = useRef(new Set<string>());
   const [hsdesDomainFilter, setHsdesDomainFilter] = useState("all");
   const [bucketizedHsdDomainFilter, setBucketizedHsdDomainFilter] = useState("all");
   const [bucketizedHsdReportTypeFilter, setBucketizedHsdReportTypeFilter] = useState<string[] | null>(null);
@@ -225,14 +227,18 @@ export default function WeeklyReportBuilder() {
       const title = report?.hsdFailureTitles?.[summary.hsdId] || issue?.title;
       const status = report?.hsdFailureStatuses?.[summary.hsdId] || issue?.status;
       const daysOpen = report?.hsdFailureDaysOpen?.[summary.hsdId] ?? issue?.daysOpen;
-      return !title || !status || status.trim().toLowerCase() === "unknown" || daysOpen == null;
+      const reportType = normalizeHsdesReportType(report?.hsdFailureReportTypes?.[summary.hsdId], issue?.reportType);
+      return !title || !status || status.trim().toLowerCase() === "unknown" || daysOpen == null || reportType === "Unknown";
     })
     .map((summary) => summary.hsdId);
   const missingHsdDetailsKey = [...new Set(missingHsdDetailsIds)].join("|");
 
   useEffect(() => {
-    const uniqueIds = [...new Set(missingHsdDetailsIds)];
+    const reportKey = reportLabel ?? "current-report";
+    const uniqueIds = [...new Set(missingHsdDetailsIds)]
+      .filter((id) => !attemptedHsdDetailsRef.current.has(`${reportKey}:${id}`));
     if (!report || !uniqueIds.length) return;
+    uniqueIds.forEach((id) => attemptedHsdDetailsRef.current.add(`${reportKey}:${id}`));
     let cancelled = false;
     const batches: string[][] = [];
     for (let index = 0; index < uniqueIds.length; index += 25) batches.push(uniqueIds.slice(index, index + 25));
@@ -558,7 +564,7 @@ export default function WeeklyReportBuilder() {
     return summary.domains.map(({ domain }) => ({
       id: summary.hsdId,
       domain,
-      reportType: report?.hsdFailureReportTypes?.[summary.hsdId] || issue?.reportType || "Unknown",
+      reportType: normalizeHsdesReportType(report?.hsdFailureReportTypes?.[summary.hsdId], issue?.reportType),
       title: report?.hsdFailureTitles?.[summary.hsdId] || issue?.title || (hsdesDetailsLoading ? "Loading…" : "Not found"),
       status: report?.hsdFailureStatuses?.[summary.hsdId] || issue?.status || (hsdesDetailsLoading ? "Loading…" : "Not found"),
       daysOpen: report?.hsdFailureDaysOpen?.[summary.hsdId] ?? issue?.daysOpen ?? null,

@@ -15,7 +15,7 @@ import { DEFAULT_CONFIG_COVERAGE_MAPPINGS, normalizeConfigCoverageMappings } fro
 import { DEFAULT_POOL_NAMES, normalizePoolNames, selectConfiguredPoolNames } from "../src/lib/pool-system-settings.ts";
 import { aggregateUncoveredConfigs, poolMembershipFilter } from "../src/lib/pool-systems.ts";
 import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
-import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, extractHsdesIssues, extractHsdesIssuesOlderThan } from "../src/lib/hsdes-sightings.ts";
+import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, extractHsdesIssues, extractHsdesIssuesOlderThan, normalizeHsdesReportType } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
@@ -437,6 +437,12 @@ assert.ok(bucketizedHsdTableStart >= 0 && bucketizedHsdTableStart < openHsdesTab
 const bucketizedHsdTableHtml = weeklyEmailHtml.slice(bucketizedHsdTableStart, openHsdesTableStart);
 assert.ok(bucketizedHsdTableHtml.includes("Bucketized Security title") && bucketizedHsdTableHtml.includes("Bucketized RAS title"));
 assert.ok(bucketizedHsdTableHtml.includes("Days open") && bucketizedHsdTableHtml.includes("15020010517") && bucketizedHsdTableHtml.includes("12"));
+const reportTypeFallbackHtml = renderWeeklyReportEmailHtml({
+  ...weeklyReport,
+  hsdFailureReportTypes: { ...weeklyReport.hsdFailureReportTypes, "15020010517": "Unknown" },
+  hsdesIssues: [...weeklyReport.hsdesIssues, { id: "15020010517", title: "Issue query title", reportType: "presighting", teamFound: "security_subsystem_validation", domain: "pv_security", status: "Open", daysOpen: 12 }],
+});
+assert.match(reportTypeFallbackHtml, /15020010517[\s\S]*?<\/td><td[^>]*>presighting<\/td>/, "a known issue-query report type wins over an Unknown article-detail fallback");
 assert.ok(weeklyEmailHtml.includes("16000000001") && weeklyEmailHtml.includes("Open issue title"), "email and attachment include open HSDES issues");
 assert.ok(!renderWeeklyReportEmailHtml({ ...weeklyReport, sectionVisibility: { ...DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, openHsdesIssues: false }, hsdesIssues: [{ id: "16000000001", title: "Open issue title", reportType: "presighting", teamFound: "memory_subsystem_validation", domain: "pv_memory", status: "Open", daysOpen: 4 }] }).includes("Open HSDES Issues by Domain"), "the open HSDES issue setting hides the section from email and attachment output");
 assert.match(weeklyEmailHtml, />HSDES ID<\/th><th[^>]*>Report Type<\/th><th[^>]*>Title<\/th>/, "open HSDES issues retain Report Type immediately after HSDES ID");
@@ -633,6 +639,10 @@ assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct sighting t
 assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "Direct HSD title" }] }), { title: "Direct HSD title", status: "Unknown", reportType: "Unknown", daysOpen: null });
 assert.deepEqual(extractHsdesArticleDetails({ data: [{ title: "SAF SoftLockup", status: "open", "bug.report_type": "sighting", days_open: 0 }] }), { title: "SAF SoftLockup", status: "open", reportType: "sighting", daysOpen: 0 });
 assert.equal(extractHsdesArticleDetails({ data: [{ title: "HSD", report_type: "Unknown", "bug.report_type": " presighting " }] })?.reportType, "presighting");
+assert.equal(extractHsdesArticleDetails({ data: [{ title: "Namespaced type", "sighting_central.sighting.report_type": "sighting" }] })?.reportType, "sighting");
+assert.equal(extractHsdesArticleDetails({ data: [{ title: "Nested type", report_type: { name: "test_request" } }] })?.reportType, "test_request");
+assert.equal(normalizeHsdesReportType("Unknown", "", { value: "presighting" }), "presighting");
+assert.equal(extractHsdesIssues([{ id: "namespaced-issue", "server_platf.bug.report_type": "sighting" }])[0].reportType, "sighting");
 assert.deepEqual(extractHsdesIssuesOlderThan(allIssueRecords).map(({ id }) => id), ["aged-security"]);
 const pagedIssueRecords = Array.from({ length: 20001 }, (_, index) => ({ id: `paged-${index + 1}` }));
 const pageStarts = [];

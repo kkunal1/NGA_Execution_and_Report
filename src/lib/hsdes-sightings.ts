@@ -1,13 +1,16 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { promisify } from "node:util";
+import { normalizeHsdesReportType, reportTypeFromRecord } from "./hsdes-report-type";
 import { normalizeWeeklyReportHsdesLink } from "./weekly-report-settings";
+export { normalizeHsdesReportType } from "./hsdes-report-type";
 
 const execFile = promisify(execFileCallback);
 const PAGE_SIZE = 1_000;
 const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
 
 type HsdesQueryRecord = {
+  [key: string]: unknown;
   id?: unknown;
   title?: unknown;
   status?: unknown;
@@ -81,7 +84,7 @@ export function extractHsdesIssues(records: unknown[]): HsdesIssue[] {
       teamFound,
       domain: canonicalizeSightingDomain(teamFound) ?? (teamFound || "Unmapped"),
       status: typeof record.status === "string" ? record.status : "Unknown",
-      reportType: typeof record.report_type === "string" && record.report_type.trim() ? record.report_type.trim() : "Unknown",
+      reportType: reportTypeFromRecord(record),
       daysOpen: Number.isFinite(daysOpen) ? daysOpen : 0,
     });
   }
@@ -178,18 +181,9 @@ export function extractHsdesArticleDetails(value: unknown): HsdesArticleDetails 
   if (typeof value !== "object" || value === null) return null;
   const records = (value as { data?: unknown }).data;
   if (!Array.isArray(records) || typeof records[0] !== "object" || records[0] === null) return null;
-  const record = records[0] as {
-    title?: unknown;
-    status?: unknown;
-    report_type?: unknown;
-    "bug.report_type"?: unknown;
-    days_open?: unknown;
-    "server_platf.bug.days_open"?: unknown;
-    "sighting_central.sighting.days_open"?: unknown;
-  };
+  const record = records[0] as Record<string, unknown> & { title?: unknown; status?: unknown };
   if (typeof record.title !== "string" || !record.title.trim()) return null;
-  const reportType = [record.report_type, record["bug.report_type"]]
-    .find((value): value is string => typeof value === "string" && Boolean(value.trim()) && value.trim().toLowerCase() !== "unknown");
+  const reportType = reportTypeFromRecord(record);
   const rawDaysOpen = record["server_platf.bug.days_open"]
     ?? record["sighting_central.sighting.days_open"]
     ?? record.days_open
@@ -202,7 +196,7 @@ export function extractHsdesArticleDetails(value: unknown): HsdesArticleDetails 
   return {
     title: record.title.trim(),
     status: typeof record.status === "string" && record.status.trim() ? record.status.trim() : "Unknown",
-    reportType: reportType?.trim() ?? "Unknown",
+    reportType,
     daysOpen: Number.isFinite(parsedDaysOpen) ? parsedDaysOpen : null,
   };
 }

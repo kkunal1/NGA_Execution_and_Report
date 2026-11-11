@@ -3,6 +3,7 @@ import { buildFailureProgress, weeklyReportYetToAttemptCount } from "./weekly-re
 import { formatValidationGroupName } from "./normalize";
 import { displayCpuAllocationTitle } from "./weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "./work-weeks";
+import { normalizeHsdesReportType } from "./hsdes-report-type";
 
 const stages: Stage[] = ["Preboot", "PreTest", "Test", "PostTest", "Cleanup"];
 
@@ -128,7 +129,7 @@ function bucketizedHsdRows(report: WeeklyReport): (string | number)[][] {
         rawDomain: domain,
         domain: formatValidationGroupName(domain),
         id: summary.hsdId,
-        reportType: report.hsdFailureReportTypes?.[summary.hsdId] ?? issue?.reportType ?? "Unknown",
+        reportType: normalizeHsdesReportType(report.hsdFailureReportTypes?.[summary.hsdId], issue?.reportType),
         title: report.hsdFailureTitles?.[summary.hsdId] ?? issue?.title ?? "Not found",
         status: report.hsdFailureStatuses?.[summary.hsdId] ?? issue?.status ?? "Not found",
         daysOpen: report.hsdFailureDaysOpen?.[summary.hsdId] ?? issue?.daysOpen ?? "—",

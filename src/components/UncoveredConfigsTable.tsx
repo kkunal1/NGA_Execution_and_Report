@@ -57,16 +57,7 @@ export default function UncoveredConfigsTable({ selectedPoolNames }: { selectedP
     };
   }, [selectedPoolNames]);
 
-  const totals = configs.reduce(
-    (sum, row) => {
-      sum.testLines += row.testLines;
-      for (const mapping of mappings) {
-        sum.mappingCounts[mapping.poolAlias] += row.mappingCounts[mapping.poolAlias] ?? 0;
-      }
-      return sum;
-    },
-    { testLines: 0, mappingCounts: Object.fromEntries(mappings.map((mapping) => [mapping.poolAlias, 0])) as Record<string, number> },
-  );
+  const totalTests = configs.reduce((total, row) => total + row.testLines, 0);
 
   return (
     <section className="mt-6 overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] shadow-sm">
@@ -74,7 +65,7 @@ export default function UncoveredConfigsTable({ selectedPoolNames }: { selectedP
         <div>
           <h2 className="text-lg font-semibold text-[var(--text)]">Configs Without Systems</h2>
           <p className="mt-1 text-sm text-[var(--text-muted)]">
-            {mappings.map((mapping) => `${mapping.poolAlias} (${mapping.poolName})`).join(" · ") || "Pool-specific suite mappings"} · configs without primary or current secondary systems in {poolNames.join(", ") || "selected pools"}
+            Configs without primary or current secondary systems in {poolNames.join(", ") || "selected pools"}
           </p>
         </div>
         <span className="rounded-full bg-red-100 px-3 py-1 text-sm font-semibold tabular-nums text-red-700">
@@ -103,8 +94,7 @@ export default function UncoveredConfigsTable({ selectedPoolNames }: { selectedP
               <tr>
                 <th className="px-5 py-3 font-semibold">Configuration</th>
                 <th className="px-5 py-3 font-semibold">Domain</th>
-                <th className="px-5 py-3 font-semibold">Uncovered test lines</th>
-                {mappings.map((mapping) => <th key={mapping.poolAlias} title={`${mapping.poolName} → ${mapping.suiteName}`} className="px-5 py-3 font-semibold">{mapping.poolAlias}</th>)}
+                <th className="px-5 py-3 font-semibold">Total Tests</th>
                 <th className="px-5 py-3 font-semibold">System</th>
               </tr>
             </thead>
@@ -123,7 +113,6 @@ export default function UncoveredConfigsTable({ selectedPoolNames }: { selectedP
                     </div>
                   </td>
                   <td className="px-5 py-2 tabular-nums text-[var(--text)]">{row.testLines}</td>
-                  {mappings.map((mapping) => <td key={mapping.poolAlias} className="px-5 py-2 tabular-nums text-[var(--text-muted)]">{row.mappingCounts[mapping.poolAlias] ?? 0}</td>)}
                   <td className="px-5 py-2">
                     <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">No System Assigned</span>
                   </td>
@@ -132,8 +121,7 @@ export default function UncoveredConfigsTable({ selectedPoolNames }: { selectedP
               <tr className="border-t-2 border-[var(--border)] bg-[var(--surface)] font-semibold text-[var(--text)]">
                 <td className="px-5 py-2">Total</td>
                 <td className="px-5 py-2" />
-                <td className="px-5 py-2 tabular-nums">{totals.testLines}</td>
-                {mappings.map((mapping) => <td key={mapping.poolAlias} className="px-5 py-2 tabular-nums">{totals.mappingCounts[mapping.poolAlias]}</td>)}
+                <td className="px-5 py-2 tabular-nums">{totalTests}</td>
                 <td className="px-5 py-2" />
               </tr>
             </tbody>

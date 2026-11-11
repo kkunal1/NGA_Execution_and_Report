@@ -38,24 +38,17 @@ function buildHtml(systems: PoolSystem[], configs: UncoveredConfig[], mappings: 
     )
     .join("");
 
-  const totals = { testLines: 0, mappingCounts: Object.fromEntries(mappings.map((mapping) => [mapping.poolAlias, 0])) as Record<string, number> };
-  for (const config of configs) {
-    totals.testLines += config.testLines;
-    for (const mapping of mappings) totals.mappingCounts[mapping.poolAlias] += config.mappingCounts[mapping.poolAlias] ?? 0;
-  }
+  const totalTests = configs.reduce((total, config) => total + config.testLines, 0);
   const configRows = configs
     .map(
       (r) => `<tr>
         <td><b>${esc(r.config)}</b></td>
         <td>${r.domains.map((d) => `${esc(d.domain)}${r.domains.length > 1 ? ` <span class="muted">(${d.testLines})</span>` : ""}`).join("<br>")}</td>
-        <td>${r.testLines}</td>${mappings.map((mapping) => `<td>${r.mappingCounts[mapping.poolAlias] ?? 0}</td>`).join("")}
+        <td>${r.testLines}</td>
         <td><span class="badge none">No System Assigned</span></td>
       </tr>`,
     )
     .join("");
-  const mappingHeaders = mappings.map((mapping) => `<th title="${esc(`${mapping.poolName} → ${mapping.suiteName}`)}">${esc(mapping.poolAlias)}</th>`).join("");
-  const totalMappingCells = mappings.map((mapping) => `<td>${totals.mappingCounts[mapping.poolAlias]}</td>`).join("");
-  const mappingLabel = mappings.map((mapping) => `${esc(mapping.poolAlias)} (${esc(mapping.poolName)})`).join(" · ") || "No mappings for selected pools";
 
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>All Execution Systems</title>
@@ -83,11 +76,11 @@ tr.group td{border-top:2px solid #cbd5e1}td.cfg{background:#f8fafc;border-right:
 </section>
 <section>
   <h2>Configs Without Systems</h2>
-  <p class="sub">${mappingLabel} · configs without primary or current secondary systems</p>
+  <p class="sub">Configs without primary or current secondary systems in ${poolNames.map(esc).join(", ") || "selected pools"}</p>
   ${unmappedPoolNames.length ? `<p class="warn">No suite mapping configured for: ${unmappedPoolNames.map(esc).join(", ")}</p>` : ""}
-  <table><thead><tr><th>Configuration</th><th>Domain</th><th>Uncovered test lines</th>${mappingHeaders}<th>System</th></tr></thead>
-  <tbody>${configRows || `<tr><td colspan="${4 + mappings.length}" class="muted">${mappings.length ? "Every mapped config has a system assigned in its pool." : "No coverage mappings for selected pools."}</td></tr>`}</tbody>
-  ${configs.length ? `<tfoot><tr><td>Total</td><td></td><td>${totals.testLines}</td>${totalMappingCells}<td></td></tr></tfoot>` : ""}</table>
+  <table><thead><tr><th>Configuration</th><th>Domain</th><th>Total Tests</th><th>System</th></tr></thead>
+  <tbody>${configRows || `<tr><td colspan="4" class="muted">${mappings.length ? "Every mapped config has a system assigned in its pool." : "No coverage mappings for selected pools."}</td></tr>`}</tbody>
+  ${configs.length ? `<tfoot><tr><td>Total</td><td></td><td>${totalTests}</td><td></td></tr></tfoot>` : ""}</table>
 </section>
 </body></html>`;
 }

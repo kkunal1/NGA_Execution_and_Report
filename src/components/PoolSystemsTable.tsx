@@ -119,23 +119,15 @@ export default function PoolSystemsTable({ onSelectedPoolNamesChange }: { onSele
           <h1 className="text-lg font-semibold text-[var(--text)]">All Execution Systems</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">Configured pools: {poolNames.length ? poolNames.join(", ") : "none"}</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm font-semibold tabular-nums">
-          {hasFilters && (
-            <button
-              type="button"
-              onClick={clearFilters}
-              className="rounded-full border border-[var(--border)] px-3 py-1 text-[var(--text)] transition hover:opacity-80"
-            >
-              Clear filters
-            </button>
-          )}
-          <span className="rounded-full bg-[var(--surface)] px-3 py-1 text-[var(--text-muted)]">{configGroups.length} configs</span>
-          <span className="rounded-full bg-[var(--surface)] px-3 py-1 text-[var(--text-muted)]">
-            {hasFilters ? `${filteredSystems.length} of ${systems.length}` : systems.length} systems
-          </span>
-          <span className="rounded-full bg-green-100 px-3 py-1 text-green-700">{runningCount} running</span>
-          <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-600">{filteredSystems.length - runningCount} idle</span>
-        </div>
+        {hasFilters && (
+          <button
+            type="button"
+            onClick={clearFilters}
+            className="shrink-0 rounded-md border border-[var(--border)] px-3 py-2 text-sm font-medium text-[var(--text)] transition hover:bg-[var(--surface)]"
+          >
+            Clear filters
+          </button>
+        )}
       </div>
 
       {poolNames.length > 0 && (
@@ -165,6 +157,20 @@ export default function PoolSystemsTable({ onSelectedPoolNamesChange }: { onSele
           </div>
         </fieldset>
       )}
+
+      <div className="mx-5 mb-4 grid grid-cols-2 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface)] md:grid-cols-4">
+        {[
+          { label: "Configurations", value: configGroups.length, tone: "text-[var(--text)]" },
+          { label: "Systems", value: filteredSystems.length, tone: "text-[var(--text)]" },
+          { label: "Running", value: runningCount, tone: "text-green-600" },
+          { label: "Idle", value: filteredSystems.length - runningCount, tone: "text-[var(--text)]" },
+        ].map((stat, index) => (
+          <div key={stat.label} className={`min-w-0 px-4 py-3 ${index % 2 === 0 ? "border-r border-[var(--border)]" : ""} ${index < 2 ? "border-b border-[var(--border)] md:border-b-0" : ""} ${index === 2 ? "md:border-r md:border-[var(--border)]" : ""}`}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--text-muted)]">{stat.label}</p>
+            <p className={`mt-1 text-2xl font-bold tabular-nums ${stat.tone}`}>{stat.value}</p>
+          </div>
+        ))}
+      </div>
 
       {loading && systems.length === 0 && <p className="px-5 py-10 text-center text-sm text-[var(--text-muted)]">Loading systems…</p>}
       {error && <p className="px-5 py-10 text-center text-sm text-red-600">{error}</p>}

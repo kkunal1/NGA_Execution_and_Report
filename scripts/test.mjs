@@ -15,7 +15,7 @@ import { DEFAULT_CONFIG_COVERAGE_MAPPINGS, normalizeConfigCoverageMappings } fro
 import { DEFAULT_POOL_NAMES, normalizePoolNames, selectConfiguredPoolNames } from "../src/lib/pool-system-settings.ts";
 import { aggregateUncoveredConfigs, poolMembershipFilter } from "../src/lib/pool-systems.ts";
 import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
-import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, extractHsdesIssues, extractHsdesIssuesOlderThan, normalizeHsdesReportType } from "../src/lib/hsdes-sightings.ts";
+import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, fetchHsdesArticleDetails, extractHsdesIssues, extractHsdesIssuesOlderThan, normalizeHsdesReportType } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
@@ -643,6 +643,16 @@ assert.equal(extractHsdesArticleDetails({ data: [{ title: "Namespaced type", "si
 assert.equal(extractHsdesArticleDetails({ data: [{ title: "Nested type", report_type: { name: "test_request" } }] })?.reportType, "test_request");
 assert.equal(normalizeHsdesReportType("Unknown", "", { value: "presighting" }), "presighting");
 assert.equal(extractHsdesIssues([{ id: "namespaced-issue", "server_platf.bug.report_type": "sighting" }])[0].reportType, "sighting");
+let articleDetailAttempts = 0;
+const retriedArticleDetails = await fetchHsdesArticleDetails(["12345678901"], {
+  fetchDetail: async () => {
+    articleDetailAttempts += 1;
+    return { title: "Retry fixture", status: "Open", reportType: articleDetailAttempts === 1 ? "Unknown" : "presighting", daysOpen: 3 };
+  },
+  wait: async () => undefined,
+});
+assert.equal(articleDetailAttempts, 2, "Unknown article report type triggers one delayed retry");
+assert.equal(retriedArticleDetails["12345678901"].reportType, "presighting");
 assert.deepEqual(extractHsdesIssuesOlderThan(allIssueRecords).map(({ id }) => id), ["aged-security"]);
 const pagedIssueRecords = Array.from({ length: 20001 }, (_, index) => ({ id: `paged-${index + 1}` }));
 const pageStarts = [];

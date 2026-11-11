@@ -8,6 +8,8 @@ export { normalizeHsdesReportType } from "./hsdes-report-type";
 const execFile = promisify(execFileCallback);
 const PAGE_SIZE = 1_000;
 const MAX_RESPONSE_BYTES = 20 * 1024 * 1024;
+const ARTICLE_DETAIL_TIMEOUT_MS = 90_000;
+const ARTICLE_DETAIL_RETRY_DELAY_MS = 1_500;
 
 type HsdesQueryRecord = {
   [key: string]: unknown;
@@ -205,17 +207,17 @@ export function extractHsdesArticleTitle(value: unknown): string | null {
   return extractHsdesArticleDetails(value)?.title ?? null;
 }
 
-async function fetchHsdesArticleDetail(id: string): Promise<HsdesArticleDetails> {
+async function fetchHsdesArticleDetailOnce(id: string): Promise<HsdesArticleDetails> {
   const curl = process.platform === "win32" ? "curl.exe" : "curl";
   const args = [
-    "--negotiate", "--user", ":", "--silent", "--show-error", "--max-time", "60",
+    "--negotiate", "--user", ":", "--silent", "--show-error", "--max-time", String(ARTICLE_DETAIL_TIMEOUT_MS / 1_000),
     "--header", "Accept: application/json",
     "--write-out", "\nHTTP_STATUS:%{http_code}",
     `https://hsdes.intel.com/rest/article/${id}`,
   ];
   let stdout: string;
   try {
-    ({ stdout } = await execFile(curl, args, { timeout: 65_000, maxBuffer: MAX_RESPONSE_BYTES, windowsHide: true }));
+    ({ stdout } = await execFile(curl, args, { timeout: ARTICLE_DETAIL_TIMEOUT_MS + 5_000, maxBuffer: MAX_RESPONSE_BYTES, windowsHide: true }));
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
     if (code === "ENOENT") throw new Error("curl with Kerberos Negotiate support is required to retrieve HSD titles.");
@@ -240,12 +242,31 @@ async function fetchHsdesArticleDetail(id: string): Promise<HsdesArticleDetails>
   return details;
 }
 
-export async function fetchHsdesArticleDetails(ids: string[]): Promise<Record<string, HsdesArticleDetails>> {
+type ArticleDetailRetryOptions = {
+  fetchDetail?: (id: string) => Promise<HsdesArticleDetails>;
+  wait?: (milliseconds: number) => Promise<void>;
+};
+
+export async function fetchHsdesArticleDetails(ids: string[], options: ArticleDetailRetryOptions = {}): Promise<Record<string, HsdesArticleDetails>> {
   const uniqueIds = [...new Set(ids)];
   if (uniqueIds.length > 25 || uniqueIds.some((id) => !/^\d{10,}$/.test(id))) {
     throw new Error("HSD detail lookup requires up to 25 numeric article IDs.");
   }
-  const details = await Promise.all(uniqueIds.map(async (id) => [id, await fetchHsdesArticleDetail(id)] as const));
+  const fetchDetail = options.fetchDetail ?? fetchHsdesArticleDetailOnce;
+  const wait = options.wait ?? ((milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
+  const details = await Promise.all(uniqueIds.map(async (id) => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const detail = await fetchDetail(id);
+        if (normalizeHsdesReportType(detail.reportType) !== "Unknown" || attempt === 1) return [id, detail] as const;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (attempt === 1 || /denied|HTTP (401|403)/i.test(message)) throw error;
+      }
+      await wait(ARTICLE_DETAIL_RETRY_DELAY_MS);
+    }
+    throw new Error(`Could not retrieve HSD details for ${id}.`);
+  }));
   return Object.fromEntries(details);
 }
 

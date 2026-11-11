@@ -116,7 +116,7 @@ export default function PoolSystemsTable({ onSelectedPoolNamesChange }: { onSele
     <section className="overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface-alt)] shadow-sm">
       <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] px-5 py-4">
         <div>
-          <h1 className="text-lg font-semibold text-[var(--text)]">B0 Pool Systems</h1>
+          <h1 className="text-lg font-semibold text-[var(--text)]">All Execution Systems</h1>
           <p className="mt-1 text-sm text-[var(--text-muted)]">Configured pools: {poolNames.length ? poolNames.join(", ") : "none"}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-sm font-semibold tabular-nums">

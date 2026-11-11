@@ -11,7 +11,7 @@ import { RefreshScheduleContext, type RefreshSchedule } from "./refresh-context"
 
 const NAV = [
   { href: "/", label: "Execution Report", icon: LayoutDashboard },
-  { href: "/pool-systems", label: "B0 Pool Systems", icon: Server, visibilityKey: "poolSystems" as const },
+  { href: "/pool-systems", label: "All Execution Systems", icon: Server, visibilityKey: "poolSystems" as const },
   { href: "/weekly-report", label: "Weekly Report", icon: CalendarDays, visibilityKey: "weeklyReport" as const },
   { href: "/execution-time", label: "Check Execution Time", icon: Timer, visibilityKey: "executionTime" as const },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },

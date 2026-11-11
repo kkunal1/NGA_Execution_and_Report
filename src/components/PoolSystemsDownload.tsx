@@ -50,7 +50,7 @@ function buildHtml(systems: PoolSystem[], configs: UncoveredConfig[], poolNames:
     .join("");
 
   return `<!doctype html>
-<html lang="en"><head><meta charset="utf-8"><title>B0 Pool Systems</title>
+<html lang="en"><head><meta charset="utf-8"><title>All Execution Systems</title>
 <style>
 body{font-family:Segoe UI,Arial,sans-serif;margin:24px;color:#0f172a;background:#f8fafc}
 h1,h2{margin:0 0 4px}.sub{color:#64748b;margin:0 0 12px;font-size:13px}
@@ -67,7 +67,7 @@ tr.group td{border-top:2px solid #cbd5e1}td.cfg{background:#f8fafc;border-right:
 </style></head><body>
 <p class="sub">Generated ${esc(new Date().toLocaleString())}</p>
 <section>
-  <h1>B0 Pool Systems</h1>
+  <h1>All Execution Systems</h1>
   <p class="sub">Systems currently added to ${esc(poolNames.join(", "))}</p>
   <p class="pills"><span class="badge idle">${groups.size} configs</span><span class="badge idle">${systems.length} systems</span><span class="badge run">${running} running</span><span class="badge idle">${systems.length - running} idle</span></p>
   <table><thead><tr><th>Configuration</th><th>Systems</th><th>Execution status</th><th>Activity</th><th>Notes</th></tr></thead>
@@ -109,7 +109,7 @@ export default function PoolSystemsDownload({ poolNames }: { poolNames: string[]
       const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}-${pad(now.getSeconds())}`;
       const a = document.createElement("a");
       a.href = url;
-      a.download = `B0_Pool_Systems_${stamp}.html`;
+      a.download = `All_Execution_Systems_${stamp}.html`;
       a.click();
       URL.revokeObjectURL(url);
     } catch (cause) {

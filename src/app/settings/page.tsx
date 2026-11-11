@@ -422,13 +422,14 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="mx-auto max-w-4xl">
-      <header className="mb-8">
+    <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-start gap-5 px-5 py-6 lg:grid-cols-2">
+      <header className="mb-1 border-b border-[var(--border)] pb-5 lg:col-span-2">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-muted)]">Administration / Workspace</p>
         <h1 className="text-2xl font-semibold text-[var(--text)]">Settings</h1>
-        <p className="mt-1 text-sm text-[var(--text-muted)]">Choose which Intel data path the collection actions use.</p>
+        <p className="mt-2 text-sm text-[var(--text-muted)]">Manage report content, data sources, delivery, and workspace access.</p>
       </header>
-      <section className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="provider-heading">
-        <h2 id="provider-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Data provider</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="provider-heading">
+        <h2 id="provider-heading" className="text-base font-semibold text-[var(--text)]">Data provider</h2>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {DATA_PROVIDERS.map((option) => (
             <label key={option.value} className={`cursor-pointer rounded-lg border p-4 transition ${provider === option.value ? "border-[var(--accent)] bg-[var(--surface-alt)]" : "border-[var(--border)] hover:border-slate-400"}`}>
@@ -450,8 +451,8 @@ export default function SettingsPage() {
         </p>
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="ngai-token-heading">
-        <h2 id="ngai-token-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Intel NGAi API token</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="ngai-token-heading">
+        <h2 id="ngai-token-heading" className="text-base font-semibold text-[var(--text)]">Intel NGAi API token</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">
           The token is encrypted for this local app installation and never returned to this page. Each OS user gets a separate encryption key in their home profile.
         </p>
@@ -504,8 +505,8 @@ export default function SettingsPage() {
         {ngaiTokenError && <p className="mt-2 text-sm text-red-600" role="alert">{ngaiTokenError}</p>}
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="refresh-heading">
-        <h2 id="refresh-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Automatic NGAi refresh</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="refresh-heading">
+        <h2 id="refresh-heading" className="text-base font-semibold text-[var(--text)]">Automatic NGAi refresh</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">
           Check the loaded suites for changes at this interval. Keep the admin dashboard open for automatic checks; connected viewers update when a new snapshot is saved. Set 0 to disable.
         </p>
@@ -534,8 +535,8 @@ export default function SettingsPage() {
         {refreshError && <p className="mt-2 text-sm text-red-600" role="alert">{refreshError}</p>}
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="pool-system-heading">
-        <h2 id="pool-system-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Pool System Setting</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="pool-system-heading">
+        <h2 id="pool-system-heading" className="text-base font-semibold text-[var(--text)]">Pool System Setting</h2>
         <label className="mt-4 block text-sm font-medium text-[var(--text)]" htmlFor="pool-system-names">Pool names
           <textarea
             id="pool-system-names"
@@ -555,8 +556,8 @@ export default function SettingsPage() {
         {poolSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{poolSettingsError}</p>}
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="execution-report-setting-heading">
-        <h2 id="execution-report-setting-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Execution Report Setting</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="execution-report-setting-heading">
+        <h2 id="execution-report-setting-heading" className="text-base font-semibold text-[var(--text)]">Execution Report Setting</h2>
         <label className="mt-4 flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm font-medium text-[var(--text)]">
           <span>Show Aborted Manually in Aborted Tests</span>
           <input
@@ -573,14 +574,14 @@ export default function SettingsPage() {
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="dashboard-heading">
-        <h2 id="dashboard-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Dashboard charts</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="dashboard-heading">
+        <h2 id="dashboard-heading" className="text-base font-semibold text-[var(--text)]">Dashboard charts</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">Chart toggles apply to all signed-in users. Viewer menu access is controlled here; administrators always have access.</p>
         <div className="mt-4 space-y-3">
           {([
             ["executionStatusSplit", "Execution status split"],
             ["rawStateValues", "Raw state values"],
-            ["poolSystems", "B0 Pool Systems menu"],
+            ["poolSystems", "All Execution Systems menu"],
             ["weeklyReport", "Daily/Weekly Report menu (root/viewer access)"],
             ["weeklyReportUpdate", "Update Weekly Report submenu for root/viewers"],
             ["weeklyReportHsdDetails", "Update HSD Details submenu for root/viewers"],
@@ -606,8 +607,8 @@ export default function SettingsPage() {
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="weekly-report-settings-heading">
-        <h2 id="weekly-report-settings-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Weekly Report Settings</h2>
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="weekly-report-settings-heading">
+        <h2 id="weekly-report-settings-heading" className="text-base font-semibold text-[var(--text)]">Weekly Report Settings</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">The server generates the previous day&apos;s report at 12:05 AM IST and saves it centrally. Automatic reports use the B0 P1 and P2 suites.</p>
         <p className="mt-2 text-sm text-[var(--text-muted)]">Choose which sections appear in manually created and automatically generated reports.</p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
@@ -633,8 +634,8 @@ export default function SettingsPage() {
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="add-admin-heading">
-        <h2 id="add-admin-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Add Admin</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="add-admin-heading">
+        <h2 id="add-admin-heading" className="text-base font-semibold text-[var(--text)]">Add Admin</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">Create an additional administrator account. Passwords are stored as salted hashes, never as plain text. New accounts can sign in immediately.</p>
         <form onSubmit={addAdmin} className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium text-[var(--text)]" htmlFor="new-admin-username">Username
@@ -686,8 +687,8 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="login-audit-heading">
-        <h2 id="login-audit-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">User login audit</h2>
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="login-audit-heading">
+        <h2 id="login-audit-heading" className="text-base font-semibold text-[var(--text)]">User login audit</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">Successful logins captured by this server. System name uses reverse DNS when available.</p>
         {loginAuditError && <p className="mt-3 text-sm text-red-600" role="alert">{loginAuditError}</p>}
         {!loginAuditError && loginAudit.length === 0 && <p className="mt-4 text-sm text-[var(--text-muted)]">No successful logins recorded yet.</p>}
@@ -719,10 +720,10 @@ export default function SettingsPage() {
         )}
       </section>
 
-      <div className="mt-6"><WeeklyReportMailPanel /></div>
+      <div className="lg:col-span-2"><WeeklyReportMailPanel /></div>
 
-      <details className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="mail-heading">
-        <summary id="mail-heading" className="cursor-pointer text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Advanced: scheduled Microsoft Graph email</summary>
+      <details className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="mail-heading">
+        <summary id="mail-heading" className="cursor-pointer text-base font-semibold text-[var(--text)]">Advanced: scheduled Microsoft Graph email</summary>
         <div className="mt-4">
           <p className="mt-2 text-sm text-[var(--text-muted)]">
             Sends all configured suites as an HTML attachment daily at the selected local time. Requires an IT-approved Entra app with Microsoft Graph Mail.Send application permission and admin consent.
@@ -777,8 +778,8 @@ export default function SettingsPage() {
         </div>
       </details>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="network-heading">
-        <h2 id="network-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Intel NGAi network</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="network-heading">
+        <h2 id="network-heading" className="text-base font-semibold text-[var(--text)]">Intel NGAi network</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">
           Controls how NGAi requests reach Intel&apos;s server. When connected via VPN, requests go direct. When off VPN, they route through the proxy address below.
         </p>
@@ -814,8 +815,8 @@ export default function SettingsPage() {
         </p>
       </section>
 
-      <section className="mt-6 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-6" aria-labelledby="theme-heading">
-        <h2 id="theme-heading" className="text-sm font-semibold uppercase tracking-wide text-[var(--text-muted)]">Theme</h2>
+      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="theme-heading">
+        <h2 id="theme-heading" className="text-base font-semibold text-[var(--text)]">Theme</h2>
         <p className="mt-2 text-sm text-[var(--text-muted)]">
           Changes the page background, cards, tables, and charts across the whole app - and carries over into downloaded HTML reports.
         </p>

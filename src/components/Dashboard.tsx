@@ -132,7 +132,6 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
   const notRunDialogRef = useRef<HTMLDialogElement>(null);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
   const [dashboardSettings, setDashboardSettings] = useState({ showManualAborts: false });
-  const autoRefreshInFlight = useRef(false);
 
   const cacheProfileRun = useCallback((nextRun: RunResult | null) => {
     setRun(nextRun);
@@ -436,85 +435,6 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     const timer = window.setInterval(() => void checkForUpdate(), 5000);
     return () => window.clearInterval(timer);
   }, [cacheProfileRun, latestVersion, profile, provider]);
-
-  useEffect(() => {
-    if (!isAdmin || provider !== "ngai" || !suiteStateRestored || refreshIntervalSeconds === 0 || autoRefreshSuites.length === 0) return;
-    let cancelled = false;
-    let timer: number | undefined;
-    const refresh = async () => {
-      if (autoRefreshInFlight.current || document.visibilityState === "hidden") return;
-      autoRefreshInFlight.current = true;
-      const controller = new AbortController();
-      const timeout = window.setTimeout(() => controller.abort(), 120_000);
-      try {
-        const response = await fetch("/api/test-run-data", {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          signal: controller.signal,
-          body: JSON.stringify({
-            suiteNames: autoRefreshSuites,
-            persist: true,
-            automatic: true,
-            ...readNgaiNetworkOverride(),
-          }),
-        });
-        const result = (await response.json()) as { error?: string; changed?: boolean; version?: string | null; nextRefreshAt?: number | null };
-        if (!response.ok) throw new Error(result.error || "Automatic NGAi refresh failed.");
-        if (cancelled) return;
-        setLatestVersion(result.version ?? null);
-        setNextRefreshAt(result.nextRefreshAt ?? null);
-        if (result.changed) {
-          const profileQuery = provider === "ngai" ? `&profile=${profile}` : "";
-          const latestResponse = await fetch(`/api/runs?latestOnly=1${profileQuery}`, { cache: "no-store" });
-          if (latestResponse.ok) {
-            const latest = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null };
-            if (runMatchesProfile(latest.run, profile)) {
-              cacheProfileRun(latest.run);
-              setPersisted(false);
-              setLatestVersion(latest.version);
-              setNextRefreshAt(latest.nextRefreshAt);
-            }
-          }
-          const abortedResponse = await fetch("/api/aborted-tests", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({ suiteNames: autoRefreshSuites, ...readNgaiNetworkOverride() }),
-          });
-          if (abortedResponse.ok) {
-            const aborted = (await abortedResponse.json()) as { rows?: TestRow[] };
-            const rows = filterAbortedRowsForSuites(aborted.rows ?? [], autoRefreshSuites, profile);
-            setAbortedRows(rows);
-            window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: autoRefreshSuites, rows }));
-          }
-        }
-      } catch (error) {
-        if (!cancelled) setError(error instanceof Error ? error.message : "Automatic NGAi refresh failed.");
-      } finally {
-        window.clearTimeout(timeout);
-        autoRefreshInFlight.current = false;
-      }
-    };
-    const schedule = () => {
-      if (cancelled) return;
-      if (timer !== undefined) window.clearTimeout(timer);
-      timer = window.setTimeout(async () => {
-        await refresh();
-        schedule();
-      }, refreshIntervalSeconds * 1000);
-    };
-    const handleVisibilityChange = () => {
-      if (document.visibilityState !== "visible") return;
-      void refresh();
-      schedule();
-    };
-    document.addEventListener("visibilitychange", handleVisibilityChange);
-    schedule();
-    return () => {
-      cancelled = true;
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      if (timer !== undefined) window.clearTimeout(timer);
-    };
-  }, [abortedCacheKey, cacheProfileRun, isAdmin, profile, provider, refreshIntervalSeconds, autoRefreshSuites, suiteStateRestored]);
 
   const availableSuites = useMemo(() => run
     ? normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])

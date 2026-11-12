@@ -20,6 +20,7 @@ import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
 import { B0_SUITES, B2_SUITES, isSuiteSelectedForProfile } from "../src/lib/execution-suites.ts";
+import { mergeRefreshSuites } from "../src/lib/refresh-settings.ts";
 import { buildReportFilename } from "../src/lib/report-filename.ts";
 import { executionSummaryValues, renderExecutionSummaryHtml } from "../src/lib/execution-summary-format.ts";
 import { DEFAULT_EXECUTION_SUMMARY_TEXT } from "../src/lib/weekly-report-defaults.ts";
@@ -152,6 +153,9 @@ const legacyB2Suite = "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B
 assert.equal(isSuiteSelectedForProfile(legacyB2Suite, [B2_SUITES.P2], "b2"), true, "legacy aggregate B2 aborts belong to the selected B2 profile");
 assert.equal(isSuiteSelectedForProfile(legacyB2Suite, [B0_SUITES.P2], "b0"), false, "legacy aggregate B2 aborts must not appear in B0");
 assert.equal(isSuiteSelectedForProfile(B2_SUITES.P2, [B2_SUITES.P2], "b2"), true, "exact suite selection remains supported");
+assert.deepEqual(mergeRefreshSuites({ b0: [B0_SUITES.P1], b2: [B2_SUITES.P1] }, [B0_SUITES.P2]), {
+  b0: [B0_SUITES.P2], b2: [B2_SUITES.P1],
+}, "saving B0 refresh suites preserves the previously saved B2 suites");
 const multiSuiteFilename = buildReportFilename("Suite_One\nSuite_Two");
 assert.ok(!/[\r\n\t]/.test(multiSuiteFilename), "report filename must not contain control characters");
 assert.ok(multiSuiteFilename.startsWith("Suite_One_Suite_Two_"));

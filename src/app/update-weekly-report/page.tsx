@@ -1,13 +1,16 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
-import { Check, Pencil, Plus, Trash2 } from "lucide-react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
+import { Bold, Check, Italic, List, Pencil, Plus, Trash2 } from "lucide-react";
 import type { CpuBaseLabels, CustomReportTable, TeamPlatformCount, WeeklyReportLink } from "@/lib/weekly-report-settings";
 import { DEFAULT_CPU_ALLOCATION_TITLE, displayCpuAllocationTitle } from "@/lib/weekly-report-display";
+import { DEFAULT_EXECUTION_SUMMARY_TEXT, DEFAULT_WEEKLY_REPORT_SUITES, EXECUTION_SUMMARY_PREVIEW_VALUES } from "@/lib/weekly-report-defaults";
+import { renderExecutionSummaryHtml } from "@/lib/execution-summary-format";
 
 type EditableTeamPlatformCount = { id: string; team: string; x1: string; x4: string; extraCounts: string[] };
 type EditableCpuColumn = { id: string; label: string };
 type EditableWeeklyReportLink = { id: string; label: string; url: string };
+type EditableSuite = { id: string; suiteName: string };
 
 const createRowId = () => typeof globalThis.crypto?.randomUUID === "function"
   ? globalThis.crypto.randomUUID()
@@ -15,6 +18,10 @@ const createRowId = () => typeof globalThis.crypto?.randomUUID === "function"
 
 export default function UpdateWeeklyReportPage() {
   const [bkc, setBkc] = useState("BKC#40");
+  const [suites, setSuites] = useState<EditableSuite[]>(DEFAULT_WEEKLY_REPORT_SUITES.map((suiteName) => ({ id: createRowId(), suiteName })));
+  const [executionSummaryText, setExecutionSummaryText] = useState(DEFAULT_EXECUTION_SUMMARY_TEXT);
+  const [cpuAllocationEnabled, setCpuAllocationEnabled] = useState(true);
+  const executionSummaryRef = useRef<HTMLTextAreaElement>(null);
   const [teamPlatformCounts, setTeamPlatformCounts] = useState<EditableTeamPlatformCount[]>([]);
   const [cpuColumns, setCpuColumns] = useState<EditableCpuColumn[]>([]);
   const [cpuBaseLabels, setCpuBaseLabels] = useState<CpuBaseLabels>({ team: "Team", x1: "X1", x4: "X4" });
@@ -35,6 +42,9 @@ export default function UpdateWeeklyReportPage() {
       .then(async (response) => {
         const result = (await response.json()) as {
           bkc?: string;
+          suites?: string[];
+          executionSummaryText?: string;
+          cpuAllocationEnabled?: boolean;
           teamPlatformCounts?: TeamPlatformCount[];
           cpuColumns?: string[];
           cpuBaseLabels?: CpuBaseLabels;
@@ -47,6 +57,9 @@ export default function UpdateWeeklyReportPage() {
         if (!response.ok) throw new Error(result.error || "Could not load the saved BKC value.");
         if (!cancelled) {
           if (result.bkc) setBkc(result.bkc);
+          setSuites((result.suites ?? DEFAULT_WEEKLY_REPORT_SUITES).map((suiteName) => ({ id: createRowId(), suiteName })));
+          setExecutionSummaryText(result.executionSummaryText ?? DEFAULT_EXECUTION_SUMMARY_TEXT);
+          setCpuAllocationEnabled(result.cpuAllocationEnabled !== false);
           setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
           setCpuBaseLabels(result.cpuBaseLabels ?? { team: "Team", x1: "X1", x4: "X4" });
           setCpuBreakdownTitle(displayCpuAllocationTitle(result.cpuBreakdownTitle));
@@ -76,6 +89,9 @@ export default function UpdateWeeklyReportPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bkc,
+          suites: suites.map((suite) => suite.suiteName),
+          executionSummaryText,
+          cpuAllocationEnabled,
           teamPlatformCounts: teamPlatformCounts.map((row) => ({ team: row.team, x1: Number(row.x1), x4: Number(row.x4), extraCounts: row.extraCounts.map(Number) })),
           cpuColumns: cpuColumns.map((column) => column.label),
           cpuBaseLabels,
@@ -87,6 +103,9 @@ export default function UpdateWeeklyReportPage() {
       });
       const result = (await response.json()) as {
         bkc?: string;
+        suites?: string[];
+        executionSummaryText?: string;
+        cpuAllocationEnabled?: boolean;
         teamPlatformCounts?: TeamPlatformCount[];
         cpuColumns?: string[];
         cpuBaseLabels?: CpuBaseLabels;
@@ -98,6 +117,9 @@ export default function UpdateWeeklyReportPage() {
       };
       if (!response.ok) throw new Error(result.error || "Could not save the BKC value.");
       setBkc(result.bkc ?? bkc.trim());
+      setSuites((result.suites ?? suites.map((suite) => suite.suiteName.trim()).filter(Boolean)).map((suiteName) => ({ id: createRowId(), suiteName })));
+      setExecutionSummaryText(result.executionSummaryText ?? executionSummaryText.trim());
+      setCpuAllocationEnabled(result.cpuAllocationEnabled !== false);
       setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
       setCpuBaseLabels(result.cpuBaseLabels ?? cpuBaseLabels);
       setEditingBaseLabel(null);
@@ -143,45 +165,130 @@ export default function UpdateWeeklyReportPage() {
       title: `Custom Table ${current.length + 1}`,
       columns: ["Column 1"],
       rows: [[""]],
+      enabled: true,
     }]);
     setSaved(false);
   };
 
+  const insertSummaryFormat = (prefix: string, suffix = prefix) => {
+    const textarea = executionSummaryRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selected = textarea.value.slice(start, end) || "text";
+    const insertion = `${prefix}${selected}${suffix}`;
+    textarea.setRangeText(insertion, start, end, "select");
+    setExecutionSummaryText(textarea.value);
+    setSaved(false);
+    textarea.focus();
+  };
+
+  const insertSummaryBullet = () => {
+    const textarea = executionSummaryRef.current;
+    if (!textarea) return;
+    const start = textarea.selectionStart;
+    const lineStart = textarea.value.lastIndexOf("\n", Math.max(0, start - 1)) + 1;
+    textarea.setRangeText("- ", lineStart, lineStart, "end");
+    setExecutionSummaryText(textarea.value);
+    setSaved(false);
+    textarea.focus();
+  };
+
   return (
     <main className="mx-auto w-full max-w-7xl px-5 py-6">
-      <h1 className="text-2xl font-semibold text-[var(--text)]">Update Weekly Report</h1>
-      <form onSubmit={save} className="mt-6 space-y-6">
-        <section className="max-w-3xl">
-          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="weekly-report-hsdes-link">HSDES sighting query link</label>
-          <input
-            id="weekly-report-hsdes-link"
-            required
-            type="url"
-            value={hsdesLink}
-            onChange={(event) => { setHsdesLink(event.target.value); setSaved(false); }}
-            disabled={loading || saving}
-            placeholder="Paste the HSDES General Apps link containing queryId"
-            className="mt-2 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
-          />
-          <p className="mt-1 text-xs text-[var(--text-muted)]">Weekly Report will query Sighting records using Kerberos Negotiate on the report host.</p>
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-4 border-b border-[var(--border)] pb-5">
+        <div>
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-muted)]">Reporting / Configuration</p>
+          <h1 className="text-2xl font-semibold text-[var(--text)]">Update Weekly Report</h1>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Configure report suites, summary notes, HSDES lookup, allocation, links, and custom tables.</p>
+        </div>
+      </header>
+      <form onSubmit={save} className="space-y-4">
+        <div className="flex justify-end">
+          <button type="submit" disabled={loading || saving} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-60">{saving ? "Saving…" : "Save updates"}</button>
+        </div>
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="weekly-report-setup-heading">
+          <h2 id="weekly-report-setup-heading" className="text-base font-semibold text-[var(--text)]">Report setup</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Set the active BKC and HSDES source used for new reports.</p>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <label className="block text-sm font-medium text-[var(--text)]" htmlFor="weekly-report-bkc">BKC
+              <input
+                id="weekly-report-bkc"
+                required
+                pattern="BKC#(WW)?[0-9]+"
+                value={bkc}
+                onChange={(event) => { setBkc(event.target.value); setSaved(false); }}
+                disabled={loading || saving}
+                aria-describedby="weekly-report-bkc-status"
+                className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
+              />
+            </label>
+            <label className="block text-sm font-medium text-[var(--text)]" htmlFor="weekly-report-hsdes-link">HSDES sighting query link
+              <input
+                id="weekly-report-hsdes-link"
+                required
+                type="url"
+                value={hsdesLink}
+                onChange={(event) => { setHsdesLink(event.target.value); setSaved(false); }}
+                disabled={loading || saving}
+                placeholder="Paste the HSDES General Apps link containing queryId"
+                className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
+              />
+              <span className="mt-1 block text-xs text-[var(--text-muted)]">Queries Sighting records using Kerberos on the report host.</span>
+            </label>
+          </div>
         </section>
-        <section className="space-y-5 border-t border-[var(--border)] pt-5">
-          <h2 className="text-base font-semibold text-[var(--text)]">Execution Summary Section</h2>
-          <label className="block max-w-xl text-sm font-medium text-[var(--text)]" htmlFor="weekly-report-bkc">BKC
-            <input
-              id="weekly-report-bkc"
-              required
-              pattern="BKC#(WW)?[0-9]+"
-              value={bkc}
-              onChange={(event) => { setBkc(event.target.value); setSaved(false); }}
-              disabled={loading || saving}
-              aria-describedby="weekly-report-bkc-status"
-              className="mt-2 h-10 w-56 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]"
-            />
-          </label>
+        <section className="space-y-5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="weekly-report-suites-heading">
+          <div>
+            <h2 id="weekly-report-suites-heading" className="text-base font-semibold text-[var(--text)]">Execution Suites</h2>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">Counts and percentages are calculated from the selected suite list.</p>
+          </div>
           <div>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h3 className="text-sm font-semibold text-[var(--text)]">Report Links</h3>
+              <span className="text-xs font-medium text-[var(--text-muted)]">NGAi suite names</span>
+              <button type="button" disabled={loading || saving || suites.length >= 20} onClick={() => { setSuites((current) => [...current, { id: createRowId(), suiteName: "" }]); setSaved(false); }} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60">
+                <Plus className="h-4 w-4" aria-hidden="true" />Add suite
+              </button>
+            </div>
+            <div className="space-y-2">
+              {suites.map((suite, index) => (
+                <div key={suite.id} className="flex items-center gap-2">
+                  <label className="min-w-0 flex-1 text-xs font-medium text-[var(--text-muted)]" htmlFor={`weekly-report-suite-${index}`}>Suite {index + 1}
+                    <input id={`weekly-report-suite-${index}`} required maxLength={512} value={suite.suiteName} onChange={(event) => { setSuites((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, suiteName: event.target.value } : item)); setSaved(false); }} disabled={loading || saving} className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]" />
+                  </label>
+                  <button type="button" disabled={loading || saving || suites.length <= 1} onClick={() => { setSuites((current) => current.filter((_, itemIndex) => itemIndex !== index)); setSaved(false); }} aria-label={`Remove suite ${index + 1}`} title="Remove suite" className="mt-4 flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] hover:text-red-600 disabled:opacity-40"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+        </div>
+        <section className="space-y-4 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="execution-summary-section-heading">
+          <div>
+            <h2 id="execution-summary-section-heading" className="text-base font-semibold text-[var(--text)]">Execution Summary Section</h2>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">Add optional formatted notes to appear with the generated execution metrics.</p>
+          </div>
+          <div className="max-w-4xl">
+            <label className="block text-sm font-semibold text-[var(--text)]" htmlFor="execution-summary-text">Execution summary notes</label>
+            <p className="mt-1 text-xs text-[var(--text-muted)]">Edit the full summary text. Dynamic placeholders are replaced with each report&apos;s latest counts, percentages, and BKC.</p>
+            <div className="mt-3 flex flex-wrap gap-1 rounded-t-md border border-[var(--border)] bg-[var(--surface-alt)] p-2">
+              <button type="button" disabled={loading || saving} onClick={() => insertSummaryFormat("**")} aria-label="Bold selected text" title="Bold" className="flex h-8 w-8 items-center justify-center rounded text-[var(--text)] hover:bg-[var(--surface)] disabled:opacity-50"><Bold className="h-4 w-4" aria-hidden="true" /></button>
+              <button type="button" disabled={loading || saving} onClick={() => insertSummaryFormat("*")} aria-label="Italicize selected text" title="Italic" className="flex h-8 w-8 items-center justify-center rounded text-[var(--text)] hover:bg-[var(--surface)] disabled:opacity-50"><Italic className="h-4 w-4" aria-hidden="true" /></button>
+              <button type="button" disabled={loading || saving} onClick={insertSummaryBullet} aria-label="Add bullet" title="Bullet list" className="flex h-8 w-8 items-center justify-center rounded text-[var(--text)] hover:bg-[var(--surface)] disabled:opacity-50"><List className="h-4 w-4" aria-hidden="true" /></button>
+            </div>
+            <textarea id="execution-summary-text" ref={executionSummaryRef} rows={5} maxLength={10_000} value={executionSummaryText} onChange={(event) => { setExecutionSummaryText(event.target.value); setSaved(false); }} disabled={loading || saving} placeholder="Add summary notes…" className="w-full rounded-b-md border border-t-0 border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)]" />
+            <p className="mt-2 text-xs leading-5 text-[var(--text-muted)]">Available tokens: <code>{"{{attemptedPct}}"}</code>, <code>{"{{passedPct}}"}</code>, <code>{"{{failedPct}}"}</code>, <code>{"{{blockedPct}}"}</code>, <code>{"{{plannedCount}}"}</code>, <code>{"{{bkc}}"}</code> and their matching <code>Count</code> values.</p>
+            <div className="mt-3 rounded-md border border-[var(--border)] bg-[var(--surface-alt)] px-4 py-3 text-sm leading-relaxed text-[var(--text)] [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5" aria-label="Execution summary preview" dangerouslySetInnerHTML={{ __html: renderExecutionSummaryHtml(executionSummaryText, EXECUTION_SUMMARY_PREVIEW_VALUES) }} />
+          </div>
+        </section>
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="weekly-report-links-heading">
+          <div>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 id="weekly-report-links-heading" className="text-base font-semibold text-[var(--text)]">Report Links</h2>
+                <p className="mt-1 text-sm text-[var(--text-muted)]">Reusable links included in reports, email, and HTML attachments.</p>
+              </div>
               <button type="button" disabled={loading || saving || links.length >= 20} onClick={() => { setLinks((current) => [...current, { id: createRowId(), label: "", url: "" }]); setSaved(false); }} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60">
                 <Plus className="h-4 w-4" aria-hidden="true" />Add link
               </button>
@@ -205,7 +312,7 @@ export default function UpdateWeeklyReportPage() {
             </div>
           </div>
         </section>
-        <section>
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               {cpuTitleEditing ? (
@@ -231,7 +338,11 @@ export default function UpdateWeeklyReportPage() {
                 {cpuTitleEditing ? <Check className="h-4 w-4" aria-hidden="true" /> : <Pencil className="h-4 w-4" aria-hidden="true" />}
               </button>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-[var(--border)] px-3 text-xs font-medium text-[var(--text)]">
+                <input type="checkbox" role="switch" checked={cpuAllocationEnabled} onChange={(event) => { setCpuAllocationEnabled(event.target.checked); setSaved(false); }} disabled={loading || saving} className="h-4 w-4 accent-[var(--accent)]" />
+                Include in reports
+              </label>
               <button type="button" disabled={loading || saving || teamPlatformCounts.length >= 20} onClick={() => { setTeamPlatformCounts((current) => [...current, { id: createRowId(), team: "", x1: "0", x4: "0", extraCounts: cpuColumns.map(() => "0") }]); setSaved(false); }} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60">
                 <Plus className="h-4 w-4" aria-hidden="true" />Add row
               </button>
@@ -297,7 +408,7 @@ export default function UpdateWeeklyReportPage() {
             </table>
           </div>
         </section>
-        <section className="space-y-5 border-t border-[var(--border)] pt-5">
+        <section className="space-y-5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-[var(--text)]">Custom Report Tables</h2>
@@ -312,6 +423,10 @@ export default function UpdateWeeklyReportPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <label className="min-w-60 flex-1 text-sm font-medium text-[var(--text)]">Table title
                   <input required maxLength={120} value={table.title} onChange={(event) => updateCustomTable(tableIndex, (current) => ({ ...current, title: event.target.value }))} aria-label={`Custom table ${tableIndex + 1} title`} className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" />
+                </label>
+                <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-[var(--border)] px-3 text-xs font-medium text-[var(--text)]">
+                  <input type="checkbox" role="switch" checked={table.enabled !== false} onChange={(event) => updateCustomTable(tableIndex, (current) => ({ ...current, enabled: event.target.checked }))} disabled={loading || saving} className="h-4 w-4 accent-[var(--accent)]" />
+                  Include in reports
                 </label>
                 <button type="button" disabled={loading || saving} onClick={() => { setCustomTables((current) => current.filter((_, index) => index !== tableIndex)); setSaved(false); }} aria-label={`Remove custom table ${tableIndex + 1}`} title="Remove table" className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
                 <div className="flex gap-2">

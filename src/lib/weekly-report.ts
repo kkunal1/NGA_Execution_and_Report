@@ -109,6 +109,8 @@ export type WeeklyReport = {
   hsdFailureSummaries: HsdFailureSummary[];
   prebootAbortCounts: Record<string, number>;
   runningBkc: string;
+  executionSummaryText?: string;
+  cpuAllocationEnabled?: boolean;
   teamPlatformCounts: TeamPlatformCount[];
   cpuColumns: string[];
   cpuBaseLabels: CpuBaseLabels;
@@ -251,7 +253,7 @@ function prebootAbortCounts(runs: Run[]): Record<string, number> {
   return Object.fromEntries([...grouped.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
-export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, windowRuns: Run[], latestRuns: Run[], abortedRuns: Run[] = [], runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS, links: WeeklyReportLink[] = DEFAULT_WEEKLY_REPORT_LINKS, cpuColumns: string[] = [], cpuBreakdownTitle = DEFAULT_CPU_BREAKDOWN_TITLE, cpuBaseLabels: CpuBaseLabels = DEFAULT_CPU_BASE_LABELS): WeeklyReport {
+export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, windowRuns: Run[], latestRuns: Run[], abortedRuns: Run[] = [], runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS, links: WeeklyReportLink[] = DEFAULT_WEEKLY_REPORT_LINKS, cpuColumns: string[] = [], cpuBreakdownTitle = DEFAULT_CPU_BREAKDOWN_TITLE, cpuBaseLabels: CpuBaseLabels = DEFAULT_CPU_BASE_LABELS, executionSummaryText = ""): WeeklyReport {
   const latestValid = latestRuns;
   const latestBucket = (run: Run) => bucketOf(run.state ?? "", run.testLine?.goStatus ?? "");
   const domainRuns = new Map<string, Run[]>();
@@ -324,6 +326,7 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
     hsdFailureSummaries: hsdFailureSummaries(latestValid),
     prebootAbortCounts: prebootAbortCounts(abortedRuns),
     runningBkc,
+    executionSummaryText,
     teamPlatformCounts: teamPlatformCounts.map((row) => ({ ...row, ...(row.extraCounts ? { extraCounts: [...row.extraCounts] } : {}) })),
     cpuColumns: [...cpuColumns],
     cpuBaseLabels: { ...cpuBaseLabels },
@@ -335,7 +338,7 @@ export function summarizeWeeklyReport(suites: string[], from: Date, to: Date, wi
   };
 }
 
-export async function generateWeeklyReport(suites: string[], from: Date, to: Date, runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS, links: WeeklyReportLink[] = DEFAULT_WEEKLY_REPORT_LINKS, cpuColumns: string[] = [], cpuBreakdownTitle = DEFAULT_CPU_BREAKDOWN_TITLE, cpuBaseLabels: CpuBaseLabels = DEFAULT_CPU_BASE_LABELS): Promise<WeeklyReport> {
+export async function generateWeeklyReport(suites: string[], from: Date, to: Date, runningBkc = DEFAULT_WEEKLY_REPORT_BKC, teamPlatformCounts: TeamPlatformCount[] = DEFAULT_TEAM_PLATFORM_COUNTS, links: WeeklyReportLink[] = DEFAULT_WEEKLY_REPORT_LINKS, cpuColumns: string[] = [], cpuBreakdownTitle = DEFAULT_CPU_BREAKDOWN_TITLE, cpuBaseLabels: CpuBaseLabels = DEFAULT_CPU_BASE_LABELS, executionSummaryText = ""): Promise<WeeklyReport> {
   const headers: Record<string, string> = { accept: "application/json" };
   const token = await getNgaiApiToken();
   if (token) headers["X-NGA-PAT"] = token;
@@ -356,5 +359,5 @@ export async function generateWeeklyReport(suites: string[], from: Date, to: Dat
   }));
   const missing = datasets.findIndex(([lines]) => lines.length === 0);
   if (missing >= 0) throw new Error(`No test lines found for suite "${suites[missing]}" in this NGAi project.`);
-  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]), datasets.flatMap((item) => item[3]), runningBkc, teamPlatformCounts, links, cpuColumns, cpuBreakdownTitle, cpuBaseLabels);
+  return summarizeWeeklyReport(suites, from, to, datasets.flatMap((item) => item[1]), datasets.flatMap((item) => item[2]), datasets.flatMap((item) => item[3]), runningBkc, teamPlatformCounts, links, cpuColumns, cpuBreakdownTitle, cpuBaseLabels, executionSummaryText);
 }

@@ -42,7 +42,6 @@ type DashboardSettings = {
   weeklyReport: boolean;
   weeklyReportUpdate: boolean;
   weeklyReportEmail: boolean;
-  weeklyReportHsdDetails: boolean;
   weeklyReportSections: WeeklyReportSectionSettings;
   weeklyReportMode: "dateRange" | "workWeek";
   executionTime: boolean;
@@ -95,7 +94,6 @@ export default function SettingsPage() {
     weeklyReport: false,
     weeklyReportUpdate: false,
     weeklyReportEmail: false,
-    weeklyReportHsdDetails: false,
     weeklyReportSections: DEFAULT_WEEKLY_REPORT_SECTIONS,
     weeklyReportMode: "dateRange",
     executionTime: false,
@@ -204,7 +202,6 @@ export default function SettingsPage() {
           weeklyReport: data.weeklyReport === true,
           weeklyReportUpdate: data.weeklyReportUpdate === true,
           weeklyReportEmail: data.weeklyReportEmail === true,
-          weeklyReportHsdDetails: data.weeklyReportHsdDetails === true,
           weeklyReportSections: data.weeklyReportSections ?? DEFAULT_WEEKLY_REPORT_SECTIONS,
           weeklyReportMode: data.weeklyReportMode === "workWeek" ? "workWeek" : "dateRange",
           executionTime: data.executionTime,
@@ -534,7 +531,6 @@ export default function SettingsPage() {
                 ["poolSystems", "All Execution Systems", "Read only"],
                 ["weeklyReport", "Daily/Weekly Report", "Read only"],
                 ["weeklyReportUpdate", "Update Weekly Report", "Viewer access"],
-                ["weeklyReportHsdDetails", "Update HSD Details", "Viewer access"],
                 ["weeklyReportEmail", "Send Report Over Email", "Viewer access"],
                 ["executionTime", "Check Execution Time", "Read only"],
                 ["ngaiTestRunData", "NGA Test Run Data", "Admin only"],

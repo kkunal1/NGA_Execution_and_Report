@@ -2,16 +2,18 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config";
 import { DEFAULT_CPU_ALLOCATION_TITLE, displayCpuAllocationTitle } from "./weekly-report-display";
+import { DEFAULT_EXECUTION_SUMMARY_TEXT, DEFAULT_WEEKLY_REPORT_SUITES } from "./weekly-report-defaults";
 
 export const DEFAULT_WEEKLY_REPORT_BKC = "BKC#40";
+export { DEFAULT_EXECUTION_SUMMARY_TEXT, DEFAULT_WEEKLY_REPORT_SUITES } from "./weekly-report-defaults";
 export const DEFAULT_WEEKLY_REPORT_HSDES_LINK = "https://hsdes.intel.com/appstore/generalapps/#/pages/community/15010407190?queryId=16032003391&articleId=16031656538";
 export const DEFAULT_CPU_BREAKDOWN_TITLE = DEFAULT_CPU_ALLOCATION_TITLE;
 export const DEFAULT_CPU_BASE_LABELS = { team: "Team", x1: "X1", x4: "X4" };
 export type CpuBaseLabels = { team: string; x1: string; x4: string };
 export type TeamPlatformCount = { team: string; x1: number; x4: number; extraCounts?: number[] };
 export type WeeklyReportLink = { label: string; url: string };
-export type CustomReportTable = { id: string; title: string; columns: string[]; rows: string[][] };
-export type WeeklyReportSettings = { bkc: string; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBaseLabels: CpuBaseLabels; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[]; customTables: CustomReportTable[] };
+export type CustomReportTable = { id: string; title: string; columns: string[]; rows: string[][]; enabled?: boolean };
+export type WeeklyReportSettings = { bkc: string; suites: string[]; executionSummaryText: string; cpuAllocationEnabled: boolean; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBaseLabels: CpuBaseLabels; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[]; customTables: CustomReportTable[] };
 export const DEFAULT_TEAM_PLATFORM_COUNTS: TeamPlatformCount[] = [
   { team: "PV.BKC", x1: 6, x4: 2 },
   { team: "DM", x1: 2, x4: 0 },
@@ -132,7 +134,8 @@ export function normalizeCustomReportTables(value: unknown): CustomReportTable[]
       rows.push([...cells] as string[]);
     }
     ids.add(row.id);
-    tables.push({ id: row.id, title: row.title.trim(), columns, rows });
+    if (row.enabled !== undefined && typeof row.enabled !== "boolean") return null;
+    tables.push({ id: row.id, title: row.title.trim(), columns, rows, enabled: row.enabled !== false });
   }
   return tables;
 }
@@ -144,6 +147,9 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
     const customTables = normalizeCustomReportTables(saved.customTables ?? []) ?? [];
     return {
       bkc: normalizeWeeklyReportBkc(saved.bkc) ?? DEFAULT_WEEKLY_REPORT_BKC,
+      suites: normalizeWeeklyReportSuites(saved.suites) ?? [...DEFAULT_WEEKLY_REPORT_SUITES],
+      executionSummaryText: normalizeExecutionSummaryText(saved.executionSummaryText) || DEFAULT_EXECUTION_SUMMARY_TEXT,
+      cpuAllocationEnabled: saved.cpuAllocationEnabled ?? true,
       teamPlatformCounts: normalizeTeamPlatformCounts(saved.teamPlatformCounts, cpuColumns) ?? DEFAULT_TEAM_PLATFORM_COUNTS.map((row) => cpuColumns.length ? { ...row, extraCounts: cpuColumns.map(() => 0) } : { ...row }),
       cpuColumns,
       cpuBaseLabels: normalizeCpuBaseLabels(saved.cpuBaseLabels) ?? { ...DEFAULT_CPU_BASE_LABELS },
@@ -156,6 +162,9 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return {
       bkc: DEFAULT_WEEKLY_REPORT_BKC,
+      suites: [...DEFAULT_WEEKLY_REPORT_SUITES],
+      executionSummaryText: DEFAULT_EXECUTION_SUMMARY_TEXT,
+      cpuAllocationEnabled: true,
       teamPlatformCounts: DEFAULT_TEAM_PLATFORM_COUNTS.map((row) => ({ ...row })),
       cpuColumns: [],
       cpuBaseLabels: { ...DEFAULT_CPU_BASE_LABELS },
@@ -167,8 +176,11 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
   }
 }
 
-export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS, customTablesValue?: unknown): Promise<WeeklyReportSettings> {
+export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS, customTablesValue?: unknown, suitesValue: unknown = DEFAULT_WEEKLY_REPORT_SUITES, executionSummaryTextValue: unknown = DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabledValue: unknown = true): Promise<WeeklyReportSettings> {
   const bkc = normalizeWeeklyReportBkc(bkcValue);
+  const suites = normalizeWeeklyReportSuites(suitesValue);
+  const executionSummaryText = normalizeExecutionSummaryText(executionSummaryTextValue);
+  const cpuAllocationEnabled = typeof cpuAllocationEnabledValue === "boolean" ? cpuAllocationEnabledValue : null;
   const cpuColumns = normalizeCpuColumns(columnsValue);
   const cpuBaseLabels = normalizeCpuBaseLabels(baseLabelsValue);
   const cpuBreakdownTitle = normalizeCpuBreakdownTitle(titleValue);
@@ -179,6 +191,9 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
     ? (await getWeeklyReportSettings()).customTables
     : normalizeCustomReportTables(customTablesValue);
   if (!bkc) throw new TypeError("Enter a BKC value such as BKC#40 or BKC#WW41.");
+  if (!suites) throw new TypeError("Enter one to 20 unique NGAi suite names, each up to 512 characters.");
+  if (executionSummaryText === null) throw new TypeError("Execution summary text must be 10,000 characters or fewer.");
+  if (cpuAllocationEnabled === null) throw new TypeError("Choose whether the main allocation table is enabled.");
   if (!cpuColumns) throw new TypeError("Enter up to 10 unique CPU column names (not Team, X1, or X4).");
   if (!cpuBaseLabels || cpuColumns.some((column) => Object.values(cpuBaseLabels).some((label) => label.toLowerCase() === column.toLowerCase()))) {
     throw new TypeError("Enter unique Team, X1, and X4 column labels of up to 40 characters.");
@@ -189,7 +204,7 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
   if (!links) throw new TypeError("Enter up to 20 report links with a label and valid HTTPS URL.");
   if (!customTables) throw new TypeError("Enter up to 10 custom tables with up to 12 columns and 100 rows each.");
   await mkdir(config.dataDir, { recursive: true });
-  const settings = { bkc, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, hsdesLink, links, customTables };
+  const settings = { bkc, suites, executionSummaryText: executionSummaryText || DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabled, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, hsdesLink, links, customTables };
   await writeFile(settingsPath, JSON.stringify(settings, null, 2), { encoding: "utf8", mode: 0o600 });
   return settings;
 }
@@ -201,4 +216,24 @@ export function normalizeCpuBaseLabels(value: unknown): CpuBaseLabels | null {
   if (values.some((label) => typeof label !== "string" || !label.trim() || label.trim().length > 40)) return null;
   const [team, x1, x4] = values.map((label) => (label as string).trim());
   return new Set([team.toLowerCase(), x1.toLowerCase(), x4.toLowerCase(), "total"]).size === 4 ? { team, x1, x4 } : null;
+}
+
+export function normalizeWeeklyReportSuites(value: unknown): string[] | null {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20) return null;
+  const suites: string[] = [];
+  const seen = new Set<string>();
+  for (const item of value) {
+    if (typeof item !== "string") return null;
+    const suite = item.trim();
+    const key = suite.toLowerCase();
+    if (!suite || suite.length > 512 || /[\r\n]/.test(suite) || seen.has(key)) return null;
+    seen.add(key);
+    suites.push(suite);
+  }
+  return suites;
+}
+
+export function normalizeExecutionSummaryText(value: unknown): string | null {
+  if (typeof value !== "string" || value.length > 10_000 || value.includes("\0")) return null;
+  return value.trim();
 }

@@ -3,7 +3,7 @@
 import { FormEvent, useContext, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { LayoutDashboard, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, FilePenLine, FileText, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight, Send } from "lucide-react";
+import { LayoutDashboard, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, FilePenLine, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight, Send } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
 import { AppRoleContext } from "./auth-context";
@@ -24,7 +24,6 @@ type MenuVisibility = {
   weeklyReport: boolean;
   weeklyReportUpdate: boolean;
   weeklyReportEmail: boolean;
-  weeklyReportHsdDetails: boolean;
   executionTime: boolean;
   ngaiTestRunData: boolean;
 };
@@ -71,7 +70,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [loginPassword, setLoginPassword] = useState("");
   const [loginError, setLoginError] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
-  const [menuVisibility, setMenuVisibility] = useState<MenuVisibility>({ poolSystems: false, weeklyReport: false, weeklyReportUpdate: false, weeklyReportEmail: false, weeklyReportHsdDetails: false, executionTime: false, ngaiTestRunData: false });
+  const [menuVisibility, setMenuVisibility] = useState<MenuVisibility>({ poolSystems: false, weeklyReport: false, weeklyReportUpdate: false, weeklyReportEmail: false, executionTime: false, ngaiTestRunData: false });
   const [menuVisibilityReady, setMenuVisibilityReady] = useState(false);
   const [executionReportExpanded, setExecutionReportExpanded] = useState(false);
   const [weeklyReportExpanded, setWeeklyReportExpanded] = useState(false);
@@ -157,7 +156,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             weeklyReport: data.weeklyReport === true,
             weeklyReportUpdate: data.weeklyReportUpdate === true,
             weeklyReportEmail: data.weeklyReportEmail === true,
-            weeklyReportHsdDetails: data.weeklyReportHsdDetails === true,
             executionTime: data.executionTime,
             ngaiTestRunData: data.ngaiTestRunData,
           });
@@ -179,8 +177,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const disabledWeeklyFeature = menuVisibilityReady && (
       (pathname === "/update-weekly-report" && !menuVisibility.weeklyReportUpdate) ||
-      (pathname === "/weekly-report/send-email" && !menuVisibility.weeklyReportEmail) ||
-      (pathname === "/update-hsd-details" && !menuVisibility.weeklyReportHsdDetails)
+      (pathname === "/weekly-report/send-email" && !menuVisibility.weeklyReportEmail)
     );
     if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || disabledWeeklyFeature)) {
       router.replace("/");
@@ -189,7 +186,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (pathname === "/" || pathname.startsWith("/execution/")) setExecutionReportExpanded(true);
-    if (pathname === "/weekly-report" || pathname.startsWith("/weekly-report/") || pathname === "/update-weekly-report" || pathname === "/update-hsd-details") {
+    if (pathname === "/weekly-report" || pathname.startsWith("/weekly-report/") || pathname === "/update-weekly-report") {
       setWeeklyReportExpanded(true);
     }
   }, [pathname]);
@@ -282,11 +279,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [role]);
 
   const viewerWeeklyFeaturePending = role === "viewer" && !menuVisibilityReady &&
-    (pathname === "/update-weekly-report" || pathname === "/weekly-report/send-email" || pathname === "/update-hsd-details");
+    (pathname === "/update-weekly-report" || pathname === "/weekly-report/send-email");
   const viewerWeeklyFeatureDenied = role === "viewer" && menuVisibilityReady && (
     (pathname === "/update-weekly-report" && !menuVisibility.weeklyReportUpdate) ||
-    (pathname === "/weekly-report/send-email" && !menuVisibility.weeklyReportEmail) ||
-    (pathname === "/update-hsd-details" && !menuVisibility.weeklyReportHsdDetails)
+    (pathname === "/weekly-report/send-email" && !menuVisibility.weeklyReportEmail)
   );
 
   if (checkingSession) {
@@ -346,7 +342,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             if (role === "admin") return true;
             if (item.adminOnly) return false;
             if (item.visibilityKey === "weeklyReport") {
-              return menuVisibility.weeklyReport || menuVisibility.weeklyReportUpdate || menuVisibility.weeklyReportEmail || menuVisibility.weeklyReportHsdDetails;
+              return menuVisibility.weeklyReport || menuVisibility.weeklyReportUpdate || menuVisibility.weeklyReportEmail;
             }
             return !item.visibilityKey || menuVisibility[item.visibilityKey];
           }).map(({ href, label, icon: Icon }) => {
@@ -386,7 +382,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               );
             }
             if (href === "/weekly-report") {
-              const active = pathname === href || pathname.startsWith("/weekly-report/") || pathname === "/update-weekly-report" || pathname === "/update-hsd-details";
+              const active = pathname === href || pathname.startsWith("/weekly-report/") || pathname === "/update-weekly-report";
               return (
                 <div key={href}>
                   <button
@@ -414,9 +410,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       </Link>}
                       {(role === "admin" || menuVisibility.weeklyReportUpdate) && <Link href="/update-weekly-report" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/update-weekly-report" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
                         <FilePenLine className="h-3.5 w-3.5 shrink-0" /><span>Update Weekly Report</span>
-                      </Link>}
-                      {(role === "admin" || menuVisibility.weeklyReportHsdDetails) && <Link href="/update-hsd-details" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/update-hsd-details" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
-                        <FileText className="h-3.5 w-3.5 shrink-0" /><span>Update HSD Details</span>
                       </Link>}
                       {(role === "admin" || menuVisibility.weeklyReportEmail) && <Link href="/weekly-report/send-email" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/weekly-report/send-email" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
                         <Send className="h-3.5 w-3.5 shrink-0" /><span>Send Report Over Email</span>

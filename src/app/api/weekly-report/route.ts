@@ -2,7 +2,6 @@ import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
 import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
 import { fetchHsdesArticleDetails, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
-import { B0_SUITES } from "@/lib/pool-systems";
 import { generateCompleteWeeklyReport } from "@/lib/weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "@/lib/work-weeks";
 
@@ -44,7 +43,8 @@ export async function POST(req: Request) {
     const { from } = getISTDayRange(today);
     const now = new Date();
     const to = now > from ? now : new Date(from.getTime() + 60_000);
-    const report = await generateCompleteWeeklyReport([B0_SUITES.P1, B0_SUITES.P2], from, to);
+    const { suites } = await getWeeklyReportSettings();
+    const report = await generateCompleteWeeklyReport(suites, from, to);
     return NextResponse.json(report);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not generate the current-day report." }, { status: 502 });

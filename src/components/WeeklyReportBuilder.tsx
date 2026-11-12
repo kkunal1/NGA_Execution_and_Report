@@ -7,6 +7,8 @@ import { buildFailureProgress, weeklyReportYetToAttemptCount } from "@/lib/weekl
 import { displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 import { normalizeHsdesReportType } from "@/lib/hsdes-report-type";
+import { executionSummaryValues, renderExecutionSummaryHtml } from "@/lib/execution-summary-format";
+import { DEFAULT_EXECUTION_SUMMARY_TEXT } from "@/lib/weekly-report-defaults";
 
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
 const percentage = (count: number, total: number) => total ? `${(count / total * 100).toFixed(1)}%` : "0%";
@@ -632,12 +634,11 @@ export default function WeeklyReportBuilder() {
       <Copy className="h-4 w-4" aria-hidden="true" />Copy Report
     </button>
   );
-  const hsdFailureSection = report && report.sectionVisibility?.hsdFailureSummary !== false && (
+  const hsdFailureSection = report && report.sectionVisibility?.hsdFailureSummary !== false && hsdFailureSummaries.length > 0 && (
     <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
       <h2 className="mb-4 text-base font-bold text-[#204e76]">HSDs with 5 or More Failed Runs</h2>
       {report.sightingWarning && <p role="status" className="mt-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">HSDES titles may be unavailable: {report.sightingWarning}</p>}
-      {hsdFailureSummaries.length ? (
-        <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
+      <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
           <table className="w-full min-w-[760px] border-collapse text-left text-sm">
             <thead className="bg-[#204e76] text-xs font-semibold text-white">
               <tr><th className="w-40 px-3 py-2.5">Domain</th><th className="w-36 px-3 py-2.5">HSD</th><th className="w-28 px-3 py-2.5 text-right">Failed Test</th><th className="px-3 py-2.5">Title &amp; Status</th></tr>
@@ -662,10 +663,7 @@ export default function WeeklyReportBuilder() {
               })}
             </tbody>
           </table>
-        </div>
-      ) : (
-        <p className="mt-3 text-sm text-[#647e94]">{hasHsdFailureSummaries ? "No HSDs have 5 or more failed runs." : "Create a new report to calculate HSD failure counts for this saved report."}</p>
-      )}
+      </div>
     </section>
   );
   return (
@@ -754,18 +752,14 @@ export default function WeeklyReportBuilder() {
             ))}
           </div>
           <p className="mt-2 text-xs text-[#60788e]">Execution Attempted includes {report.latestRerunPendingRunning} PendingRunning/PendingGatekeepers reruns (index &gt; 0); those tests also appear in the current Not run count.</p>
-          <h4 className="mt-5 text-sm font-bold text-[#204e76]">DMR-AP1 B0 Execution Status Summary</h4>
-          <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed text-[#253646]">
-            <li><strong>{reportPercentage(attempted, report.planned)}</strong> tests have been attempted, with <strong className="text-[#087a50]">{reportPercentage(report.latestPassed, report.planned)} passed</strong>, <strong className="text-[#bb3846]">{reportPercentage(report.latestFailed, report.planned)} failed</strong> and <strong className="text-[#aa5420]">{reportPercentage(report.blockedLines, report.planned)} blocked</strong>.</li>
-            <li>Failure analysis and rerun in progress.</li>
-            <li>Execution is currently running with <strong className="text-black">{report.runningBkc || "BKC#40"}</strong>.</li>
-          </ul>
+          <div className="mt-5 rounded-md border border-[#d4e0eb] bg-[#f7f9fc] px-4 py-3 text-sm leading-relaxed text-[#253646] [&_p]:my-1 [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-5" dangerouslySetInnerHTML={{ __html: renderExecutionSummaryHtml(report.executionSummaryText?.trim() || DEFAULT_EXECUTION_SUMMARY_TEXT, executionSummaryValues(report)) }} />
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">Links</h4>
           <ul className="mt-2 list-disc pl-5 text-sm">
             {reportLinks.map((link) => <li key={`${link.label}-${link.url}`}><a href={link.url} target="_blank" rel="noopener noreferrer" className="font-medium text-[#205d92] underline underline-offset-2 hover:text-[#123b60]">{link.label}</a></li>)}
             {!reportLinks.length && <li className="text-[#647e94]">No links configured.</li>}
           </ul>
           {report.sectionVisibility?.cpuAllocation !== false && <>
+          {report.cpuAllocationEnabled !== false && <>
           <h4 className="mt-5 text-sm font-bold text-[#204e76]">{displayCpuAllocationTitle(report.cpuBreakdownTitle)}</h4>
           <div className="mt-3 overflow-x-auto border border-[#b8cadb]">
             <table className="w-full min-w-[480px] border-collapse text-left text-sm">
@@ -788,7 +782,8 @@ export default function WeeklyReportBuilder() {
               </tfoot>}
             </table>
           </div>
-          {(report.customTables ?? []).map((customTable) => (
+          </>}
+          {(report.customTables ?? []).filter((customTable) => customTable.enabled !== false).map((customTable) => (
             <section key={customTable.id} className="mt-6">
               <h4 className="mb-3 text-sm font-bold text-[#204e76]">{customTable.title}</h4>
               <div className="overflow-x-auto border border-[#b8cadb]">

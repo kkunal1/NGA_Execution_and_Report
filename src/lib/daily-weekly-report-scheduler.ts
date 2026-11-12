@@ -1,7 +1,7 @@
-import { B0_SUITES } from "./pool-systems";
 import { generateCompleteWeeklyReport } from "./weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "./work-weeks";
 import { isDailyReportDate, listSavedReportKeys, saveDailyReport } from "./saved-weekly-reports";
+import { getWeeklyReportSettings } from "./weekly-report-settings";
 
 const DAY_MS = 86_400_000;
 const IST_OFFSET_MS = 330 * 60_000;
@@ -36,7 +36,8 @@ export async function runDailyWeeklyReportCheck(now = new Date()) {
     let nextDate = savedDates.length ? addDays(savedDates[savedDates.length - 1], 1) : targetDate;
     while (nextDate <= targetDate) {
       const { from, to } = getISTDayRange(nextDate);
-      const report = await generateCompleteWeeklyReport([B0_SUITES.P1, B0_SUITES.P2], from, to);
+      const { suites } = await getWeeklyReportSettings();
+      const report = await generateCompleteWeeklyReport(suites, from, to);
       await saveDailyReport(nextDate, report);
       console.info(`Saved automatic Weekly Report for ${nextDate}.`);
       nextDate = addDays(nextDate, 1);

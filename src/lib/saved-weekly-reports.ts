@@ -3,7 +3,7 @@ import { mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promise
 import path from "node:path";
 import { config } from "./config";
 import type { WeeklyReport } from "./weekly-report";
-import { buildFailureProgress } from "./weekly-report-metrics";
+import { buildFailureProgress, getB2FailureProgressWindow } from "./weekly-report-metrics";
 import { getISTDateKey } from "./work-weeks";
 
 const reportsPath = path.join(config.dataDir, "weekly-reports");
@@ -79,14 +79,30 @@ export async function withFailureProgress(
   report: WeeklyReport,
   loadDailyReport: (key: string) => Promise<WeeklyReport | null> = loadSavedWeeklyReport,
 ): Promise<WeeklyReport> {
-  const days = buildFailureProgress(report).days;
   const reportDate = getISTDateKey(new Date(Date.parse(report.to) - 1));
+  const isB2Report = report.suites.some((suite) => /_B2_(?:P[12]_)?Tests_Cycle$/i.test(suite));
+  let window: ReturnType<typeof getB2FailureProgressWindow> | undefined;
+  if (isB2Report) {
+    const suiteKey = (suites: string[]) => [...new Set(suites.map((suite) => suite.trim().toLowerCase()))].sort().join("\n");
+    const previousDailyKeys = (await listSavedReportKeys())
+      .filter((key) => isDailyReportDate(key) && key < reportDate)
+      .sort((left, right) => right.localeCompare(left));
+    let startDate = reportDate;
+    for (const key of previousDailyKeys) {
+      const previous = await loadDailyReport(key);
+      if (!previous || suiteKey(previous.suites) !== suiteKey(report.suites)) continue;
+      startDate = previous.failureProgress?.days[0]?.date ?? key;
+      break;
+    }
+    window = getB2FailureProgressWindow(startDate, reportDate);
+  }
+  const days = buildFailureProgress(report, [], window).days;
   const history = await Promise.all(days.filter((day) => day.date < reportDate).map(async (day) => ({
     date: day.date,
     report: await loadDailyReport(day.date),
   })));
   return {
     ...report,
-    failureProgress: buildFailureProgress(report, history.flatMap((snapshot) => snapshot.report ? [{ date: snapshot.date, report: snapshot.report }] : [])),
+    failureProgress: buildFailureProgress(report, history.flatMap((snapshot) => snapshot.report ? [{ date: snapshot.date, report: snapshot.report }] : []), window),
   };
 }

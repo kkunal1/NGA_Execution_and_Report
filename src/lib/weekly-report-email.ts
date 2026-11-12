@@ -3,6 +3,8 @@ import { buildFailureProgress, weeklyReportYetToAttemptCount } from "./weekly-re
 import { formatValidationGroupName } from "./normalize";
 import { displayCpuAllocationTitle } from "./weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "./work-weeks";
+import { executionSummaryValues, renderExecutionSummaryHtml } from "./execution-summary-format";
+import { DEFAULT_EXECUTION_SUMMARY_TEXT } from "./weekly-report-defaults";
 import { normalizeHsdesReportType } from "./hsdes-report-type";
 
 const stages: Stage[] = ["Preboot", "PreTest", "Test", "PostTest", "Cleanup"];
@@ -64,6 +66,7 @@ function breakdownCell(value: string | number, color: string, bold = false) {
 }
 
 function section(title: string, content: string) {
+  if (title === "HSDs with 5 or More Failed Runs" && content.includes(">No data</td>")) return "";
   return `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">${escapeHtml(title)}</h2>${content}`;
 }
 
@@ -227,12 +230,14 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport, options: { sho
     { label: "Not Run", count: report.latestNotRun, color: "#9a6313", border: "#c1852c", belowCount: options.showYetToAttempt === false ? "" : `Yet to attempt: ${yetToAttempt.toLocaleString("en-US")} (${percentage(yetToAttempt)})` },
   ];
   const executionMetricsTable = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:10px 0 20px;border-collapse:collapse;background:#eef4fa;border-top:1px solid #c4d6e5;border-bottom:1px solid #c4d6e5"><tbody><tr>${executionMetrics.map((metric) => `<td width="20%" style="width:20%;padding:14px 10px;vertical-align:top;background:#eef4fa"><div style="border-left:3px solid ${metric.border};padding-left:10px"><div style="color:#4e6c84;font-size:12px;font-weight:500">${metric.label}${metric.detail ? ` <span style="color:#60788e;font-size:10px;font-weight:400">${metric.detail}</span>` : ""}</div><div style="margin-top:4px;color:${metric.color};font-size:19px;font-weight:700">${metric.count.toLocaleString("en-US")} <span style="font-size:12px;font-weight:600">${percentage(metric.count)}</span></div>${metric.belowCount ? `<div style="margin-top:4px;color:#60788e;font-size:11px;line-height:1.4">${metric.belowCount}</div>` : ""}</div></td>`).join("")}</tr></tbody></table>`;
-  const executionSummary = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Execution Summary</h2>${executionMetricsTable}`;
+  const executionSummaryText = report.executionSummaryText?.trim() || DEFAULT_EXECUTION_SUMMARY_TEXT;
+  const executionSummaryNotes = `<div style="margin:12px 0 20px;padding:12px 16px;border:1px solid #d7e3ee;border-radius:6px;color:#253646;font-size:13px;line-height:1.6">${renderExecutionSummaryHtml(executionSummaryText, executionSummaryValues(report))}</div>`;
+  const executionSummary = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Execution Summary</h2>${executionMetricsTable}${executionSummaryNotes}`;
+  const executionSummaryHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Execution Summary</h2>`;
   const domainRows = report.domainSummary ?? [];
   const domainSummary = domainRows.length
     ? domainSummarySection(domainRows)
     : report.sectionVisibility?.domainWise === false ? "" : domainSummarySection(domainRows);
-  const statusSummary = `<section style="margin:20px 0;padding:0 12px;color:#253646"><h2 style="margin:0 0 8px;color:#204e76;font-size:17px">DMR-AP1 B0 Execution Status Summary</h2><ul style="margin:0;padding-left:20px;font-size:13px;line-height:1.7"><li><strong>${percentage(attempted)}</strong> tests have been attempted, with <strong style="color:#087a50">${percentage(report.latestPassed)} passed</strong>, <strong style="color:#bb3846">${percentage(report.latestFailed)} failed</strong> and <strong style="color:#aa5420">${percentage(report.blockedLines)} blocked</strong>.</li><li>Failure analysis and rerun in progress.</li><li>Execution is currently running with <strong>${escapeHtml(report.runningBkc || "BKC#40")}</strong>.</li></ul></section>`;
   const noteCallout = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:10px 0 0;border-collapse:collapse;background-color:#fff6d6"><tbody><tr><td style="padding:10px 14px;border-left:3px solid #d7a02b;background-color:#fff6d6;color:#594416;font-family:'Courier New',Courier,monospace;font-size:12px;line-height:1.5"><strong>Note:</strong> This report was generated with AI assistance. The updates have been reviewed for accuracy.</td></tr></tbody></table>`;
   const reportLinks = (report.links ?? []).map((link) => {
     const href = safeReportLink(link.url);
@@ -250,7 +255,7 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport, options: { sho
   const bucketizedHsdSection = bucketizedHsdIssues.length
     ? section("HSDES Issues Linked to Failed Tests", table(["Domain", "HSDES ID", "Report Type", "Title", "Status", "Days open"], bucketizedHsdIssues))
     : "";
-  const customTablesSection = (report.customTables ?? [])
+  const customTablesSection = (report.customTables ?? []).filter((customTableDefinition) => customTableDefinition.enabled !== false)
     .map((customTableDefinition) => section(customTableDefinition.title, customTable(customTableDefinition.columns, customTableDefinition.rows)))
     .join("");
   let reportDocument = renderWeeklyReportEmailDocument(report)
@@ -263,9 +268,11 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport, options: { sho
     .replace(/<footer[^>]*>Generated by NGA Execution Tracker<\/footer>/, "");
   if (bucketizedHsdSection) reportDocument = reportDocument.replace(openHsdesHeading, `${bucketizedHsdSection}${openHsdesHeading}`);
   if (report.sectionVisibility?.cpuAllocation !== false && customTablesSection) {
-    reportDocument = insertAfterTableSection(reportDocument, cpuHeading, customTablesSection);
+    reportDocument = report.cpuAllocationEnabled === false
+      ? insertAfterTableSection(reportDocument, executionSummaryHeading, customTablesSection)
+      : insertAfterTableSection(reportDocument, cpuHeading, customTablesSection);
   }
-  if (report.sectionVisibility?.cpuAllocation === false) reportDocument = removeTableSection(reportDocument, cpuHeading);
+  if (report.sectionVisibility?.cpuAllocation === false || report.cpuAllocationEnabled === false) reportDocument = removeTableSection(reportDocument, cpuHeading);
   if (report.sectionVisibility?.hsdFailureSummary === false) reportDocument = removeTableSection(reportDocument, hsdHeading);
   if (report.sectionVisibility?.openHsdesIssues === false) reportDocument = removeTableSection(reportDocument, openHsdesHeading);
   const linksBeforeCpu = reportDocument.replace(cpuHeading, `${linksSection}${cpuHeading}`);
@@ -277,6 +284,6 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport, options: { sho
     ? removeTableSection(domainSummaryBeforeBreakdown, overallFailureHeading)
     : domainSummaryBeforeBreakdown;
   return visibleReportDocument
-    .replace(/<header\b[^>]*>[\s\S]*?<\/header>/, `${noteCallout}${statusSummary}`)
+    .replace(/<header\b[^>]*>[\s\S]*?<\/header>/, noteCallout)
     .replace("</main>", `<p style="margin:36px 0 0;font-size:13px;line-height:1.6">Regards,<br>Krishna Kunal</p></main>`);
 }

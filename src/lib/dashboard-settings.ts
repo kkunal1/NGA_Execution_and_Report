@@ -11,7 +11,6 @@ export type DashboardSettings = {
   weeklyReport: boolean;
   weeklyReportUpdate: boolean;
   weeklyReportEmail: boolean;
-  weeklyReportHsdDetails: boolean;
   weeklyReportSections: WeeklyReportSectionSettings;
   weeklyReportMode: "dateRange" | "workWeek";
   executionTime: boolean;
@@ -24,7 +23,6 @@ export const DEFAULT_DASHBOARD_SETTINGS: DashboardSettings = {
   weeklyReport: false,
   weeklyReportUpdate: false,
   weeklyReportEmail: false,
-  weeklyReportHsdDetails: false,
   weeklyReportSections: DEFAULT_WEEKLY_REPORT_SECTIONS,
   weeklyReportMode: "dateRange",
   executionTime: false,
@@ -42,7 +40,6 @@ export async function getDashboardSettings(): Promise<DashboardSettings> {
       weeklyReport: saved.weeklyReport ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReport,
       weeklyReportUpdate: saved.weeklyReportUpdate ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReportUpdate,
       weeklyReportEmail: saved.weeklyReportEmail ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReportEmail,
-      weeklyReportHsdDetails: saved.weeklyReportHsdDetails ?? DEFAULT_DASHBOARD_SETTINGS.weeklyReportHsdDetails,
       weeklyReportSections: {
         cpuAllocation: saved.weeklyReportSections?.cpuAllocation ?? DEFAULT_WEEKLY_REPORT_SECTIONS.cpuAllocation,
         hsdFailureSummary: saved.weeklyReportSections?.hsdFailureSummary ?? DEFAULT_WEEKLY_REPORT_SECTIONS.hsdFailureSummary,

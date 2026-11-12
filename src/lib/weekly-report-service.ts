@@ -8,7 +8,7 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
   const [settings, dashboardSettings] = await Promise.all([getWeeklyReportSettings(), getDashboardSettings()]);
   const sectionVisibility = dashboardSettings.weeklyReportSections;
   const [report, sightingResult] = await Promise.all([
-    generateWeeklyReport(suites, from, to, settings.bkc, settings.teamPlatformCounts, settings.links, settings.cpuColumns, settings.cpuBreakdownTitle, settings.cpuBaseLabels),
+    generateWeeklyReport(suites, from, to, settings.bkc, settings.teamPlatformCounts, settings.links, settings.cpuColumns, settings.cpuBreakdownTitle, settings.cpuBaseLabels, settings.executionSummaryText),
     fetchHsdesIssueData(settings.hsdesLink)
       .then((issueData) => ({ ...issueData, warning: "" }))
       .catch((error: unknown) => ({
@@ -46,6 +46,7 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
     hsdFailureStatuses,
     hsdFailureReportTypes,
     sightingWarning: sightingResult.warning,
+    cpuAllocationEnabled: settings.cpuAllocationEnabled,
     customTables: settings.customTables,
   });
 }

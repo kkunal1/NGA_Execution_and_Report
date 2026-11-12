@@ -438,7 +438,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
   }, [cacheProfileRun, latestVersion, profile, provider]);
 
   useEffect(() => {
-    if (!isAdmin || refreshIntervalSeconds === 0 || run?.meta.stateColumn !== "State" || autoRefreshSuites.length === 0) return;
+    if (!isAdmin || provider !== "ngai" || !suiteStateRestored || refreshIntervalSeconds === 0 || autoRefreshSuites.length === 0) return;
     let cancelled = false;
     let timer: number | undefined;
     const refresh = async () => {
@@ -514,7 +514,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (timer !== undefined) window.clearTimeout(timer);
     };
-  }, [abortedCacheKey, cacheProfileRun, isAdmin, profile, provider, refreshIntervalSeconds, run?.meta.stateColumn, autoRefreshSuites]);
+  }, [abortedCacheKey, cacheProfileRun, isAdmin, profile, provider, refreshIntervalSeconds, autoRefreshSuites, suiteStateRestored]);
 
   const availableSuites = useMemo(() => run
     ? normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])

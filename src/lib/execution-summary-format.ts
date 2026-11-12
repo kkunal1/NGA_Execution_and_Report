@@ -51,7 +51,7 @@ function renderInline(value: string, values: Record<string, string>) {
     });
 }
 
-export function renderExecutionSummaryHtml(value: string, values: Record<string, string> = {}): string {
+export function renderExecutionSummaryHtml(value: string, values: Record<string, string> = {}, options: { spaceAfterBullet?: boolean } = {}): string {
   const blocks: string[] = [];
   let paragraph: string[] = [];
   let bullets: string[] = [];
@@ -60,7 +60,7 @@ export function renderExecutionSummaryHtml(value: string, values: Record<string,
     paragraph = [];
   };
   const flushBullets = () => {
-    if (bullets.length) blocks.push(`<ul>${bullets.map((item) => `<li>${renderInline(item, values)}</li>`).join("")}</ul>`);
+    if (bullets.length) blocks.push(`<ul>${bullets.map((item) => `<li>${options.spaceAfterBullet ? "&nbsp;" : ""}${renderInline(item, values)}</li>`).join("")}</ul>`);
     bullets = [];
   };
 

@@ -11,7 +11,7 @@ const stages: Stage[] = ["Preboot", "PreTest", "Test", "PostTest", "Cleanup"];
 
 export function weeklyReportEmailSubject(report: WeeklyReport) {
   const reportDate = getISTDateKey(new Date(report.from));
-  return `DMR AP1 PV B0 Execution Daily Status Report For ${getDailyReportLabel(reportDate)}`;
+  return `DMR AP1 B2 Execution Daily Status Report For ${getDailyReportLabel(reportDate)}`;
 }
 
 export function weeklyReportEmailFilename(report: WeeklyReport) {
@@ -231,7 +231,7 @@ export function renderWeeklyReportEmailHtml(report: WeeklyReport, options: { sho
   ];
   const executionMetricsTable = `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;margin:10px 0 20px;border-collapse:collapse;background:#eef4fa;border-top:1px solid #c4d6e5;border-bottom:1px solid #c4d6e5"><tbody><tr>${executionMetrics.map((metric) => `<td width="20%" style="width:20%;padding:14px 10px;vertical-align:top;background:#eef4fa"><div style="border-left:3px solid ${metric.border};padding-left:10px"><div style="color:#4e6c84;font-size:12px;font-weight:500">${metric.label}${metric.detail ? ` <span style="color:#60788e;font-size:10px;font-weight:400">${metric.detail}</span>` : ""}</div><div style="margin-top:4px;color:${metric.color};font-size:19px;font-weight:700">${metric.count.toLocaleString("en-US")} <span style="font-size:12px;font-weight:600">${percentage(metric.count)}</span></div>${metric.belowCount ? `<div style="margin-top:4px;color:#60788e;font-size:11px;line-height:1.4">${metric.belowCount}</div>` : ""}</div></td>`).join("")}</tr></tbody></table>`;
   const executionSummaryText = report.executionSummaryText?.trim() || DEFAULT_EXECUTION_SUMMARY_TEXT;
-  const executionSummaryNotes = `<div style="margin:12px 0 20px;padding:12px 16px;border:1px solid #d7e3ee;border-radius:6px;color:#253646;font-size:13px;line-height:1.6">${renderExecutionSummaryHtml(executionSummaryText, executionSummaryValues(report))}</div>`;
+  const executionSummaryNotes = `<div style="margin:12px 0 20px;padding:12px 16px;border:1px solid #d7e3ee;border-radius:6px;color:#253646;font-size:13px;line-height:1.6">${renderExecutionSummaryHtml(executionSummaryText, executionSummaryValues(report), { spaceAfterBullet: true })}</div>`;
   const executionSummary = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Execution Summary</h2>${executionMetricsTable}${executionSummaryNotes}`;
   const executionSummaryHeading = `<h2 style="margin:26px 0 8px;border-bottom:2px solid #d7e3ee;padding-bottom:7px;color:#204e76;font-size:17px">Execution Summary</h2>`;
   const domainRows = report.domainSummary ?? [];

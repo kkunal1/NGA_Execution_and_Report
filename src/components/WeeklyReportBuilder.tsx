@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { CalendarDays, ChevronDown, Copy, Download, FileText, FolderOpen, Trash2 } from "lucide-react";
+import { CalendarDays, ChevronDown, Copy, Download, FileText, FolderOpen, Info, Trash2 } from "lucide-react";
 import type { FailureRow, Stage, WeeklyReport } from "@/lib/weekly-report";
 import { buildFailureProgress, weeklyReportYetToAttemptCount } from "@/lib/weekly-report-metrics";
 import { displayCpuAllocationTitle } from "@/lib/weekly-report-display";
@@ -629,19 +629,31 @@ export default function WeeklyReportBuilder() {
     </button>
   );
   const downloadButton = report && (
-    <button type="button" onClick={downloadHtml} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)]">
-      <Download className="h-4 w-4" aria-hidden="true" />Download report
-    </button>
+    <span className="group relative inline-flex shrink-0">
+      <button type="button" onClick={downloadHtml} aria-label="Download report" aria-describedby="download-report-tooltip" className="relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-alt)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+        <Download className="h-4 w-4" aria-hidden="true" />
+        <Info className="absolute right-0.5 top-0.5 h-2.5 w-2.5 text-[var(--text-muted)]" aria-hidden="true" />
+      </button>
+      <span id="download-report-tooltip" role="tooltip" className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-max max-w-48 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text)] shadow-md group-hover:block group-focus-within:block">Download report</span>
+    </span>
   );
   const clearReportButton = report && (
-    <button type="button" onClick={clearReport} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-red-200 bg-white px-4 text-sm font-medium text-red-700 hover:bg-red-50">
-      <Trash2 className="h-4 w-4" aria-hidden="true" />Clear report
-    </button>
+    <span className="group relative inline-flex shrink-0">
+      <button type="button" onClick={clearReport} aria-label="Clear report" aria-describedby="clear-report-tooltip" className="relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-red-200 bg-white text-red-700 hover:bg-red-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)]">
+        <Trash2 className="h-4 w-4" aria-hidden="true" />
+        <Info className="absolute right-0.5 top-0.5 h-2.5 w-2.5" aria-hidden="true" />
+      </button>
+      <span id="clear-report-tooltip" role="tooltip" className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-max max-w-48 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text)] shadow-md group-hover:block group-focus-within:block">Clear report</span>
+    </span>
   );
   const copyReportButton = report && (
-    <button type="button" onClick={() => void copyReport()} disabled={hsdesDetailsLoading} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:cursor-not-allowed disabled:opacity-60">
-      <Copy className="h-4 w-4" aria-hidden="true" />Copy Report
-    </button>
+    <span className="group relative inline-flex shrink-0">
+      <button type="button" onClick={() => void copyReport()} disabled={hsdesDetailsLoading} aria-label="Copy report" aria-describedby="copy-report-tooltip" className="relative inline-flex h-10 w-10 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-alt)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--accent)] disabled:cursor-not-allowed disabled:opacity-60">
+        <Copy className="h-4 w-4" aria-hidden="true" />
+        <Info className="absolute right-0.5 top-0.5 h-2.5 w-2.5 text-[var(--text-muted)]" aria-hidden="true" />
+      </button>
+      <span id="copy-report-tooltip" role="tooltip" className="pointer-events-none absolute right-0 top-full z-20 mt-2 hidden w-max max-w-48 rounded border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-xs text-[var(--text)] shadow-md group-hover:block group-focus-within:block">Copy report</span>
+    </span>
   );
   const hsdFailureSection = report && report.sectionVisibility?.hsdFailureSummary !== false && hsdFailureSummaries.length > 0 && (
     <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
@@ -682,8 +694,8 @@ export default function WeeklyReportBuilder() {
         <h1 className="text-lg font-semibold">Weekly Report</h1>
       </div>
       <section className="border-y border-[var(--border)] bg-[var(--surface)] px-4 py-4">
-        <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
-          <div className="w-full max-w-xs shrink-0">
+        <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
+          <div className="w-full min-w-0 sm:w-48 sm:max-w-xs sm:flex-1">
             <label className="block text-xs font-semibold text-[var(--text-muted)]">Execution cycle
               <select
                 value={selectedCycleId}
@@ -703,7 +715,7 @@ export default function WeeklyReportBuilder() {
               </select>
             </label>
           </div>
-          <div className="w-full max-w-xs shrink-0">
+          <div className="w-full min-w-0 sm:w-48 sm:max-w-xs sm:flex-1">
             <label className="block text-xs font-semibold text-[var(--text-muted)]">Saved daily / weekly report
               <select
                 value={selectedReportKey}
@@ -722,7 +734,7 @@ export default function WeeklyReportBuilder() {
               </select>
             </label>
           </div>
-          <div className="flex flex-wrap items-center gap-3 pt-5">
+          <div className="flex max-w-full shrink-0 flex-wrap items-center gap-3">
             {createReportButton}
             {loadReportButton}
             {downloadButton}

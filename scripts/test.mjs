@@ -28,6 +28,7 @@ import { renderReportHtml } from "../src/lib/report-html.ts";
 import { getDailyReportLabel, getISTDayRange, getWorkWeeks } from "../src/lib/work-weeks.ts";
 import { normalizeExecutionSummaryText, normalizeWeeklyReportSuites } from "../src/lib/weekly-report-settings.ts";
 import { isDailyReportDate, isSavedReportKey, isWorkWeekKey, withFailureProgress } from "../src/lib/saved-weekly-reports.ts";
+import { validateDataBackup } from "../src/lib/data-backup.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
 const failureSnapshot = (date, counts, suites = ["suite"]) => ({
@@ -769,6 +770,10 @@ assert.equal(bucketSummary.byDomain[0].bucketizedWithHsd + bucketSummary.byDomai
 const octoberWeeks = getWorkWeeks(new Date("2026-10-08T06:00:00Z"));
 const mondayRange = getISTDayRange("2026-10-19");
 assert.equal(isWorkWeekKey("2026-WW42"), true);
+const validBackupBundle = { format: "nga-execution-tracker-backup", version: 1, createdAt: "2026-11-16T00:00:00.000Z", categories: ["execution"], files: [{ path: "latest.json", content: "{}" }] };
+assert.equal(validateDataBackup(validBackupBundle).files.length, 1, "valid backup bundles are accepted");
+assert.throws(() => validateDataBackup({ ...validBackupBundle, files: [{ path: "../admin-users.json", content: "[]" }] }), /unsupported or duplicate path|unsafe file path/);
+assert.throws(() => validateDataBackup({ ...validBackupBundle, files: [{ path: "ngai-token.json", content: "{}" }] }), /unsupported or duplicate path|unsafe file path/);
 assert.equal(isWorkWeekKey("2027-WW01"), true);
 assert.equal(isWorkWeekKey("2026-WW00"), false);
 assert.equal(isWorkWeekKey("../2026-WW42"), false);

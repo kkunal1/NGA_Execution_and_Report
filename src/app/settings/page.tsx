@@ -1,14 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Info, Plus, SunMoon, Trash2 } from "lucide-react";
+import { Download, Info, Plus, SunMoon, Trash2, Upload } from "lucide-react";
 import { DATA_PROVIDERS, DATA_PROVIDER_KEY, NGAI_PROXY_KEY, NGAI_VPN_KEY, type DataProvider } from "@/lib/provider";
+import { DATA_BACKUP_CATEGORIES, DATA_BACKUP_CATEGORY_KEYS, type DataBackupCategory } from "@/lib/data-backup-types";
 import type { ConfigCoverageMapping } from "@/lib/config-coverage-settings";
 import { THEMES, THEME_KEY, isThemeId, type ThemeId } from "@/lib/theme";
 import WeeklyReportMailPanel from "@/components/WeeklyReportMailPanel";
 import { DEFAULT_WEEKLY_REPORT_SECTIONS, type WeeklyReportSectionSettings } from "@/lib/weekly-report-visibility";
 
 const THEME_OPTIONS = Object.entries(THEMES) as [ThemeId, (typeof THEMES)[ThemeId]][];
+const ALL_BACKUP_CATEGORIES = [...DATA_BACKUP_CATEGORY_KEYS];
 const WEEKLY_REPORT_SECTION_OPTIONS: [keyof WeeklyReportSectionSettings, string][] = [
   ["cpuAllocation", "DMR System Allocation Across Teams"],
   ["hsdFailureSummary", "HSDs with 5 or More Failed Runs"],
@@ -125,6 +127,16 @@ export default function SettingsPage() {
   const [mailBusy, setMailBusy] = useState(false);
   const [mailMessage, setMailMessage] = useState("");
   const [mailError, setMailError] = useState("");
+  const [backupCategories, setBackupCategories] = useState<DataBackupCategory[]>(ALL_BACKUP_CATEGORIES);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const [backupMessage, setBackupMessage] = useState("");
+  const [backupError, setBackupError] = useState("");
+  const [restoreFile, setRestoreFile] = useState<File | null>(null);
+  const [restoreAvailableCategories, setRestoreAvailableCategories] = useState<DataBackupCategory[]>([]);
+  const [restoreCategories, setRestoreCategories] = useState<DataBackupCategory[]>([]);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+  const [restoreMessage, setRestoreMessage] = useState("");
+  const [restoreError, setRestoreError] = useState("");
 
   useEffect(() => {
     if (!themePickerOpen) return;
@@ -309,6 +321,91 @@ export default function SettingsPage() {
       window.setTimeout(() => setRefreshSaved(false), 2500);
     } catch (error) {
       setRefreshError(error instanceof Error ? error.message : "Could not save refresh settings.");
+    }
+  };
+
+  const downloadDataBackup = async () => {
+    setBackupError("");
+    setBackupMessage("");
+    if (!backupCategories.length) {
+      setBackupError("Select at least one category to back up.");
+      return;
+    }
+    setBackupBusy(true);
+    try {
+      const response = await fetch("/api/settings/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ categories: backupCategories }),
+      });
+      if (!response.ok) {
+        const data = (await response.json()) as { error?: string };
+        throw new Error(data.error || "Could not create the backup.");
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition");
+      const filename = /filename="([^"]+)"/.exec(disposition ?? "")?.[1] ?? "nga-execution-backup.json";
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(objectUrl);
+      setBackupMessage("Backup downloaded.");
+    } catch (error) {
+      setBackupError(error instanceof Error ? error.message : "Could not create the backup.");
+    } finally {
+      setBackupBusy(false);
+    }
+  };
+
+  const inspectRestoreFile = async (file: File | null) => {
+    setRestoreFile(file);
+    setRestoreAvailableCategories([]);
+    setRestoreCategories([]);
+    setRestoreMessage("");
+    setRestoreError("");
+    if (!file) return;
+    try {
+      const manifest = JSON.parse(await file.text()) as { format?: unknown; version?: unknown; categories?: unknown };
+      if (manifest.format !== "nga-execution-tracker-backup" || manifest.version !== 1 || !Array.isArray(manifest.categories)) {
+        throw new Error("This is not a supported NGA Execution Tracker backup.");
+      }
+      const includedCategories = manifest.categories.filter((category): category is string => typeof category === "string");
+      const available = DATA_BACKUP_CATEGORY_KEYS.filter((category) => includedCategories.includes(category));
+      if (!available.length) throw new Error("The backup does not contain any supported categories.");
+      setRestoreAvailableCategories(available);
+      setRestoreCategories(available);
+      setRestoreMessage(`${available.length} backup categories found.`);
+    } catch (error) {
+      setRestoreError(error instanceof Error ? error.message : "Could not read the backup file.");
+    }
+  };
+
+  const restoreDataBackup = async () => {
+    setRestoreError("");
+    setRestoreMessage("");
+    if (!restoreFile || !restoreCategories.length) {
+      setRestoreError("Choose a backup file and at least one category to restore.");
+      return;
+    }
+    const categoryNames = restoreCategories.map((category) => DATA_BACKUP_CATEGORIES[category]).join(", ");
+    if (!window.confirm(`Restore will replace current data in these categories: ${categoryNames}. Continue?`)) return;
+
+    setRestoreBusy(true);
+    try {
+      const form = new FormData();
+      form.append("backup", restoreFile);
+      form.append("categories", JSON.stringify(restoreCategories));
+      const response = await fetch("/api/settings/backup/restore", { method: "POST", body: form });
+      const data = (await response.json()) as { error?: string; message?: string };
+      if (!response.ok) throw new Error(data.error || "Could not restore the backup.");
+      setRestoreMessage(data.message || "Backup restored. Reloading settings…");
+      window.setTimeout(() => window.location.reload(), 900);
+    } catch (error) {
+      setRestoreError(error instanceof Error ? error.message : "Could not restore the backup.");
+    } finally {
+      setRestoreBusy(false);
     }
   };
 
@@ -790,6 +887,81 @@ export default function SettingsPage() {
           </button>
           {coverageMappingsSaved && <p className="text-sm text-[var(--text-muted)]" role="status">Pool / suite mappings saved.</p>}
           {coverageMappingsError && <p className="text-sm text-red-600" role="alert">{coverageMappingsError}</p>}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="data-backup-heading">
+        <div>
+          <h2 id="data-backup-heading" className="text-base font-semibold text-[var(--text)]">Data Backup &amp; Restore</h2>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Admin accounts, login audit records, API tokens, and mail secrets are excluded.</p>
+        </div>
+        <div className="mt-5 grid gap-6 lg:grid-cols-2">
+          <div className="border-t border-[var(--border)] pt-4">
+            <h3 className="text-sm font-semibold text-[var(--text)]">Create Backup</h3>
+            <fieldset className="mt-3 space-y-3">
+              <legend className="sr-only">Select backup categories</legend>
+              {DATA_BACKUP_CATEGORY_KEYS.map((category) => (
+                <label key={category} className="flex cursor-pointer items-start gap-2 text-sm text-[var(--text)]">
+                  <input
+                    type="checkbox"
+                    checked={backupCategories.includes(category)}
+                    onChange={(event) => setBackupCategories((current) => event.target.checked
+                      ? [...current, category]
+                      : current.filter((value) => value !== category))}
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+                  />
+                  <span>{DATA_BACKUP_CATEGORIES[category]}</span>
+                </label>
+              ))}
+            </fieldset>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={() => void downloadDataBackup()} disabled={backupBusy} className="inline-flex h-10 items-center gap-2 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-50">
+                <Download className="h-4 w-4" aria-hidden="true" />{backupBusy ? "Preparing…" : "Download Backup"}
+              </button>
+              {backupMessage && <p className="text-sm text-[var(--text-muted)]" role="status">{backupMessage}</p>}
+              {backupError && <p className="text-sm text-red-600" role="alert">{backupError}</p>}
+            </div>
+          </div>
+
+          <div className="border-t border-[var(--border)] pt-4">
+            <h3 className="text-sm font-semibold text-[var(--text)]">Restore Backup</h3>
+            <label className="mt-3 block text-sm font-medium text-[var(--text)]" htmlFor="data-backup-file">Backup file
+              <input
+                id="data-backup-file"
+                type="file"
+                accept=".json,application/json"
+                onChange={(event) => void inspectRestoreFile(event.target.files?.[0] ?? null)}
+                className="mt-1 block w-full text-sm text-[var(--text-muted)] file:mr-3 file:rounded-md file:border file:border-[var(--border)] file:bg-[var(--surface-alt)] file:px-3 file:py-2 file:text-sm file:font-medium file:text-[var(--text)]"
+              />
+            </label>
+            {restoreFile && <p className="mt-2 break-all text-xs text-[var(--text-muted)]">{restoreFile.name}</p>}
+            {restoreAvailableCategories.length > 0 && (
+              <fieldset className="mt-3 space-y-3">
+                <legend className="text-xs font-semibold text-[var(--text-muted)]">Categories to restore</legend>
+                {restoreAvailableCategories.map((category) => (
+                  <label key={category} className="flex cursor-pointer items-start gap-2 text-sm text-[var(--text)]">
+                    <input
+                      type="checkbox"
+                      checked={restoreCategories.includes(category)}
+                      onChange={(event) => setRestoreCategories((current) => event.target.checked
+                        ? [...current, category]
+                        : current.filter((value) => value !== category))}
+                      className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--accent)]"
+                    />
+                    <span>{DATA_BACKUP_CATEGORIES[category]}</span>
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            <p className="mt-3 text-xs leading-5 text-[var(--text-muted)]">Restoring replaces current data in the selected categories. Download a backup of current data first if you may need it.</p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button type="button" onClick={() => void restoreDataBackup()} disabled={restoreBusy || !restoreFile || !restoreCategories.length} className="inline-flex h-10 items-center gap-2 rounded-md border border-[var(--border)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-50">
+                <Upload className="h-4 w-4" aria-hidden="true" />{restoreBusy ? "Restoring…" : "Restore Selected"}
+              </button>
+              {restoreMessage && <p className="text-sm text-[var(--text-muted)]" role="status">{restoreMessage}</p>}
+              {restoreError && <p className="text-sm text-red-600" role="alert">{restoreError}</p>}
+            </div>
+          </div>
         </div>
       </section>
 

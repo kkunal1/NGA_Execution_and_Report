@@ -22,6 +22,7 @@ export type CustomExecutionTab = {
   suiteNames: string[];
   createdAt: string;
   updatedAt?: string;
+  enabled: boolean;
 };
 
 export type CustomExecutionTabSnapshot = {
@@ -67,41 +68,42 @@ async function readTabs(): Promise<CustomExecutionTab[]> {
   try {
     const parsed = JSON.parse(await readFile(tabsPath, "utf8")) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((value): value is CustomExecutionTab => {
+    const validTabs = parsed.filter((value): value is CustomExecutionTab => {
       if (!value || typeof value !== "object") return false;
       const tab = value as Record<string, unknown>;
       return isExecutionTabId(tab.id) && normalizeExecutionTabName(tab.name) !== null &&
         Array.isArray(tab.suiteNames) && normalizeExecutionTabSuites(tab.suiteNames) !== null &&
-        typeof tab.createdAt === "string" && (tab.updatedAt === undefined || typeof tab.updatedAt === "string");
+        typeof tab.createdAt === "string" && (tab.updatedAt === undefined || typeof tab.updatedAt === "string") &&
+        (tab.enabled === undefined || typeof tab.enabled === "boolean");
     });
+    return validTabs.map((tab) => ({ ...tab, enabled: tab.enabled !== false }));
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
   }
 }
 
-async function writeTabs(tabs: CustomExecutionTab[]) {
-  await mkdir(config.dataDir, { recursive: true });
-  const temporary = `${tabsPath}.${randomUUID()}.tmp`;
+async function writeJsonConfig(filePath: string, value: unknown) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const contents = JSON.stringify(value, null, 2);
+  const temporary = `${filePath}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporary, JSON.stringify(tabs, null, 2), { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, tabsPath);
+    await writeFile(temporary, contents, { encoding: "utf8", mode: 0o600 });
+    await rename(temporary, filePath);
   } catch (error) {
     await rm(temporary, { force: true });
-    throw error;
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== "EPERM" && code !== "EACCES" && code !== "EEXIST") throw error;
+    await writeFile(filePath, contents, { encoding: "utf8", mode: 0o600 });
   }
 }
 
+async function writeTabs(tabs: CustomExecutionTab[]) {
+  await writeJsonConfig(tabsPath, tabs);
+}
+
 async function writeMenuOrder(order: string[]) {
-  await mkdir(config.dataDir, { recursive: true });
-  const temporary = `${menuOrderPath}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporary, JSON.stringify(order, null, 2), { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, menuOrderPath);
-  } catch (error) {
-    await rm(temporary, { force: true });
-    throw error;
-  }
+  await writeJsonConfig(menuOrderPath, order);
 }
 
 export async function getExecutionMenuOrder(): Promise<string[]> {
@@ -148,31 +150,35 @@ export async function createCustomExecutionTab(nameValue: unknown, suitesValue: 
   if (tabs.length >= MAX_TABS) throw new TypeError(`A maximum of ${MAX_TABS} custom tabs is allowed.`);
   if (tabs.some((tab) => tab.name.toLowerCase() === name.toLowerCase())) throw new TypeError("A tab with this name already exists.");
   const now = new Date().toISOString();
-  const tab = { id: randomUUID().replace(/-/g, ""), name, suiteNames, createdAt: now, updatedAt: now };
+  const tab = { id: randomUUID().replace(/-/g, ""), name, suiteNames, createdAt: now, updatedAt: now, enabled: true };
   await writeTabs([...tabs, tab]);
   await writeMenuOrder(await getExecutionMenuOrder());
   return tab;
 }
 
 export async function updateCustomExecutionTabSuites(id: string, value: unknown) {
-  const suiteNames = normalizeExecutionTabSuites(value);
-  if (!isExecutionTabId(id) || !suiteNames) throw new TypeError("Invalid tab or suite names.");
+  return updateCustomExecutionTab(id, { suiteNames: value });
+}
+
+export async function updateCustomExecutionTab(id: string, input: { name?: unknown; suiteNames?: unknown; enabled?: unknown }) {
+  if (!isExecutionTabId(id)) throw new TypeError("Invalid execution tab ID.");
   const tabs = await readTabs();
   const index = tabs.findIndex((tab) => tab.id === id);
   if (index < 0) throw new TypeError("Execution tab not found.");
+  const current = tabs[index];
+  const name = input.name === undefined ? current.name : normalizeExecutionTabName(input.name);
+  const suiteNames = input.suiteNames === undefined ? current.suiteNames : normalizeExecutionTabSuites(input.suiteNames);
+  if (!name) throw new TypeError(`Tab name must be 2-${MAX_TAB_NAME_LENGTH} characters.`);
+  if (!suiteNames) throw new TypeError(`Enter 1-${MAX_SUITES_PER_TAB} suite names, each no longer than 512 characters.`);
+  if (input.enabled !== undefined && typeof input.enabled !== "boolean") throw new TypeError("Tab enabled state must be a boolean.");
+  if (tabs.some((tab) => tab.id !== id && tab.name.toLowerCase() === name.toLowerCase())) {
+    throw new TypeError("A tab with this name already exists.");
+  }
+  const updated = { ...current, name, suiteNames, enabled: input.enabled ?? current.enabled, updatedAt: new Date().toISOString() };
   const next = [...tabs];
-  next[index] = { ...next[index], suiteNames, updatedAt: new Date().toISOString() };
+  next[index] = updated;
   await writeTabs(next);
-  return next[index];
-}
-
-export async function deleteCustomExecutionTab(id: string) {
-  if (!isExecutionTabId(id)) throw new TypeError("Invalid execution tab ID.");
-  const tabs = await readTabs();
-  if (!tabs.some((tab) => tab.id === id)) throw new TypeError("Execution tab not found.");
-  await writeTabs(tabs.filter((tab) => tab.id !== id));
-  await rm(tabDataPath(id), { force: true });
-  await writeMenuOrder(await getExecutionMenuOrder());
+  return updated;
 }
 
 export async function loadCustomExecutionTabSnapshot(id: string): Promise<CustomExecutionTabSnapshot | null> {
@@ -193,16 +199,8 @@ export async function loadCustomExecutionTabSnapshot(id: string): Promise<Custom
 
 async function writeSnapshot(id: string, snapshot: CustomExecutionTabSnapshot) {
   if (!await getCustomExecutionTab(id)) throw new TypeError("Execution tab not found.");
-  await mkdir(tabDataDirectory, { recursive: true });
   const destination = tabDataPath(id);
-  const temporary = `${destination}.${randomUUID()}.tmp`;
-  try {
-    await writeFile(temporary, JSON.stringify(snapshot, null, 2), { encoding: "utf8", mode: 0o600 });
-    await rename(temporary, destination);
-  } catch (error) {
-    await rm(temporary, { force: true });
-    throw error;
-  }
+  await writeJsonConfig(destination, snapshot);
 }
 
 export async function saveCustomExecutionTabRun(id: string, run: RunResult) {

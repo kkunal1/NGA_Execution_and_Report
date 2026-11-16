@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
-import { createCustomExecutionTab, deleteCustomExecutionTab, getExecutionMenuOrder, listCustomExecutionTabs, saveExecutionMenuOrder } from "@/lib/execution-tabs";
+import { createCustomExecutionTab, getExecutionMenuOrder, listCustomExecutionTabs, saveExecutionMenuOrder, updateCustomExecutionTab } from "@/lib/execution-tabs";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -28,14 +28,14 @@ export async function POST(req: Request) {
   }
 }
 
-export async function DELETE(req: Request) {
+export async function PATCH(req: Request) {
   const denied = await authorizeRequest(req, true);
   if (denied) return denied;
   try {
-    const body = (await req.json()) as { id?: unknown };
-    if (typeof body.id !== "string") return NextResponse.json({ error: "Choose a custom execution tab to remove." }, { status: 400 });
-    await deleteCustomExecutionTab(body.id);
-    return NextResponse.json({ deleted: true, order: await getExecutionMenuOrder() });
+    const body = (await req.json()) as { id?: unknown; name?: unknown; suiteNames?: unknown; enabled?: unknown };
+    if (typeof body.id !== "string") return NextResponse.json({ error: "Choose a custom execution tab to update." }, { status: 400 });
+    const tab = await updateCustomExecutionTab(body.id, { name: body.name, suiteNames: body.suiteNames, enabled: body.enabled });
+    return NextResponse.json({ tab, order: await getExecutionMenuOrder() });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not delete execution tab." }, { status: 400 });
   }

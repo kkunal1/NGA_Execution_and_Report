@@ -15,7 +15,7 @@ export async function runServerNGAiRefreshCheck(now = Date.now()) {
     if (settings.intervalSeconds === 0 || !status.nextRefreshAt || now < status.nextRefreshAt) return;
 
     const suites = normalizeSuiteNames([...settings.suitesByProfile.b0, ...settings.suitesByProfile.b2]);
-    const customTabs = await listCustomExecutionTabs();
+    const customTabs = (await listCustomExecutionTabs()).filter((tab) => tab.enabled);
     if (!suites.length && !customTabs.length) return;
 
     if (suites.length) {

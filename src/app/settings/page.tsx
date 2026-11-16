@@ -61,6 +61,7 @@ type LoginAuditEntry = {
 };
 
 type AdminUserSummary = { username: string; createdAt: string };
+type CustomExecutionTabEdit = { name: string; suiteNames: string };
 
 export default function SettingsPage() {
   const [provider, setProvider] = useState<DataProvider>("ngai");
@@ -139,6 +140,7 @@ export default function SettingsPage() {
   const [restoreMessage, setRestoreMessage] = useState("");
   const [restoreError, setRestoreError] = useState("");
   const [customExecutionTabs, setCustomExecutionTabs] = useState<CustomExecutionTab[]>([]);
+  const [customTabEdits, setCustomTabEdits] = useState<Record<string, CustomExecutionTabEdit>>({});
   const [customTabName, setCustomTabName] = useState("");
   const [customTabSuites, setCustomTabSuites] = useState("");
   const [customTabsLoading, setCustomTabsLoading] = useState(true);
@@ -158,6 +160,7 @@ export default function SettingsPage() {
         if (!response.ok) throw new Error(data.error || "Could not load custom execution tabs.");
         if (!cancelled) {
           setCustomExecutionTabs(data.tabs ?? []);
+          setCustomTabEdits(Object.fromEntries((data.tabs ?? []).map((tab) => [tab.id, { name: tab.name, suiteNames: tab.suiteNames.join("\n") }])));
           setExecutionMenuOrder(data.order ?? ["b0", "b2", ...(data.tabs ?? []).map((tab) => tab.id)]);
         }
       })
@@ -474,6 +477,7 @@ export default function SettingsPage() {
       const data = (await response.json()) as { tab?: CustomExecutionTab; order?: string[]; error?: string };
       if (!response.ok || !data.tab) throw new Error(data.error || "Could not create execution tab.");
       setCustomExecutionTabs((current) => [...current, data.tab!]);
+      setCustomTabEdits((current) => ({ ...current, [data.tab!.id]: { name: data.tab!.name, suiteNames: data.tab!.suiteNames.join("\n") } }));
       if (data.order) setExecutionMenuOrder(data.order);
       setCustomTabName("");
       setCustomTabSuites("");
@@ -486,25 +490,32 @@ export default function SettingsPage() {
     }
   };
 
-  const deleteCustomExecutionTab = async (tab: CustomExecutionTab) => {
-    if (!window.confirm(`Delete “${tab.name}” and its saved snapshot?`)) return;
+  const updateCustomExecutionTab = async (tab: CustomExecutionTab, updates: Partial<CustomExecutionTabEdit> & { enabled?: boolean }) => {
     setCustomTabsBusy(true);
     setCustomTabsError("");
     setCustomTabsMessage("");
     try {
       const response = await fetch("/api/execution-tabs", {
-        method: "DELETE",
+        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: tab.id }),
+        body: JSON.stringify({
+          id: tab.id,
+          ...(updates.name !== undefined ? { name: updates.name } : {}),
+          ...(updates.suiteNames !== undefined ? { suiteNames: updates.suiteNames } : {}),
+          ...(updates.enabled !== undefined ? { enabled: updates.enabled } : {}),
+        }),
       });
-      const data = (await response.json()) as { error?: string; order?: string[] };
-      if (!response.ok) throw new Error(data.error || "Could not delete execution tab.");
-      setCustomExecutionTabs((current) => current.filter((item) => item.id !== tab.id));
-      if (data.order) setExecutionMenuOrder(data.order);
-      setCustomTabsMessage(`Deleted ${tab.name}.`);
+      const data = (await response.json()) as { tab?: CustomExecutionTab; error?: string };
+      if (!response.ok || !data.tab) throw new Error(data.error || "Could not update execution tab.");
+      setCustomExecutionTabs((current) => current.map((item) => item.id === tab.id ? data.tab! : item));
+      setCustomTabEdits((current) => ({
+        ...current,
+        [tab.id]: { name: data.tab!.name, suiteNames: data.tab!.suiteNames.join("\n") },
+      }));
+      setCustomTabsMessage(updates.enabled === undefined ? `Updated ${data.tab.name}.` : `${data.tab.name} ${data.tab.enabled ? "enabled" : "disabled"}.`);
       window.dispatchEvent(new Event("nga-execution-tabs-changed"));
     } catch (error) {
-      setCustomTabsError(error instanceof Error ? error.message : "Could not delete execution tab.");
+      setCustomTabsError(error instanceof Error ? error.message : "Could not update execution tab.");
     } finally {
       setCustomTabsBusy(false);
     }
@@ -807,24 +818,33 @@ export default function SettingsPage() {
             <ol className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
               {orderedExecutionMenu.map((item, index) => {
                 const customTab = customExecutionTabs.find((tab) => tab.id === item.id);
+                const edit = customTab ? customTabEdits[customTab.id] ?? { name: customTab.name, suiteNames: customTab.suiteNames.join("\n") } : null;
                 return <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                  <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex min-w-0 flex-1 flex-wrap items-end gap-3">
                     <span className="w-6 shrink-0 pt-0.5 text-right text-xs tabular-nums text-[var(--text-muted)]">{index + 1}</span>
-                    <div className="min-w-0">
+                    {customTab && edit ? <>
+                      <label className="block min-w-48 flex-1 text-xs font-medium text-[var(--text-muted)]">Submenu name
+                        <input value={edit.name} minLength={2} maxLength={60} onChange={(event) => setCustomTabEdits((current) => ({ ...current, [customTab.id]: { ...edit, name: event.target.value } }))} disabled={customTabsBusy} className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)] disabled:opacity-50" />
+                      </label>
+                      <label className="block min-w-64 flex-[2] text-xs font-medium text-[var(--text-muted)]">NGAi suite name(s)
+                        <textarea value={edit.suiteNames} rows={2} onChange={(event) => setCustomTabEdits((current) => ({ ...current, [customTab.id]: { ...edit, suiteNames: event.target.value } }))} disabled={customTabsBusy} className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 py-1.5 text-xs text-[var(--text)] disabled:opacity-50" />
+                      </label>
+                    </> : <div className="min-w-0">
                       <p className="truncate text-sm font-medium text-[var(--text)]">{item.name}</p>
                       {item.detail && <p className="mt-1 break-all text-xs text-[var(--text-muted)]">{item.detail}</p>}
-                    </div>
+                    </div>}
                   </div>
                   <div className="flex shrink-0 items-center gap-1">
+                    {customTab && edit && <>
+                      <button type="button" onClick={() => void updateCustomExecutionTab(customTab, edit)} disabled={customTabsBusy || (edit.name === customTab.name && edit.suiteNames === customTab.suiteNames.join("\n"))} className="h-9 rounded-md border border-[var(--border)] px-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-40">Save changes</button>
+                      <button type="button" onClick={() => void updateCustomExecutionTab(customTab, { enabled: !customTab.enabled })} disabled={customTabsBusy} className="h-9 rounded-md border border-[var(--border)] px-2 text-xs font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-50">{customTab.enabled ? "Disable" : "Enable"}</button>
+                    </>}
                     <button type="button" onClick={() => moveExecutionMenuItem(item.id, -1)} disabled={index === 0 || menuOrderBusy} aria-label={`Move ${item.name} up`} title="Move up" className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-alt)] disabled:opacity-40">
                       <ArrowUp className="h-4 w-4" aria-hidden="true" />
                     </button>
                     <button type="button" onClick={() => moveExecutionMenuItem(item.id, 1)} disabled={index === orderedExecutionMenu.length - 1 || menuOrderBusy} aria-label={`Move ${item.name} down`} title="Move down" className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-alt)] disabled:opacity-40">
                       <ArrowDown className="h-4 w-4" aria-hidden="true" />
                     </button>
-                    {customTab && <button type="button" onClick={() => void deleteCustomExecutionTab(customTab)} disabled={customTabsBusy} aria-label={`Delete ${customTab.name}`} title="Delete custom tab and its snapshot" className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] hover:text-red-600 disabled:opacity-50">
-                      <Trash2 className="h-4 w-4" aria-hidden="true" />
-                    </button>}
                   </div>
                 </li>;
               })}

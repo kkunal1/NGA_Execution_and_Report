@@ -406,7 +406,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       {[
                         { id: "b0", href: "/", label: "DMR AP1 PV B0 Execution" },
                         { id: "b2", href: "/execution/b2", label: "DMR AP1 PV B2 Execution" },
-                        ...customExecutionTabs.map((tab) => ({ id: tab.id, href: `/execution/custom/${tab.id}`, label: tab.name })),
+                        ...customExecutionTabs.filter((tab) => tab.enabled).map((tab) => ({ id: tab.id, href: `/execution/custom/${tab.id}`, label: tab.name })),
                       ].sort((left, right) => {
                         const leftIndex = executionMenuOrder.indexOf(left.id);
                         const rightIndex = executionMenuOrder.indexOf(right.id);

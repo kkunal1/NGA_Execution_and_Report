@@ -9,6 +9,7 @@ import { DATA_PROVIDER_KEY, readNgaiNetworkOverride, type DataProvider } from "@
 import { THEME_KEY } from "@/lib/theme";
 import { buildReportFilename } from "@/lib/report-html";
 import { B0_SUITES, B2_SUITES, isSuiteSelectedForProfile, type ExecutionProfile } from "@/lib/execution-suites";
+import type { CustomExecutionTab } from "@/lib/execution-tabs";
 import { useAppRole } from "@/components/auth-context";
 import { useRefreshSchedule } from "@/components/refresh-context";
 
@@ -25,14 +26,22 @@ function suiteMatchesProfile(suite: string, profile: ExecutionProfile) {
   return new RegExp(`_B${profile.slice(1)}_`, "i").test(suite);
 }
 
-function runMatchesProfile(run: RunResult | null | undefined, profile: ExecutionProfile) {
-  if (!run) return false;
-  return normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])
-    .some((suite) => suiteMatchesProfile(suite, profile));
+function suiteMatchesDashboard(suite: string, profile: ExecutionProfile | null, configuredSuites: string[]) {
+  if (profile) return suiteMatchesProfile(suite, profile);
+  const key = suite.trim().toLowerCase();
+  return configuredSuites.some((configured) => configured.trim().toLowerCase() === key);
 }
 
-function filterAbortedRowsForSuites(rows: TestRow[], suites: string[], profile: ExecutionProfile) {
-  return rows.filter((row) => suiteMatchesProfile(row.suite, profile) && isSuiteSelectedForProfile(row.suite, suites, profile));
+function runMatchesDashboard(run: RunResult | null | undefined, profile: ExecutionProfile | null, configuredSuites: string[]) {
+  if (!run) return false;
+  return normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])
+    .some((suite) => suiteMatchesDashboard(suite, profile, configuredSuites));
+}
+
+function filterAbortedRowsForSuites(rows: TestRow[], suites: string[], profile: ExecutionProfile | null) {
+  return rows.filter((row) => profile
+    ? suiteMatchesProfile(row.suite, profile) && isSuiteSelectedForProfile(row.suite, suites, profile)
+    : suiteMatchesDashboard(row.suite, null, suites));
 }
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? Math.round((part / whole) * 1000) / 10 : 0);
@@ -93,10 +102,13 @@ function Card({
   );
 }
 
-export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfile }) {
-  const suiteInputKey = profile === "b0" ? SUITE_INPUT_KEY : `${SUITE_INPUT_KEY}-${profile}`;
-  const runCacheKey = profile === "b0" ? NGAI_RUN_KEY : `${NGAI_RUN_KEY}-${profile}`;
-  const abortedCacheKey = profile === "b0" ? NGAI_ABORTED_KEY : `${NGAI_ABORTED_KEY}-${profile}`;
+export default function Dashboard({ profile, customTab }: { profile?: ExecutionProfile; customTab?: CustomExecutionTab }) {
+  const dashboardProfile = customTab ? null : profile ?? "b0";
+  const configuredSuites = customTab?.suiteNames ?? DEFAULT_PROFILE_SUITES[dashboardProfile ?? "b0"];
+  const customSuffix = customTab ? `-custom-${customTab.id}` : dashboardProfile === "b0" ? "" : `-${dashboardProfile}`;
+  const suiteInputKey = `${SUITE_INPUT_KEY}${customSuffix}`;
+  const runCacheKey = `${NGAI_RUN_KEY}${customSuffix}`;
+  const abortedCacheKey = `${NGAI_ABORTED_KEY}${customSuffix}`;
   // Restored lazily in an effect (not during render) so the client's first render matches SSR - reading
   // sessionStorage synchronously during the initial render/state-initializers caused a hydration mismatch.
   const restoredNgaiRef = useRef<{ suiteName?: string; suiteNames?: string[]; run: RunResult } | null>(null);
@@ -158,8 +170,11 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
 
   const load = useCallback(async (runId?: string) => {
     const params = new URLSearchParams();
-    if (runId) params.set("runId", runId);
-    else if (provider === "ngai") params.set("profile", profile);
+    if (customTab) {
+      params.set("customTabId", customTab.id);
+      if (runId) params.set("runId", runId);
+    } else if (runId) params.set("runId", runId);
+    else if (provider === "ngai") params.set("profile", dashboardProfile ?? "b0");
     const query = params.toString();
     const res = await fetch(`/api/runs${query ? `?${query}` : ""}`);
     const data = (await res.json()) as { run: RunResult | null; runs: string[]; version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
@@ -167,15 +182,15 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     const restoredRun = restoredNgaiRef.current?.run;
     const selectedRun = runId
       ? data.run
-      : runMatchesProfile(data.run, profile)
+      : runMatchesDashboard(data.run, dashboardProfile, configuredSuites) || (Boolean(customTab) && Boolean(data.run))
         ? data.run
-        : runMatchesProfile(restoredRun, profile) ? restoredRun ?? null : null;
+        : runMatchesDashboard(restoredRun, dashboardProfile, configuredSuites) ? restoredRun ?? null : null;
     cacheProfileRun(selectedRun);
     setLatestVersion(data.version);
     setNextRefreshAt(data.nextRefreshAt);
     setRefreshIntervalSeconds(data.intervalSeconds);
     setPersisted(selectedRun ? selectedRun.meta.source !== "network" : false);
-  }, [cacheProfileRun, profile, provider]);
+  }, [cacheProfileRun, customTab, dashboardProfile, configuredSuites, provider]);
 
   useEffect(() => {
     try {
@@ -193,18 +208,18 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       const raw = window.sessionStorage.getItem(abortedCacheKey);
       if (raw) {
         const cached = JSON.parse(raw) as { suiteName?: string; suiteNames?: string[]; rows: TestRow[] };
-        setAbortedRows(filterAbortedRowsForSuites(cached.rows, cached.suiteNames ?? cached.suiteName?.split("\n") ?? DEFAULT_PROFILE_SUITES[profile], profile));
+        setAbortedRows(filterAbortedRowsForSuites(cached.rows, cached.suiteNames ?? cached.suiteName?.split("\n") ?? configuredSuites, dashboardProfile));
       }
     } catch {
       /* ignore corrupt cache */
     }
     const savedSuites = window.sessionStorage.getItem(suiteInputKey);
     setSuiteNames(normalizeSuiteNames(
-      savedSuites ?? restoredNgaiRef.current?.suiteNames ?? restoredNgaiRef.current?.suiteName ?? DEFAULT_PROFILE_SUITES[profile],
+      savedSuites ?? restoredNgaiRef.current?.suiteNames ?? restoredNgaiRef.current?.suiteName ?? configuredSuites,
     ));
     setSuiteStateRestored(true);
     void load();
-  }, [abortedCacheKey, load, profile, runCacheKey, suiteInputKey]);
+  }, [abortedCacheKey, configuredSuites, dashboardProfile, load, runCacheKey, suiteInputKey]);
 
   useEffect(() => {
     if (!suiteStateRestored) return;
@@ -293,7 +308,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       const res = await fetch("/api/test-run-data", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ suiteNames: suites, persist: true, ...readNgaiNetworkOverride() }),
+        body: JSON.stringify({ suiteNames: suites, persist: true, customTabId: customTab?.id, ...readNgaiNetworkOverride() }),
       });
       const data = (await res.json()) as {
         error?: string;
@@ -351,11 +366,11 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       const res = await fetch("/api/aborted-tests", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ suiteNames: suites, ...readNgaiNetworkOverride() }),
+        body: JSON.stringify({ suiteNames: suites, customTabId: customTab?.id, ...readNgaiNetworkOverride() }),
       });
       const data = (await res.json()) as { error?: string; rows?: TestRow[]; suiteNames?: string[] };
       if (!res.ok) throw new Error(data.error ?? "Could not load aborted tests");
-      const rows = filterAbortedRowsForSuites(data.rows ?? [], suites, profile);
+      const rows = filterAbortedRowsForSuites(data.rows ?? [], suites, dashboardProfile);
       setAbortedRows(rows);
       window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: suites, rows }));
     } catch (e) {
@@ -371,11 +386,12 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     let cancelled = false;
     void (async () => {
       try {
-        const response = await fetch("/api/aborted-tests", { cache: "no-store" });
+        const customQuery = customTab ? `?customTabId=${encodeURIComponent(customTab.id)}` : "";
+        const response = await fetch(`/api/aborted-tests${customQuery}`, { cache: "no-store" });
         if (!response.ok) return;
         const snapshot = (await response.json()) as { rows?: TestRow[]; suiteNames?: string[]; hasSnapshot?: boolean };
         if (cancelled) return;
-        const rows = filterAbortedRowsForSuites(snapshot.rows ?? [], autoRefreshSuites, profile);
+        const rows = filterAbortedRowsForSuites(snapshot.rows ?? [], autoRefreshSuites, dashboardProfile);
         setAbortedRows(rows);
         window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: autoRefreshSuites, rows }));
         const cachedSuites = new Set((snapshot.suiteNames ?? []).map((suite) => suite.toLowerCase()));
@@ -387,7 +403,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       }
     })();
     return () => { cancelled = true; };
-  }, [abortedCacheKey, run?.meta.runId, run?.meta.stateColumn, isAdmin, autoRefreshSuites, profile]);
+  }, [abortedCacheKey, run?.meta.runId, run?.meta.stateColumn, isAdmin, autoRefreshSuites, customTab, dashboardProfile]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -409,7 +425,9 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       if (checking) return;
       checking = true;
       try {
-        const profileQuery = provider === "ngai" ? `&profile=${profile}` : "";
+        const profileQuery = customTab
+          ? `&customTabId=${encodeURIComponent(customTab.id)}`
+          : provider === "ngai" ? `&profile=${dashboardProfile}` : "";
         const checkResponse = await fetch(`/api/runs?checkOnly=1${profileQuery}`, { cache: "no-store" });
         if (!checkResponse.ok) return;
         const check = (await checkResponse.json()) as { version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
@@ -418,8 +436,22 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
         if (!check.version || check.version === latestVersion) return;
         const latestResponse = await fetch(`/api/runs?latestOnly=1${profileQuery}`, { cache: "no-store" });
         if (!latestResponse.ok) return;
-        const data = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null; intervalSeconds: number };
-        if (runMatchesProfile(data.run, profile)) {
+        const data = (await latestResponse.json()) as { run: RunResult | null; version: string | null; nextRefreshAt: number | null; intervalSeconds: number; tab?: CustomExecutionTab };
+        if (customTab) {
+          const nextSuites = data.tab?.suiteNames ?? (data.run ? normalizeSuiteNames(data.run.meta.filter.value) : configuredSuites);
+          setSuiteNames(nextSuites);
+          if (data.run) {
+            cacheProfileRun(data.run);
+            setPersisted(data.run.meta.source !== "network");
+          }
+          const abortedResponse = await fetch(`/api/aborted-tests?customTabId=${encodeURIComponent(customTab.id)}`, { cache: "no-store" });
+          if (abortedResponse.ok) {
+            const aborted = (await abortedResponse.json()) as { rows?: TestRow[]; suiteNames?: string[] };
+            const rows = filterAbortedRowsForSuites(aborted.rows ?? [], nextSuites, null);
+            setAbortedRows(rows);
+            window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: nextSuites, rows }));
+          }
+        } else if (runMatchesDashboard(data.run, dashboardProfile, configuredSuites)) {
           cacheProfileRun(data.run);
           setPersisted(data.run!.meta.source !== "network");
         }
@@ -434,12 +466,12 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     };
     const timer = window.setInterval(() => void checkForUpdate(), 5000);
     return () => window.clearInterval(timer);
-  }, [cacheProfileRun, latestVersion, profile, provider]);
+  }, [cacheProfileRun, latestVersion, customTab, dashboardProfile, configuredSuites, provider]);
 
   const availableSuites = useMemo(() => run
     ? normalizeSuiteNames([run.meta.filter.value, ...run.rows.map((row) => row.suite)])
-      .filter((suite) => suiteMatchesProfile(suite, profile))
-    : [], [profile, run]);
+      .filter((suite) => suiteMatchesDashboard(suite, dashboardProfile, suiteNames.length ? suiteNames : configuredSuites))
+    : [], [configuredSuites, dashboardProfile, run, suiteNames]);
 
   useEffect(() => {
     setCheckedDataSuites(availableSuites);
@@ -456,8 +488,8 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
   const visibleRows = useMemo(() => {
     if (!runHasSuite || availableSuites.length === 0) return [];
     const rows = run?.rows ?? [];
-    return rows.filter((row) => suiteMatchesProfile(row.suite, profile) && checkedSuiteKeys.has(row.suite.trim().toLowerCase()));
-  }, [run, runHasSuite, availableSuites.length, checkedSuiteKeys, profile]);
+    return rows.filter((row) => suiteMatchesDashboard(row.suite, dashboardProfile, availableSuites) && checkedSuiteKeys.has(row.suite.trim().toLowerCase()));
+  }, [run, runHasSuite, availableSuites, checkedSuiteKeys, dashboardProfile]);
 
   const visibleSummary = useMemo(
     () => run ? summarize(visibleRows) : undefined,
@@ -547,7 +579,9 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
     const fromMs = abortFrom ? new Date(abortFrom).getTime() : null;
     const toMs = abortTo ? new Date(abortTo).getTime() + 24 * 60 * 60 * 1000 - 1 : null;
     return domainResolvedAbortedRows.filter((r) => {
-      if (!suiteMatchesProfile(r.suite, profile) || !isSuiteSelectedForProfile(r.suite, checkedDataSuites, profile)) return false;
+      if (dashboardProfile
+        ? !suiteMatchesProfile(r.suite, dashboardProfile) || !isSuiteSelectedForProfile(r.suite, checkedDataSuites, dashboardProfile)
+        : !suiteMatchesDashboard(r.suite, null, checkedDataSuites)) return false;
       if (!fromMs && !toMs) return true;
       if (!r.date) return false;
       const ms = new Date(r.date).getTime();
@@ -556,7 +590,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
       if (toMs != null && ms > toMs) return false;
       return true;
     });
-  }, [runHasSuite, domainResolvedAbortedRows, abortFrom, abortTo, checkedDataSuites, profile]);
+  }, [runHasSuite, domainResolvedAbortedRows, abortFrom, abortTo, checkedDataSuites, dashboardProfile]);
 
   const visibleAbortedRows = useMemo(
     () => dashboardSettings.showManualAborts ? dateFilteredAbortedRows : dateFilteredAbortedRows.filter((row) => row.abortStep && row.abortStep !== "Aborted Manually"),
@@ -638,7 +672,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
             <BarChart3 className="h-5 w-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-[var(--text)]">NGA Execution Progress</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-[var(--text)]">{customTab?.name ?? "NGA Execution Progress"}</h1>
             <p className="mt-1 text-sm text-[var(--text-muted)]">
               {run
                 ? `${run.meta.filter.entity} / ${run.meta.filter.field} / ${run.meta.filter.operator} /`
@@ -726,7 +760,7 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
           </select>
           {isAdmin && <button
             onClick={() => {
-              if (provider === "ngai") {
+              if (customTab || provider === "ngai") {
                 void captureNgai();
                 return;
               }
@@ -734,10 +768,10 @@ export default function Dashboard({ profile = "b0" }: { profile?: ExecutionProfi
               setSuiteDraft("");
               void capture(false, selectedSuiteNames);
             }}
-            disabled={busy || (provider === "sso" && selectedSuiteNames.length === 0)}
+            disabled={busy || (!customTab && provider === "sso" && selectedSuiteNames.length === 0)}
             className="rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)] shadow-sm transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {busy ? "Capturing…" : provider === "ngai" ? "Load NGAi data" : "Capture (visible)"}
+            {busy ? "Capturing…" : customTab || provider === "ngai" ? "Load NGAi data" : "Capture (visible)"}
           </button>}
           {persisted && allSuitesSelected && (
             <a

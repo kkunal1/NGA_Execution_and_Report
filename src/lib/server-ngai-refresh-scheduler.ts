@@ -1,6 +1,7 @@
 import { normalizeSuiteNames } from "./normalize";
 import { getRefreshSettings, getRefreshStatus, markRefreshCompleted } from "./refresh-settings";
 import { refreshNGAiData } from "./ngai-refresh-service";
+import { listCustomExecutionTabs } from "./execution-tabs";
 
 const CHECK_INTERVAL_MS = 5_000;
 let scheduler: ReturnType<typeof setInterval> | undefined;
@@ -14,10 +15,26 @@ export async function runServerNGAiRefreshCheck(now = Date.now()) {
     if (settings.intervalSeconds === 0 || !status.nextRefreshAt || now < status.nextRefreshAt) return;
 
     const suites = normalizeSuiteNames([...settings.suitesByProfile.b0, ...settings.suitesByProfile.b2]);
-    if (!suites.length) return;
+    const customTabs = await listCustomExecutionTabs();
+    if (!suites.length && !customTabs.length) return;
 
-    const result = await refreshNGAiData(suites, { persist: true, refreshAborted: true });
-    console.info(`Automatic NGAi refresh completed for ${suites.length} suites (${result.rows.length} rows).`);
+    if (suites.length) {
+      try {
+        const result = await refreshNGAiData(suites, { persist: true, refreshAborted: true, markSchedule: false });
+        console.info(`Automatic NGAi refresh completed for ${suites.length} built-in suites (${result.rows.length} rows).`);
+      } catch (error) {
+        console.error("Automatic B0/B2 NGAi refresh failed:", error instanceof Error ? error.message : error);
+      }
+    }
+    for (const tab of customTabs) {
+      try {
+        const result = await refreshNGAiData(tab.suiteNames, { persist: true, refreshAborted: true, customTabId: tab.id, markSchedule: false });
+        console.info(`Automatic NGAi refresh completed for custom tab ${tab.name} (${result.rows.length} rows).`);
+      } catch (error) {
+        console.error(`Automatic NGAi refresh failed for custom tab ${tab.name}:`, error instanceof Error ? error.message : error);
+      }
+    }
+    await markRefreshCompleted(settings.intervalSeconds);
   } catch (error) {
     console.error("Automatic NGAi refresh failed:", error instanceof Error ? error.message : error);
     try {

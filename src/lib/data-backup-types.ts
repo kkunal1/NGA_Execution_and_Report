@@ -1,5 +1,5 @@
 export const DATA_BACKUP_CATEGORIES = {
-  execution: "Execution snapshots and history",
+  execution: "Execution snapshots, history, and custom tabs",
   weeklyReports: "Weekly Report history and settings",
   appSettings: "Dashboard, pool, theme, and refresh settings",
 } as const;

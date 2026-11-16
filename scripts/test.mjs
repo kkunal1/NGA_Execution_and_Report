@@ -29,6 +29,7 @@ import { getDailyReportLabel, getISTDayRange, getWorkWeeks } from "../src/lib/wo
 import { normalizeExecutionSummaryText, normalizeWeeklyReportSuites } from "../src/lib/weekly-report-settings.ts";
 import { isDailyReportDate, isSavedReportKey, isWorkWeekKey, withFailureProgress } from "../src/lib/saved-weekly-reports.ts";
 import { validateDataBackup } from "../src/lib/data-backup.ts";
+import { isExecutionTabId, isValidExecutionMenuOrder, normalizeExecutionMenuOrder, normalizeExecutionTabName, normalizeExecutionTabSuites } from "../src/lib/execution-tabs.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
 const failureSnapshot = (date, counts, suites = ["suite"]) => ({
@@ -154,6 +155,15 @@ const legacyB2Suite = "Oak_Stream_Platform_1_DMR-Platform_PC-PAIV-Platform-AP1_B
 assert.equal(isSuiteSelectedForProfile(legacyB2Suite, [B2_SUITES.P2], "b2"), true, "legacy aggregate B2 aborts belong to the selected B2 profile");
 assert.equal(isSuiteSelectedForProfile(legacyB2Suite, [B0_SUITES.P2], "b0"), false, "legacy aggregate B2 aborts must not appear in B0");
 assert.equal(isSuiteSelectedForProfile(B2_SUITES.P2, [B2_SUITES.P2], "b2"), true, "exact suite selection remains supported");
+assert.equal(isExecutionTabId("0123456789abcdef0123456789abcdef"), true);
+assert.equal(isExecutionTabId("../latest"), false);
+assert.deepEqual(normalizeExecutionMenuOrder(["b2", "unknown", "b2"], ["0123456789abcdef0123456789abcdef"]), ["b2", "b0", "0123456789abcdef0123456789abcdef"]);
+assert.equal(isValidExecutionMenuOrder(["b2", "b0", "0123456789abcdef0123456789abcdef"], ["0123456789abcdef0123456789abcdef"]), true);
+assert.equal(isValidExecutionMenuOrder(["b2", "b0"], ["0123456789abcdef0123456789abcdef"]), false);
+assert.equal(normalizeExecutionTabName("  Platform   Alpha "), "Platform Alpha");
+assert.equal(normalizeExecutionTabName("<script>"), null);
+assert.deepEqual(normalizeExecutionTabSuites("Suite Alpha\nSuite Beta"), ["Suite Alpha", "Suite Beta"]);
+assert.equal(normalizeExecutionTabSuites(""), null);
 assert.deepEqual(mergeRefreshSuites({ b0: [B0_SUITES.P1], b2: [B2_SUITES.P1] }, [B0_SUITES.P2]), {
   b0: [B0_SUITES.P2], b2: [B2_SUITES.P1],
 }, "saving B0 refresh suites preserves the previously saved B2 suites");
@@ -772,6 +782,12 @@ const mondayRange = getISTDayRange("2026-10-19");
 assert.equal(isWorkWeekKey("2026-WW42"), true);
 const validBackupBundle = { format: "nga-execution-tracker-backup", version: 1, createdAt: "2026-11-16T00:00:00.000Z", categories: ["execution"], files: [{ path: "latest.json", content: "{}" }] };
 assert.equal(validateDataBackup(validBackupBundle).files.length, 1, "valid backup bundles are accepted");
+const customTabId = "0123456789abcdef0123456789abcdef";
+assert.equal(validateDataBackup({ ...validBackupBundle, files: [
+  { path: "execution-tabs.json", content: JSON.stringify([{ id: customTabId, name: "Custom", suiteNames: ["Suite A"], createdAt: "2026-11-16T00:00:00.000Z" }]) },
+  { path: "execution-menu-order.json", content: JSON.stringify(["b2", customTabId, "b0"]) },
+  { path: `execution-tab-data/${customTabId}.json`, content: JSON.stringify({ run: null, abortedRows: [], abortedSuiteNames: [], abortedFetchedAt: null }) },
+] }).files.length, 3, "custom tab definitions, snapshots, and submenu order are valid execution backup files");
 assert.throws(() => validateDataBackup({ ...validBackupBundle, files: [{ path: "../admin-users.json", content: "[]" }] }), /unsupported or duplicate path|unsafe file path/);
 assert.throws(() => validateDataBackup({ ...validBackupBundle, files: [{ path: "ngai-token.json", content: "{}" }] }), /unsupported or duplicate path|unsafe file path/);
 assert.equal(isWorkWeekKey("2027-WW01"), true);

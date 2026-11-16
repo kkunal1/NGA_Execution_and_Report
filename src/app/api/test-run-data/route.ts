@@ -14,12 +14,14 @@ export async function POST(req: Request) {
   let network: NetworkOverride | undefined;
   let persist = false;
   let automatic = false;
+  let customTabId: string | undefined;
   try {
-    const body = (await req.json()) as { suiteName?: string; suiteNames?: string[]; vpnConnected?: boolean; proxyUrl?: string; persist?: boolean; automatic?: boolean };
+    const body = (await req.json()) as { suiteName?: string; suiteNames?: string[]; vpnConnected?: boolean; proxyUrl?: string; persist?: boolean; automatic?: boolean; customTabId?: string };
     suiteName = body?.suiteNames?.length ? body.suiteNames : body?.suiteName?.trim() || undefined;
     if (typeof body?.vpnConnected === "boolean") network = { vpnConnected: body.vpnConnected, proxyUrl: body.proxyUrl };
     persist = body?.persist === true;
     automatic = body?.automatic === true;
+    customTabId = body?.customTabId;
   } catch {
     /* no body */
   }
@@ -29,6 +31,7 @@ export async function POST(req: Request) {
       persist,
       rememberSuites: persist && !automatic,
       refreshAborted: automatic,
+      customTabId,
     });
     if (automatic) return NextResponse.json({ changed: result.changed, runId: result.runId, version: result.version, nextRefreshAt: result.nextRefreshAt });
     return NextResponse.json(result);

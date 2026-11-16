@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { LayoutDashboard, Settings as SettingsIcon, Boxes, LogOut, Clock3, Server, Timer, CalendarDays, FilePenLine, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronRight, Send } from "lucide-react";
 import { THEME_KEY, isThemeId } from "@/lib/theme";
 import type { AppRole } from "@/lib/auth";
+import type { CustomExecutionTab } from "@/lib/execution-tabs";
 import { AppRoleContext } from "./auth-context";
 import { RefreshScheduleContext, type RefreshSchedule } from "./refresh-context";
 
@@ -74,6 +75,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const [menuVisibilityReady, setMenuVisibilityReady] = useState(false);
   const [executionReportExpanded, setExecutionReportExpanded] = useState(false);
   const [weeklyReportExpanded, setWeeklyReportExpanded] = useState(false);
+  const [customExecutionTabs, setCustomExecutionTabs] = useState<CustomExecutionTab[]>([]);
+  const [executionMenuOrder, setExecutionMenuOrder] = useState<string[]>(["b0", "b2"]);
   const [now, setNow] = useState<Date | null>(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [refreshSchedule, setRefreshSchedule] = useState<RefreshSchedule>({ nextRefreshAt: null, intervalSeconds: 0 });
@@ -171,6 +174,36 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
       window.clearInterval(timer);
+    };
+  }, [role]);
+
+  useEffect(() => {
+    if (!role) {
+      setCustomExecutionTabs([]);
+      setExecutionMenuOrder(["b0", "b2"]);
+      return;
+    }
+    let cancelled = false;
+    const loadExecutionTabs = async () => {
+      try {
+        const response = await fetch("/api/execution-tabs", { cache: "no-store" });
+        const data = (await response.json()) as { tabs?: CustomExecutionTab[]; order?: string[] };
+        if (response.ok && !cancelled) {
+          setCustomExecutionTabs(data.tabs ?? []);
+          setExecutionMenuOrder(data.order ?? ["b0", "b2"]);
+        }
+      } catch {
+        // Keep the last known custom tabs if the server is temporarily unavailable.
+      }
+    };
+    const handleTabsChanged = () => void loadExecutionTabs();
+    void loadExecutionTabs();
+    const timer = window.setInterval(() => void loadExecutionTabs(), 10_000);
+    window.addEventListener("nga-execution-tabs-changed", handleTabsChanged);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+      window.removeEventListener("nga-execution-tabs-changed", handleTabsChanged);
     };
   }, [role]);
 
@@ -370,12 +403,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   </button>
                   {executionReportExpanded && !sidebarCollapsed && (
                     <div id="execution-report-submenu" className="ml-4 mt-1 space-y-1 border-l border-white/15 pl-2">
-                      <Link href="/" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
-                        <Server className="h-3.5 w-3.5 shrink-0" /><span>DMR AP1 PV B0 Execution</span>
-                      </Link>
-                      <Link href="/execution/b2" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/execution/b2" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
-                        <Server className="h-3.5 w-3.5 shrink-0" /><span>DMR AP1 PV B2 Execution</span>
-                      </Link>
+                      {[
+                        { id: "b0", href: "/", label: "DMR AP1 PV B0 Execution" },
+                        { id: "b2", href: "/execution/b2", label: "DMR AP1 PV B2 Execution" },
+                        ...customExecutionTabs.map((tab) => ({ id: tab.id, href: `/execution/custom/${tab.id}`, label: tab.name })),
+                      ].sort((left, right) => {
+                        const leftIndex = executionMenuOrder.indexOf(left.id);
+                        const rightIndex = executionMenuOrder.indexOf(right.id);
+                        return (leftIndex < 0 ? Number.MAX_SAFE_INTEGER : leftIndex) - (rightIndex < 0 ? Number.MAX_SAFE_INTEGER : rightIndex);
+                      }).map(({ id, href, label }) => <Link key={id} href={href} className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === href ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
+                        <Server className="h-3.5 w-3.5 shrink-0" /><span className="truncate">{label}</span>
+                      </Link>)}
                     </div>
                   )}
                 </div>

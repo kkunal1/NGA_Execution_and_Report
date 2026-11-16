@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Download, Info, Plus, SunMoon, Trash2, Upload } from "lucide-react";
+import { ArrowDown, ArrowUp, Download, Info, Plus, SunMoon, Trash2, Upload } from "lucide-react";
 import { DATA_PROVIDERS, DATA_PROVIDER_KEY, NGAI_PROXY_KEY, NGAI_VPN_KEY, type DataProvider } from "@/lib/provider";
 import { DATA_BACKUP_CATEGORIES, DATA_BACKUP_CATEGORY_KEYS, type DataBackupCategory } from "@/lib/data-backup-types";
 import type { ConfigCoverageMapping } from "@/lib/config-coverage-settings";
+import type { CustomExecutionTab } from "@/lib/execution-tabs";
 import { THEMES, THEME_KEY, isThemeId, type ThemeId } from "@/lib/theme";
 import WeeklyReportMailPanel from "@/components/WeeklyReportMailPanel";
 import { DEFAULT_WEEKLY_REPORT_SECTIONS, type WeeklyReportSectionSettings } from "@/lib/weekly-report-visibility";
@@ -137,6 +138,35 @@ export default function SettingsPage() {
   const [restoreBusy, setRestoreBusy] = useState(false);
   const [restoreMessage, setRestoreMessage] = useState("");
   const [restoreError, setRestoreError] = useState("");
+  const [customExecutionTabs, setCustomExecutionTabs] = useState<CustomExecutionTab[]>([]);
+  const [customTabName, setCustomTabName] = useState("");
+  const [customTabSuites, setCustomTabSuites] = useState("");
+  const [customTabsLoading, setCustomTabsLoading] = useState(true);
+  const [customTabsBusy, setCustomTabsBusy] = useState(false);
+  const [customTabsError, setCustomTabsError] = useState("");
+  const [customTabsMessage, setCustomTabsMessage] = useState("");
+  const [executionMenuOrder, setExecutionMenuOrder] = useState<string[]>(["b0", "b2"]);
+  const [menuOrderBusy, setMenuOrderBusy] = useState(false);
+  const [menuOrderSaved, setMenuOrderSaved] = useState(false);
+  const [menuOrderError, setMenuOrderError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/execution-tabs", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as { tabs?: CustomExecutionTab[]; order?: string[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "Could not load custom execution tabs.");
+        if (!cancelled) {
+          setCustomExecutionTabs(data.tabs ?? []);
+          setExecutionMenuOrder(data.order ?? ["b0", "b2", ...(data.tabs ?? []).map((tab) => tab.id)]);
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) setCustomTabsError(error instanceof Error ? error.message : "Could not load custom execution tabs.");
+      })
+      .finally(() => { if (!cancelled) setCustomTabsLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     if (!themePickerOpen) return;
@@ -430,6 +460,90 @@ export default function SettingsPage() {
     }
   };
 
+  const createCustomExecutionTab = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setCustomTabsBusy(true);
+    setCustomTabsError("");
+    setCustomTabsMessage("");
+    try {
+      const response = await fetch("/api/execution-tabs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: customTabName, suiteNames: customTabSuites }),
+      });
+      const data = (await response.json()) as { tab?: CustomExecutionTab; order?: string[]; error?: string };
+      if (!response.ok || !data.tab) throw new Error(data.error || "Could not create execution tab.");
+      setCustomExecutionTabs((current) => [...current, data.tab!]);
+      if (data.order) setExecutionMenuOrder(data.order);
+      setCustomTabName("");
+      setCustomTabSuites("");
+      setCustomTabsMessage(`Created ${data.tab.name}.`);
+      window.dispatchEvent(new Event("nga-execution-tabs-changed"));
+    } catch (error) {
+      setCustomTabsError(error instanceof Error ? error.message : "Could not create execution tab.");
+    } finally {
+      setCustomTabsBusy(false);
+    }
+  };
+
+  const deleteCustomExecutionTab = async (tab: CustomExecutionTab) => {
+    if (!window.confirm(`Delete “${tab.name}” and its saved snapshot?`)) return;
+    setCustomTabsBusy(true);
+    setCustomTabsError("");
+    setCustomTabsMessage("");
+    try {
+      const response = await fetch("/api/execution-tabs", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: tab.id }),
+      });
+      const data = (await response.json()) as { error?: string; order?: string[] };
+      if (!response.ok) throw new Error(data.error || "Could not delete execution tab.");
+      setCustomExecutionTabs((current) => current.filter((item) => item.id !== tab.id));
+      if (data.order) setExecutionMenuOrder(data.order);
+      setCustomTabsMessage(`Deleted ${tab.name}.`);
+      window.dispatchEvent(new Event("nga-execution-tabs-changed"));
+    } catch (error) {
+      setCustomTabsError(error instanceof Error ? error.message : "Could not delete execution tab.");
+    } finally {
+      setCustomTabsBusy(false);
+    }
+  };
+
+  const moveExecutionMenuItem = (id: string, direction: -1 | 1) => {
+    setExecutionMenuOrder((current) => {
+      const index = current.indexOf(id);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+    setMenuOrderSaved(false);
+  };
+
+  const saveExecutionMenuOrderSetting = async () => {
+    setMenuOrderBusy(true);
+    setMenuOrderSaved(false);
+    setMenuOrderError("");
+    try {
+      const response = await fetch("/api/execution-tabs", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ order: executionMenuOrder }),
+      });
+      const data = (await response.json()) as { order?: string[]; error?: string };
+      if (!response.ok || !data.order) throw new Error(data.error || "Could not save submenu order.");
+      setExecutionMenuOrder(data.order);
+      setMenuOrderSaved(true);
+      window.dispatchEvent(new Event("nga-execution-tabs-changed"));
+    } catch (error) {
+      setMenuOrderError(error instanceof Error ? error.message : "Could not save submenu order.");
+    } finally {
+      setMenuOrderBusy(false);
+    }
+  };
+
   const saveCoverageMappings = async () => {
     setCoverageMappingsBusy(true);
     setCoverageMappingsSaved(false);
@@ -565,6 +679,15 @@ export default function SettingsPage() {
     }
   };
 
+  const executionMenuLabels = new Map<string, { name: string; detail?: string }>([
+    ["b0", { name: "DMR AP1 PV B0 Execution", detail: "Built-in dashboard" }],
+    ["b2", { name: "DMR AP1 PV B2 Execution", detail: "Built-in dashboard" }],
+    ...customExecutionTabs.map((tab) => [tab.id, { name: tab.name, detail: tab.suiteNames.join(" · ") }] as const),
+  ]);
+  const orderedExecutionMenu = executionMenuOrder
+    .map((id) => ({ id, ...executionMenuLabels.get(id) }))
+    .filter((item): item is { id: string; name: string; detail?: string } => Boolean(item.name));
+
   return (
     <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-start gap-5 px-5 py-6 lg:grid-cols-2">
       <header className="mb-1 flex items-start justify-between gap-4 border-b border-[var(--border)] pb-5 lg:col-span-2">
@@ -653,6 +776,63 @@ export default function SettingsPage() {
         </div>
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">{dashboardSettingsSaved ? "Execution Report setting saved." : dashboardSettings.showManualAborts ? "Manual aborts are shown." : "Manual aborts are hidden from the table and total."}</p>
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
+      </section>
+      <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="custom-execution-tabs-heading">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 id="custom-execution-tabs-heading" className="text-base font-semibold text-[var(--text)]">Execution Submenus</h2>
+            <p className="mt-1 text-sm text-[var(--text-muted)]">Create independent dashboards for other NGAi suites and set the order shown under Execution Report.</p>
+          </div>
+          <span className="text-xs text-[var(--text-muted)]">{customExecutionTabs.length}/20 tabs</span>
+        </div>
+        <form onSubmit={(event) => void createCustomExecutionTab(event)} className="mt-4 grid gap-4 md:grid-cols-[minmax(12rem,0.65fr)_minmax(16rem,1.35fr)_auto] md:items-end">
+          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="custom-execution-tab-name">Submenu name
+            <input id="custom-execution-tab-name" required minLength={2} maxLength={60} value={customTabName} onChange={(event) => setCustomTabName(event.target.value)} disabled={customTabsBusy || customTabsLoading || customExecutionTabs.length >= 20} placeholder="e.g. AP2 B0 Execution" className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)] disabled:opacity-50" />
+          </label>
+          <label className="block text-sm font-medium text-[var(--text)]" htmlFor="custom-execution-tab-suites">NGAi suite name(s)
+            <textarea id="custom-execution-tab-suites" required rows={2} value={customTabSuites} onChange={(event) => setCustomTabSuites(event.target.value)} disabled={customTabsBusy || customTabsLoading || customExecutionTabs.length >= 20} placeholder="One suite per line" className="mt-1 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)] disabled:opacity-50" />
+          </label>
+          <button type="submit" disabled={customTabsBusy || customTabsLoading || customExecutionTabs.length >= 20} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)] disabled:opacity-50">
+            {customTabsBusy ? "Saving…" : "Create tab"}
+          </button>
+        </form>
+        <div className="mt-5 border-t border-[var(--border)] pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h3 className="text-sm font-semibold text-[var(--text)]">Sidebar order</h3>
+            <button type="button" onClick={() => void saveExecutionMenuOrderSetting()} disabled={customTabsLoading || menuOrderBusy} className="h-9 rounded-md border border-[var(--border)] px-3 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-50">
+              {menuOrderBusy ? "Saving…" : "Save order"}
+            </button>
+          </div>
+          {customTabsLoading ? <p className="mt-3 text-sm text-[var(--text-muted)]">Loading submenu list…</p> : (
+            <ol className="mt-3 divide-y divide-[var(--border)] border-y border-[var(--border)]">
+              {orderedExecutionMenu.map((item, index) => {
+                const customTab = customExecutionTabs.find((tab) => tab.id === item.id);
+                return <li key={item.id} className="flex flex-wrap items-center justify-between gap-3 py-3">
+                  <div className="flex min-w-0 items-start gap-3">
+                    <span className="w-6 shrink-0 pt-0.5 text-right text-xs tabular-nums text-[var(--text-muted)]">{index + 1}</span>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-[var(--text)]">{item.name}</p>
+                      {item.detail && <p className="mt-1 break-all text-xs text-[var(--text-muted)]">{item.detail}</p>}
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={() => moveExecutionMenuItem(item.id, -1)} disabled={index === 0 || menuOrderBusy} aria-label={`Move ${item.name} up`} title="Move up" className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-alt)] disabled:opacity-40">
+                      <ArrowUp className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    <button type="button" onClick={() => moveExecutionMenuItem(item.id, 1)} disabled={index === orderedExecutionMenu.length - 1 || menuOrderBusy} aria-label={`Move ${item.name} down`} title="Move down" className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] hover:bg-[var(--surface-alt)] disabled:opacity-40">
+                      <ArrowDown className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                    {customTab && <button type="button" onClick={() => void deleteCustomExecutionTab(customTab)} disabled={customTabsBusy} aria-label={`Delete ${customTab.name}`} title="Delete custom tab and its snapshot" className="flex h-9 w-9 items-center justify-center rounded-md border border-[var(--border)] text-[var(--text-muted)] hover:text-red-600 disabled:opacity-50">
+                      <Trash2 className="h-4 w-4" aria-hidden="true" />
+                    </button>}
+                  </div>
+                </li>;
+              })}
+            </ol>
+          )}
+          {(menuOrderSaved || menuOrderError) && <p className={`mt-3 text-sm ${menuOrderError ? "text-red-600" : "text-[var(--text-muted)]"}`} role={menuOrderError ? "alert" : "status"} aria-live="polite">{menuOrderError || "Execution submenu order saved."}</p>}
+        </div>
+        {(customTabsMessage || customTabsError) && <p className={`mt-3 text-sm ${customTabsError ? "text-red-600" : "text-[var(--text-muted)]"}`} role={customTabsError ? "alert" : "status"} aria-live="polite">{customTabsError || customTabsMessage}</p>}
       </section>
       <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="add-admin-heading">
         <h2 id="add-admin-heading" className="text-base font-semibold text-[var(--text)]">Add Admin</h2>

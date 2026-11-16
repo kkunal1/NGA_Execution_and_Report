@@ -5,11 +5,12 @@ import { config } from "./config";
 import { isSavedReportKey } from "./saved-weekly-reports";
 import { DATA_BACKUP_CATEGORY_KEYS, type DataBackupCategory } from "./data-backup-types";
 import { getRefreshSettings, markRefreshCompleted } from "./refresh-settings";
+import { listCustomExecutionTabSnapshotPaths } from "./execution-tabs";
 
 const BACKUP_FORMAT = "nga-execution-tracker-backup";
 const BACKUP_VERSION = 1;
 const WEEKLY_REPORTS_DIRECTORY = "weekly-reports";
-const EXECUTION_FILES = new Set(["latest.json", "latest-b0.json", "latest-b2.json", "aborted-latest.json"]);
+const EXECUTION_FILES = new Set(["latest.json", "latest-b0.json", "latest-b2.json", "aborted-latest.json", "execution-tabs.json", "execution-menu-order.json"]);
 const APP_SETTING_FILES = new Set([
   "theme.json",
   "config-coverage-suites.json",
@@ -32,6 +33,7 @@ export type DataBackupBundle = {
 
 function categoryForPath(filePath: string): DataBackupCategory | null {
   if (EXECUTION_FILES.has(filePath) || RUN_HISTORY_FILE.test(filePath)) return "execution";
+  if (/^execution-tab-data\/[a-f0-9]{32}\.json$/.test(filePath)) return "execution";
   if (APP_SETTING_FILES.has(filePath)) return "appSettings";
   if (filePath === "weekly-report-settings.json") return "weeklyReports";
   const weeklyReportMatch = /^weekly-reports\/([^/]+)\.json$/.exec(filePath);
@@ -100,7 +102,8 @@ async function categoryPaths(category: DataBackupCategory): Promise<string[]> {
   }
 
   if (category === "execution") {
-    return entries.filter((entry) => entry.isFile() && categoryForPath(entry.name) === category).map((entry) => entry.name);
+    const rootFiles = entries.filter((entry) => entry.isFile() && categoryForPath(entry.name) === category).map((entry) => entry.name);
+    return [...rootFiles, ...await listCustomExecutionTabSnapshotPaths()];
   }
   if (category === "appSettings") {
     return entries.filter((entry) => entry.isFile() && APP_SETTING_FILES.has(entry.name)).map((entry) => entry.name);

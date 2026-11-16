@@ -1,6 +1,10 @@
 // Sanity checks for state bucketing and payload harvesting.
 // Run with: npm run test
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
@@ -15,7 +19,7 @@ import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_CONFIG_COVERAGE_MAPPINGS, normalizeConfigCoverageMappings } from "../src/lib/config-coverage-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames, selectConfiguredPoolNames } from "../src/lib/pool-system-settings.ts";
 import { aggregateUncoveredConfigs, poolMembershipFilter } from "../src/lib/pool-systems.ts";
-import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks } from "../src/lib/weekly-report-settings.ts";
+import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks, transferWeeklyReportTable } from "../src/lib/weekly-report-settings.ts";
 import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, fetchHsdesArticleDetails, extractHsdesIssues, extractHsdesIssuesOlderThan, normalizeHsdesReportType } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
@@ -642,6 +646,88 @@ assert.equal(normalizeCustomReportTables([{ ...customTableFixture[0], enabled: f
 assert.equal(normalizeCustomReportTables([{ ...customTableFixture[0], enabled: "false" }]), null, "custom-table visibility must be boolean");
 assert.equal(normalizeCustomReportTables([{ ...customTableFixture[0], rows: [["one cell"]] }]), null);
 assert.equal(normalizeCustomReportTables([{ ...customTableFixture[0], columns: ["Metric", "metric"] }]), null);
+const tableSourceCycle = {
+  bkc: DEFAULT_WEEKLY_REPORT_BKC, suites: ["source_suite"], executionSummaryText: "Source summary",
+  cpuAllocationPresent: true, cpuAllocationEnabled: false,
+  teamPlatformCounts: [{ team: "Execution", x1: 2, x4: 3, extraCounts: [5] }],
+  cpuColumns: ["Total"], cpuBaseLabels: { team: "Team", x1: "X1-B0", x4: "X4-B1" },
+  cpuBreakdownTitle: "Source allocation", hsdesLink: DEFAULT_WEEKLY_REPORT_HSDES_LINK, links: [],
+  customTables: [{ ...customTableFixture[0], enabled: false }],
+};
+const tableTargetCycle = {
+  ...tableSourceCycle, suites: ["target_suite"], executionSummaryText: "Target summary",
+  cpuAllocationPresent: false, customTables: [{ id: "existing", title: "Existing", columns: ["Team"], rows: [["DM"]], enabled: true }],
+};
+const movedCustomTable = transferWeeklyReportTable(tableSourceCycle, tableTargetCycle, "summary_table");
+assert.deepEqual(movedCustomTable.source.customTables, [], "moved table is removed from the source cycle");
+assert.deepEqual(movedCustomTable.target.customTables, [...tableTargetCycle.customTables, tableSourceCycle.customTables[0]], "target keeps existing tables and receives all table data and visibility");
+assert.deepEqual(movedCustomTable.target.suites, ["target_suite"], "moving a table does not replace target suites");
+assert.equal(movedCustomTable.target.executionSummaryText, "Target summary");
+assert.equal(tableSourceCycle.customTables.length, 1, "transfer does not mutate input settings");
+assert.throws(() => transferWeeklyReportTable(tableSourceCycle, tableTargetCycle, "missing"), /no longer/);
+assert.throws(() => transferWeeklyReportTable(tableSourceCycle, { ...tableTargetCycle, customTables: tableSourceCycle.customTables }, "summary_table"), /already has/);
+assert.throws(() => transferWeeklyReportTable(tableSourceCycle, { ...tableTargetCycle, customTables: [{ ...customTableFixture[0], id: "different", title: " SUMMARY " }] }, "summary_table"), /already has/);
+assert.throws(() => transferWeeklyReportTable(tableSourceCycle, { ...tableTargetCycle, customTables: Array.from({ length: 10 }, (_, index) => ({ ...customTableFixture[0], id: `table_${index}` })) }, "summary_table"), /10 custom tables/);
+const movedAllocation = transferWeeklyReportTable(tableSourceCycle, tableTargetCycle, null);
+assert.equal(movedAllocation.source.cpuAllocationPresent, false, "allocation disappears from the source editor");
+assert.equal(movedAllocation.source.cpuAllocationEnabled, false, "allocation is excluded from new source reports");
+assert.equal(movedAllocation.target.cpuAllocationPresent, true);
+assert.equal(movedAllocation.target.cpuAllocationEnabled, false, "moving preserves the allocation inclusion switch");
+for (const field of ["cpuBreakdownTitle", "cpuColumns", "cpuBaseLabels", "teamPlatformCounts"]) {
+  assert.deepEqual(movedAllocation.target[field], tableSourceCycle[field], `moving preserves ${field}`);
+}
+assert.deepEqual(movedAllocation.target.customTables, tableTargetCycle.customTables);
+assert.throws(() => transferWeeklyReportTable(tableSourceCycle, tableSourceCycle, null), /already has an allocation/);
+assert.throws(() => transferWeeklyReportTable(movedAllocation.source, tableTargetCycle, null), /no longer/);
+const cycleTableTestDir = await mkdtemp(path.join(tmpdir(), "nga-cycle-tables-"));
+try {
+  execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    import { readFile, writeFile } from "node:fs/promises";
+    import path from "node:path";
+    import { getWeeklyReportSettings, moveWeeklyReportTable, saveWeeklyReportSettings } from "./src/lib/weekly-report-settings.ts";
+    const fixture = ${JSON.stringify(tableSourceCycle)};
+    const directory = process.env.NGA_DATA_DIR;
+    const cycleFile = path.join(directory, "weekly-report-cycle-settings.json");
+    await writeFile(path.join(directory, "weekly-report-settings.json"), JSON.stringify(fixture));
+    const saveCycle = (settings, cycleId) => saveWeeklyReportSettings(
+      settings.bkc, settings.teamPlatformCounts, settings.hsdesLink, settings.links,
+      settings.cpuColumns, settings.cpuBreakdownTitle, settings.cpuBaseLabels,
+      settings.customTables, settings.suites, settings.executionSummaryText,
+      settings.cpuAllocationEnabled, cycleId, settings.cpuAllocationPresent,
+    );
+    assert.equal((await getWeeklyReportSettings("b2")).customTables.length, 1);
+    assert.deepEqual((await getWeeklyReportSettings("b0")).customTables, [], "legacy custom tables do not leak to another cycle");
+    assert.equal((await getWeeklyReportSettings("b0")).cpuAllocationPresent, false);
+    assert.equal((await getWeeklyReportSettings("b0")).cpuAllocationEnabled, false);
+    await moveWeeklyReportTable("b2", "b0", "summary_table");
+    assert.deepEqual((await getWeeklyReportSettings("b2")).customTables, []);
+    assert.deepEqual((await getWeeklyReportSettings("b0")).customTables, fixture.customTables);
+    const freshTable = { id: "created_in_b0", title: "B0 only", columns: ["Team"], rows: [["BKC"]], enabled: true };
+    const target = await getWeeklyReportSettings("b0");
+    await saveCycle({ ...target, customTables: [...target.customTables, freshTable] }, "b0");
+    assert.equal((await getWeeklyReportSettings("b0")).customTables.length, 2);
+    assert.deepEqual((await getWeeklyReportSettings("b2")).customTables, [], "new table stays in its selected cycle");
+    await moveWeeklyReportTable("b2", "b0", null);
+    assert.equal((await getWeeklyReportSettings("b2")).cpuAllocationPresent, false);
+    assert.equal((await getWeeklyReportSettings("b2")).cpuAllocationEnabled, false);
+    assert.equal((await getWeeklyReportSettings("b0")).cpuAllocationPresent, true);
+    assert.deepEqual((await getWeeklyReportSettings("b0")).teamPlatformCounts, fixture.teamPlatformCounts);
+    assert.equal((await getWeeklyReportSettings("b0")).cpuAllocationEnabled, false);
+    const beforeInvalidMove = await readFile(cycleFile, "utf8");
+    await assert.rejects(() => moveWeeklyReportTable("b0", "b0", "created_in_b0"), /different target/);
+    await assert.rejects(() => moveWeeklyReportTable("b0", "b2", "missing"), /no longer/);
+    assert.equal(await readFile(cycleFile, "utf8"), beforeInvalidMove, "invalid moves leave storage unchanged");
+    await Promise.all([
+      moveWeeklyReportTable("b0", "b2", "summary_table"),
+      moveWeeklyReportTable("b0", "b2", "created_in_b0"),
+    ]);
+    assert.deepEqual((await getWeeklyReportSettings("b0")).customTables, []);
+    assert.equal((await getWeeklyReportSettings("b2")).customTables.length, 2, "concurrent moves preserve both tables");
+  `], { env: { ...process.env, NGA_DATA_DIR: cycleTableTestDir }, encoding: "utf8" });
+} finally {
+  await rm(cycleTableTestDir, { recursive: true, force: true });
+}
 assert.equal(canonicalizeSightingDomain("pm_subsystem_validation"), "pv_power_management");
 assert.equal(canonicalizeSightingDomain("io_subsystem_validation"), "pv_serial_io");
 assert.equal(canonicalizeSightingDomain("managebility_subsystem_validation"), "pv_manageability");

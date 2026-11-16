@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config";
 import { B0_SUITES, B2_SUITES } from "./execution-suites";
@@ -16,8 +17,8 @@ export type CpuBaseLabels = { team: string; x1: string; x4: string };
 export type TeamPlatformCount = { team: string; x1: number; x4: number; extraCounts?: number[] };
 export type WeeklyReportLink = { label: string; url: string };
 export type CustomReportTable = { id: string; title: string; columns: string[]; rows: string[][]; enabled?: boolean };
-export type WeeklyReportSettings = { bkc: string; suites: string[]; executionSummaryText: string; cpuAllocationEnabled: boolean; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBaseLabels: CpuBaseLabels; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[]; customTables: CustomReportTable[] };
-type WeeklyReportCycleSettings = Pick<WeeklyReportSettings, "suites" | "executionSummaryText" | "cpuAllocationEnabled" | "teamPlatformCounts" | "cpuColumns" | "cpuBaseLabels" | "cpuBreakdownTitle" | "customTables">;
+export type WeeklyReportSettings = { bkc: string; suites: string[]; executionSummaryText: string; cpuAllocationPresent?: boolean; cpuAllocationEnabled: boolean; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBaseLabels: CpuBaseLabels; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[]; customTables: CustomReportTable[] };
+type WeeklyReportCycleSettings = Pick<WeeklyReportSettings, "suites" | "executionSummaryText" | "cpuAllocationPresent" | "cpuAllocationEnabled" | "teamPlatformCounts" | "cpuColumns" | "cpuBaseLabels" | "cpuBreakdownTitle" | "customTables">;
 export const DEFAULT_TEAM_PLATFORM_COUNTS: TeamPlatformCount[] = [
   { team: "PV.BKC", x1: 6, x4: 2 },
   { team: "DM", x1: 2, x4: 0 },
@@ -30,6 +31,24 @@ export const DEFAULT_WEEKLY_REPORT_LINKS: WeeklyReportLink[] = [
 
 const settingsPath = path.join(config.dataDir, "weekly-report-settings.json");
 const cycleSettingsPath = path.join(config.dataDir, "weekly-report-cycle-settings.json");
+let settingsWriteQueue: Promise<unknown> = Promise.resolve();
+
+function serializeSettingsWrite<Result>(write: () => Promise<Result>): Promise<Result> {
+  const result = settingsWriteQueue.then(write);
+  settingsWriteQueue = result.catch(() => undefined);
+  return result;
+}
+
+async function writeCycleSettingsMap(settings: Record<string, unknown>) {
+  const temporaryPath = `${cycleSettingsPath}.${randomUUID()}.tmp`;
+  try {
+    await mkdir(config.dataDir, { recursive: true });
+    await writeFile(temporaryPath, JSON.stringify(settings, null, 2), { encoding: "utf8", mode: 0o600 });
+    await rename(temporaryPath, cycleSettingsPath);
+  } finally {
+    await rm(temporaryPath, { force: true });
+  }
+}
 
 function isReportCycleId(value: string) {
   return value === "b0" || value === "b2" || /^[a-f0-9]{32}$/.test(value);
@@ -198,10 +217,14 @@ async function readCycleSettingsMap(): Promise<Record<string, unknown>> {
 function normalizeCycleSettings(value: unknown, fallback: WeeklyReportSettings): WeeklyReportCycleSettings {
   const saved = value && typeof value === "object" ? value as Record<string, unknown> : {};
   const cpuColumns = normalizeCpuColumns(saved.cpuColumns) ?? fallback.cpuColumns;
+  const cpuAllocationPresent = typeof saved.cpuAllocationPresent === "boolean"
+    ? saved.cpuAllocationPresent
+    : Array.isArray(saved.teamPlatformCounts) || fallback.cpuAllocationPresent !== false;
   return {
     suites: normalizeWeeklyReportSuites(saved.suites) ?? fallback.suites,
     executionSummaryText: normalizeExecutionSummaryText(saved.executionSummaryText) || fallback.executionSummaryText,
-    cpuAllocationEnabled: typeof saved.cpuAllocationEnabled === "boolean" ? saved.cpuAllocationEnabled : fallback.cpuAllocationEnabled,
+    cpuAllocationPresent,
+    cpuAllocationEnabled: cpuAllocationPresent && (typeof saved.cpuAllocationEnabled === "boolean" ? saved.cpuAllocationEnabled : fallback.cpuAllocationEnabled),
     teamPlatformCounts: normalizeTeamPlatformCounts(saved.teamPlatformCounts, cpuColumns) ?? fallback.teamPlatformCounts,
     cpuColumns,
     cpuBaseLabels: normalizeCpuBaseLabels(saved.cpuBaseLabels) ?? fallback.cpuBaseLabels,
@@ -230,11 +253,52 @@ export async function getWeeklyReportSettings(cycleId = "b2"): Promise<WeeklyRep
     if (!tab) throw new TypeError("Select an available execution cycle.");
     suiteFallback = tab.suiteNames;
   }
-  const fallback = { ...shared, suites: suiteFallback };
+  const fallback = cycleId === "b2"
+    ? { ...shared, suites: suiteFallback, cpuAllocationPresent: true }
+    : { ...shared, suites: suiteFallback, cpuAllocationPresent: false, cpuAllocationEnabled: false, teamPlatformCounts: DEFAULT_TEAM_PLATFORM_COUNTS.map((row) => ({ ...row })), cpuColumns: [], cpuBaseLabels: { ...DEFAULT_CPU_BASE_LABELS }, cpuBreakdownTitle: DEFAULT_CPU_BREAKDOWN_TITLE, customTables: [] };
   return { ...fallback, ...normalizeCycleSettings(cycleSettings[cycleId], fallback) };
 }
 
-export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS, customTablesValue?: unknown, suitesValue: unknown = DEFAULT_WEEKLY_REPORT_SUITES, executionSummaryTextValue: unknown = DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabledValue: unknown = true, cycleId = "b2"): Promise<WeeklyReportSettings> {
+export function transferWeeklyReportTable(source: WeeklyReportSettings, target: WeeklyReportSettings, tableId: string | null): { source: WeeklyReportSettings; target: WeeklyReportSettings } {
+  if (tableId === null) {
+    if (source.cpuAllocationPresent === false) throw new TypeError("The allocation table is no longer in this cycle.");
+    if (target.cpuAllocationPresent !== false) throw new TypeError("The target cycle already has an allocation table. Move that table first, or choose another cycle.");
+    return {
+      source: { ...source, cpuAllocationPresent: false, cpuAllocationEnabled: false },
+      target: { ...target, cpuAllocationPresent: true, cpuAllocationEnabled: source.cpuAllocationEnabled, teamPlatformCounts: source.teamPlatformCounts, cpuColumns: source.cpuColumns, cpuBaseLabels: source.cpuBaseLabels, cpuBreakdownTitle: source.cpuBreakdownTitle },
+    };
+  }
+  const table = source.customTables.find((item) => item.id === tableId);
+  if (!table) throw new TypeError("The table is no longer in this cycle. Reload and try again.");
+  if (target.customTables.length >= 10) throw new TypeError("The target cycle already has 10 custom tables.");
+  if (target.customTables.some((item) => item.id === table.id || item.title.trim().toLowerCase() === table.title.trim().toLowerCase())) {
+    throw new TypeError("The target cycle already has a table with this name or ID. Rename the table or choose another cycle.");
+  }
+  return {
+    source: { ...source, customTables: source.customTables.filter((item) => item.id !== tableId) },
+    target: { ...target, customTables: [...target.customTables, table] },
+  };
+}
+
+function cycleContent(settings: WeeklyReportSettings): WeeklyReportCycleSettings {
+  const { suites, executionSummaryText, cpuAllocationPresent, cpuAllocationEnabled, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, customTables } = settings;
+  return { suites, executionSummaryText, cpuAllocationPresent, cpuAllocationEnabled, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, customTables };
+}
+
+export async function moveWeeklyReportTable(sourceCycleId: string, targetCycleId: string, tableId: string | null): Promise<WeeklyReportSettings> {
+  if (sourceCycleId === targetCycleId) throw new TypeError("Select a different target cycle.");
+  return serializeSettingsWrite(async () => {
+    const [source, target] = await Promise.all([getWeeklyReportSettings(sourceCycleId), getWeeklyReportSettings(targetCycleId)]);
+    const moved = transferWeeklyReportTable(source, target, tableId);
+    const cycleSettings = await readCycleSettingsMap();
+    cycleSettings[sourceCycleId] = cycleContent(moved.source);
+    cycleSettings[targetCycleId] = cycleContent(moved.target);
+    await writeCycleSettingsMap(cycleSettings);
+    return moved.source;
+  });
+}
+
+export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS, customTablesValue?: unknown, suitesValue: unknown = DEFAULT_WEEKLY_REPORT_SUITES, executionSummaryTextValue: unknown = DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabledValue: unknown = true, cycleId = "b2", cpuAllocationPresentValue: unknown = true): Promise<WeeklyReportSettings> {
   if (!isReportCycleId(cycleId)) throw new TypeError("Select a valid execution cycle.");
   const bkc = normalizeWeeklyReportBkc(bkcValue);
   const suites = normalizeWeeklyReportSuites(suitesValue);
@@ -253,6 +317,7 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
   if (!suites) throw new TypeError("Enter one to 20 unique NGAi suite names, each up to 512 characters.");
   if (executionSummaryText === null) throw new TypeError("Execution summary text must be 10,000 characters or fewer.");
   if (cpuAllocationEnabled === null) throw new TypeError("Choose whether the main allocation table is enabled.");
+  if (typeof cpuAllocationPresentValue !== "boolean") throw new TypeError("Choose whether the allocation table belongs to this cycle.");
   if (!cpuColumns) throw new TypeError("Enter up to 10 unique CPU column names (not Team, X1, or X4).");
   if (!cpuBaseLabels || cpuColumns.some((column) => Object.values(cpuBaseLabels).some((label) => label.toLowerCase() === column.toLowerCase()))) {
     throw new TypeError("Enter unique Team, X1, and X4 column labels of up to 40 characters.");
@@ -262,14 +327,16 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
   if (!hsdesLink) throw new TypeError("Enter an HSDES General Apps link containing a numeric queryId.");
   if (!links) throw new TypeError("Enter up to 20 report links with a label and valid HTTPS URL.");
   if (!customTables) throw new TypeError("Enter up to 10 custom tables with up to 12 columns and 100 rows each.");
-  await mkdir(config.dataDir, { recursive: true });
-  const shared = await readLegacyWeeklyReportSettings();
-  const sharedSettings = { ...shared, bkc, hsdesLink, links };
-  await writeFile(settingsPath, JSON.stringify(sharedSettings, null, 2), { encoding: "utf8", mode: 0o600 });
-  const cycleSettings = await readCycleSettingsMap();
-  cycleSettings[cycleId] = { suites, executionSummaryText: executionSummaryText || DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabled, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, customTables } satisfies WeeklyReportCycleSettings;
-  await writeFile(cycleSettingsPath, JSON.stringify(cycleSettings, null, 2), { encoding: "utf8", mode: 0o600 });
-  return getWeeklyReportSettings(cycleId);
+  return serializeSettingsWrite(async () => {
+    await mkdir(config.dataDir, { recursive: true });
+    const shared = await readLegacyWeeklyReportSettings();
+    const sharedSettings = { ...shared, bkc, hsdesLink, links };
+    await writeFile(settingsPath, JSON.stringify(sharedSettings, null, 2), { encoding: "utf8", mode: 0o600 });
+    const cycleSettings = await readCycleSettingsMap();
+    cycleSettings[cycleId] = { suites, executionSummaryText: executionSummaryText || DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationPresent: cpuAllocationPresentValue, cpuAllocationEnabled: cpuAllocationPresentValue && cpuAllocationEnabled, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, customTables } satisfies WeeklyReportCycleSettings;
+    await writeCycleSettingsMap(cycleSettings);
+    return getWeeklyReportSettings(cycleId);
+  });
 }
 
 export function normalizeCpuBaseLabels(value: unknown): CpuBaseLabels | null {

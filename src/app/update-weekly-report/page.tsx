@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Bold, Check, Italic, List, Pencil, Plus, Trash2 } from "lucide-react";
+import { ArrowRightLeft, Bold, Check, Italic, List, Pencil, Plus, Trash2 } from "lucide-react";
 import type { CpuBaseLabels, CustomReportTable, TeamPlatformCount, WeeklyReportLink } from "@/lib/weekly-report-settings";
 import { DEFAULT_CPU_ALLOCATION_TITLE, displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 import { DEFAULT_EXECUTION_SUMMARY_TEXT, DEFAULT_WEEKLY_REPORT_SUITES, EXECUTION_SUMMARY_PREVIEW_VALUES } from "@/lib/weekly-report-defaults";
@@ -23,7 +23,9 @@ export default function UpdateWeeklyReportPage() {
   const [bkc, setBkc] = useState("BKC#40");
   const [suites, setSuites] = useState<EditableSuite[]>(DEFAULT_WEEKLY_REPORT_SUITES.map((suiteName) => ({ id: createRowId(), suiteName })));
   const [executionSummaryText, setExecutionSummaryText] = useState(DEFAULT_EXECUTION_SUMMARY_TEXT);
+  const [cpuAllocationPresent, setCpuAllocationPresent] = useState(true);
   const [cpuAllocationEnabled, setCpuAllocationEnabled] = useState(true);
+  const formRef = useRef<HTMLFormElement>(null);
   const executionSummaryRef = useRef<HTMLTextAreaElement>(null);
   const [teamPlatformCounts, setTeamPlatformCounts] = useState<EditableTeamPlatformCount[]>([]);
   const [cpuColumns, setCpuColumns] = useState<EditableCpuColumn[]>([]);
@@ -38,6 +40,9 @@ export default function UpdateWeeklyReportPage() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState(false);
+  const [moving, setMoving] = useState(false);
+  const [moveTargets, setMoveTargets] = useState<Record<string, string>>({});
+  const [moveStatus, setMoveStatus] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -50,6 +55,7 @@ export default function UpdateWeeklyReportPage() {
           bkc?: string;
           suites?: string[];
           executionSummaryText?: string;
+          cpuAllocationPresent?: boolean;
           cpuAllocationEnabled?: boolean;
           teamPlatformCounts?: TeamPlatformCount[];
           cpuColumns?: string[];
@@ -66,6 +72,7 @@ export default function UpdateWeeklyReportPage() {
           if (result.bkc) setBkc(result.bkc);
           setSuites((result.suites ?? DEFAULT_WEEKLY_REPORT_SUITES).map((suiteName) => ({ id: createRowId(), suiteName })));
           setExecutionSummaryText(result.executionSummaryText ?? DEFAULT_EXECUTION_SUMMARY_TEXT);
+          setCpuAllocationPresent(result.cpuAllocationPresent !== false);
           setCpuAllocationEnabled(result.cpuAllocationEnabled !== false);
           setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
           setCpuBaseLabels(result.cpuBaseLabels ?? { team: "Team", x1: "X1", x4: "X4" });
@@ -85,8 +92,9 @@ export default function UpdateWeeklyReportPage() {
     return () => { cancelled = true; };
   }, [selectedCycleId]);
 
-  const save = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const save = async (event?: FormEvent<HTMLFormElement>): Promise<boolean> => {
+    event?.preventDefault();
+    if (formRef.current && !formRef.current.reportValidity()) return false;
     setSaving(true);
     setError("");
     setSaved(false);
@@ -99,6 +107,7 @@ export default function UpdateWeeklyReportPage() {
           bkc,
           suites: suites.map((suite) => suite.suiteName),
           executionSummaryText,
+          cpuAllocationPresent,
           cpuAllocationEnabled,
           teamPlatformCounts: teamPlatformCounts.map((row) => ({ team: row.team, x1: Number(row.x1), x4: Number(row.x4), extraCounts: row.extraCounts.map(Number) })),
           cpuColumns: cpuColumns.map((column) => column.label),
@@ -114,6 +123,7 @@ export default function UpdateWeeklyReportPage() {
         bkc?: string;
         suites?: string[];
         executionSummaryText?: string;
+        cpuAllocationPresent?: boolean;
         cpuAllocationEnabled?: boolean;
         teamPlatformCounts?: TeamPlatformCount[];
         cpuColumns?: string[];
@@ -129,6 +139,7 @@ export default function UpdateWeeklyReportPage() {
       setBkc(result.bkc ?? bkc.trim());
       setSuites((result.suites ?? suites.map((suite) => suite.suiteName.trim()).filter(Boolean)).map((suiteName) => ({ id: createRowId(), suiteName })));
       setExecutionSummaryText(result.executionSummaryText ?? executionSummaryText.trim());
+      setCpuAllocationPresent(result.cpuAllocationPresent !== false);
       setCpuAllocationEnabled(result.cpuAllocationEnabled !== false);
       setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
       setCpuBaseLabels(result.cpuBaseLabels ?? cpuBaseLabels);
@@ -140,12 +151,56 @@ export default function UpdateWeeklyReportPage() {
       setLinks((result.links ?? []).map((link) => ({ ...link, id: createRowId() })));
       setCustomTables(result.customTables ?? customTables);
       setSaved(true);
+      return true;
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not save the BKC value.");
+      return false;
     } finally {
       setSaving(false);
     }
   };
+
+  const moveTable = async (tableId: string | null, title: string) => {
+    const targetCycleId = moveTargets[tableId ?? "__allocation__"];
+    const target = cycles.find((cycle) => cycle.id === targetCycleId);
+    if (!target || targetCycleId === selectedCycleId) return;
+    if (!window.confirm(`Save current updates and move "${title}" to ${target.name}? The table will be removed from this cycle.`)) return;
+    if (formRef.current && !formRef.current.reportValidity()) return;
+    setMoving(true);
+    setMoveStatus("");
+    try {
+      if (!await save()) return;
+      const response = await fetch("/api/update-weekly-report", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourceCycleId: selectedCycleId, targetCycleId, tableId }),
+      });
+      const result = await response.json() as { customTables?: CustomReportTable[]; cpuAllocationPresent?: boolean; cpuAllocationEnabled?: boolean; error?: string };
+      if (!response.ok) throw new Error(result.error || "Could not move the report table.");
+      setCustomTables(result.customTables ?? []);
+      setCpuAllocationPresent(result.cpuAllocationPresent !== false);
+      setCpuAllocationEnabled(result.cpuAllocationEnabled !== false);
+      setMoveTargets({});
+      setMoveStatus(`"${title}" moved to ${target.name}.`);
+      setSaved(true);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not move the report table.");
+    } finally {
+      setMoving(false);
+    }
+  };
+
+  const moveControls = (tableId: string | null, title: string) => (
+    <div className="flex max-w-full flex-wrap items-center gap-2">
+      <select aria-label={`Move ${title} to cycle`} value={moveTargets[tableId ?? "__allocation__"] ?? ""} onChange={(event) => setMoveTargets((current) => ({ ...current, [tableId ?? "__allocation__"]: event.target.value }))} disabled={loading || saving || moving} className="h-9 w-48 max-w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-xs text-[var(--text)] disabled:opacity-60">
+        <option value="">Move to cycle...</option>
+        {cycles.filter((cycle) => cycle.id !== selectedCycleId).map((cycle) => <option key={cycle.id} value={cycle.id}>{cycle.name}</option>)}
+      </select>
+      <button type="button" onClick={() => void moveTable(tableId, title)} disabled={loading || saving || moving || !moveTargets[tableId ?? "__allocation__"]} aria-label={`Move ${title}`} title="Move table to selected cycle" className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] px-3 text-xs font-medium text-[var(--text)] disabled:opacity-60">
+        <ArrowRightLeft className="h-4 w-4" aria-hidden="true" />Move
+      </button>
+    </div>
+  );
 
   const updateTeam = (index: number, field: keyof EditableTeamPlatformCount, value: string) => {
     setTeamPlatformCounts((current) => current.map((row, rowIndex) => rowIndex === index ? { ...row, [field]: value } : row));
@@ -213,18 +268,20 @@ export default function UpdateWeeklyReportPage() {
           <p className="mt-1 text-sm text-[var(--text-muted)]">Configure shared report setup and links, then cycle-specific suites and report content.</p>
         </div>
       </header>
-      <form onSubmit={save} className="space-y-4">
+      <form ref={formRef} onSubmit={(event) => void save(event)} className="space-y-4">
+        <fieldset disabled={loading || saving || moving} className="min-w-0 space-y-4">
         <div className="flex justify-end">
           <button type="submit" disabled={loading || saving} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-60">{saving ? "Saving…" : "Save updates"}</button>
         </div>
         <div className="flex flex-wrap items-end gap-4 border-y border-[var(--border)] bg-[var(--surface)] px-4 py-3">
           <label className="block w-full max-w-sm text-sm font-semibold text-[var(--text)]" htmlFor="weekly-report-cycle">Execution Cycle
-            <select id="weekly-report-cycle" value={selectedCycleId} onChange={(event) => { setSaved(false); setError(""); setSelectedCycleId(event.target.value); }} disabled={loading || saving} className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-normal text-[var(--text)] disabled:opacity-50">
+            <select id="weekly-report-cycle" value={selectedCycleId} onChange={(event) => { setSaved(false); setError(""); setMoveStatus(""); setMoveTargets({}); setSelectedCycleId(event.target.value); }} disabled={loading || saving || moving} className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-normal text-[var(--text)] disabled:opacity-50">
               {cycles.map((cycle) => <option key={cycle.id} value={cycle.id}>{cycle.name}</option>)}
             </select>
           </label>
           <p className="max-w-3xl pb-2 text-xs leading-5 text-[var(--text-muted)]">Report Setup (BKC and HSDES source) and Report Links are shared. Suites, summary notes, allocation, and custom tables below belong to the selected cycle.</p>
         </div>
+        {(moveStatus || error) && <p role={error ? "alert" : "status"} className={`text-sm ${error ? "text-red-600" : "text-[var(--text-muted)]"}`}>{error || moveStatus}</p>}
         <div className="grid items-start gap-4 lg:grid-cols-2">
         <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="weekly-report-setup-heading">
           <h2 id="weekly-report-setup-heading" className="text-base font-semibold text-[var(--text)]">Report setup</h2>
@@ -330,7 +387,7 @@ export default function UpdateWeeklyReportPage() {
             </div>
           </div>
         </section>
-        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+        {cpuAllocationPresent && <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               {cpuTitleEditing ? (
@@ -357,6 +414,7 @@ export default function UpdateWeeklyReportPage() {
               </button>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              {moveControls(null, cpuBreakdownTitle)}
               <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-[var(--border)] px-3 text-xs font-medium text-[var(--text)]">
                 <input type="checkbox" role="switch" checked={cpuAllocationEnabled} onChange={(event) => { setCpuAllocationEnabled(event.target.checked); setSaved(false); }} disabled={loading || saving} className="h-4 w-4 accent-[var(--accent)]" />
                 Include in reports
@@ -425,12 +483,12 @@ export default function UpdateWeeklyReportPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </section>}
         <section className="space-y-5 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-[var(--text)]">Custom Report Tables</h2>
-              <p className="mt-1 text-xs text-[var(--text-muted)]">New tables appear in newly generated reports, email, and HTML attachments.</p>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">{cycles.find((cycle) => cycle.id === selectedCycleId)?.name}</p>
             </div>
             <button type="button" disabled={loading || saving || customTables.length >= 10} onClick={addCustomTable} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60">
               <Plus className="h-4 w-4" aria-hidden="true" />Create table
@@ -439,15 +497,16 @@ export default function UpdateWeeklyReportPage() {
           {customTables.map((table, tableIndex) => (
             <section key={table.id} className="space-y-4 border border-[var(--border)] bg-[var(--surface)] p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <label className="min-w-60 flex-1 text-sm font-medium text-[var(--text)]">Table title
+                <label className="w-full min-w-0 text-sm font-medium text-[var(--text)] sm:min-w-60 sm:flex-1">Table title
                   <input required maxLength={120} value={table.title} onChange={(event) => updateCustomTable(tableIndex, (current) => ({ ...current, title: event.target.value }))} aria-label={`Custom table ${tableIndex + 1} title`} className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]" />
                 </label>
+                {moveControls(table.id, table.title)}
                 <label className="inline-flex h-9 cursor-pointer items-center gap-2 rounded-md border border-[var(--border)] px-3 text-xs font-medium text-[var(--text)]">
                   <input type="checkbox" role="switch" checked={table.enabled !== false} onChange={(event) => updateCustomTable(tableIndex, (current) => ({ ...current, enabled: event.target.checked }))} disabled={loading || saving} className="h-4 w-4 accent-[var(--accent)]" />
                   Include in reports
                 </label>
                 <button type="button" disabled={loading || saving} onClick={() => { setCustomTables((current) => current.filter((_, index) => index !== tableIndex)); setSaved(false); }} aria-label={`Remove custom table ${tableIndex + 1}`} title="Remove table" className="flex h-9 w-9 items-center justify-center rounded-md text-[var(--text-muted)] hover:bg-red-50 hover:text-red-700 disabled:opacity-40"><Trash2 className="h-4 w-4" aria-hidden="true" /></button>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <button type="button" disabled={loading || saving || table.rows.length >= 100} onClick={() => updateCustomTable(tableIndex, (current) => ({ ...current, rows: [...current.rows, current.columns.map(() => "")] }))} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60"><Plus className="h-4 w-4" aria-hidden="true" />Add row</button>
                   <button type="button" disabled={loading || saving || table.columns.length >= 12} onClick={() => updateCustomTable(tableIndex, (current) => ({ ...current, columns: [...current.columns, `Column ${current.columns.length + 1}`], rows: current.rows.map((row) => [...row, ""]) }))} className="inline-flex h-9 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-medium text-[var(--text)] disabled:opacity-60"><Plus className="h-4 w-4" aria-hidden="true" />Add column</button>
                 </div>
@@ -494,6 +553,7 @@ export default function UpdateWeeklyReportPage() {
           {error || (saved ? "Saved." : "")}
         </p>
         </div>
+        </fieldset>
       </form>
     </main>
   );

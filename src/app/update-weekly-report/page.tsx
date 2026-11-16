@@ -5,6 +5,7 @@ import { Bold, Check, Italic, List, Pencil, Plus, Trash2 } from "lucide-react";
 import type { CpuBaseLabels, CustomReportTable, TeamPlatformCount, WeeklyReportLink } from "@/lib/weekly-report-settings";
 import { DEFAULT_CPU_ALLOCATION_TITLE, displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 import { DEFAULT_EXECUTION_SUMMARY_TEXT, DEFAULT_WEEKLY_REPORT_SUITES, EXECUTION_SUMMARY_PREVIEW_VALUES } from "@/lib/weekly-report-defaults";
+import type { WeeklyReportCycle } from "@/lib/weekly-report-cycles";
 import { renderExecutionSummaryHtml } from "@/lib/execution-summary-format";
 
 type EditableTeamPlatformCount = { id: string; team: string; x1: string; x4: string; extraCounts: string[] };
@@ -17,6 +18,8 @@ const createRowId = () => typeof globalThis.crypto?.randomUUID === "function"
   : `row-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export default function UpdateWeeklyReportPage() {
+  const [cycles, setCycles] = useState<WeeklyReportCycle[]>([]);
+  const [selectedCycleId, setSelectedCycleId] = useState("b2");
   const [bkc, setBkc] = useState("BKC#40");
   const [suites, setSuites] = useState<EditableSuite[]>(DEFAULT_WEEKLY_REPORT_SUITES.map((suiteName) => ({ id: createRowId(), suiteName })));
   const [executionSummaryText, setExecutionSummaryText] = useState(DEFAULT_EXECUTION_SUMMARY_TEXT);
@@ -38,9 +41,12 @@ export default function UpdateWeeklyReportPage() {
 
   useEffect(() => {
     let cancelled = false;
-    void fetch("/api/update-weekly-report", { cache: "no-store" })
+    setLoading(true);
+    setError("");
+    void fetch(`/api/update-weekly-report?cycleId=${encodeURIComponent(selectedCycleId)}`, { cache: "no-store" })
       .then(async (response) => {
         const result = (await response.json()) as {
+          cycles?: WeeklyReportCycle[];
           bkc?: string;
           suites?: string[];
           executionSummaryText?: string;
@@ -54,8 +60,9 @@ export default function UpdateWeeklyReportPage() {
           customTables?: CustomReportTable[];
           error?: string;
         };
-        if (!response.ok) throw new Error(result.error || "Could not load the saved BKC value.");
+        if (!response.ok) throw new Error(result.error || "Could not load the selected execution cycle settings.");
         if (!cancelled) {
+          setCycles(result.cycles ?? []);
           if (result.bkc) setBkc(result.bkc);
           setSuites((result.suites ?? DEFAULT_WEEKLY_REPORT_SUITES).map((suiteName) => ({ id: createRowId(), suiteName })));
           setExecutionSummaryText(result.executionSummaryText ?? DEFAULT_EXECUTION_SUMMARY_TEXT);
@@ -70,13 +77,13 @@ export default function UpdateWeeklyReportPage() {
         }
       })
       .catch((cause: unknown) => {
-        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load the saved BKC value.");
+        if (!cancelled) setError(cause instanceof Error ? cause.message : "Could not load the selected execution cycle settings.");
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
       });
     return () => { cancelled = true; };
-  }, []);
+  }, [selectedCycleId]);
 
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -88,6 +95,7 @@ export default function UpdateWeeklyReportPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          cycleId: selectedCycleId,
           bkc,
           suites: suites.map((suite) => suite.suiteName),
           executionSummaryText,
@@ -102,6 +110,7 @@ export default function UpdateWeeklyReportPage() {
         }),
       });
       const result = (await response.json()) as {
+        cycles?: WeeklyReportCycle[];
         bkc?: string;
         suites?: string[];
         executionSummaryText?: string;
@@ -116,6 +125,7 @@ export default function UpdateWeeklyReportPage() {
         error?: string;
       };
       if (!response.ok) throw new Error(result.error || "Could not save the BKC value.");
+      if (result.cycles) setCycles(result.cycles);
       setBkc(result.bkc ?? bkc.trim());
       setSuites((result.suites ?? suites.map((suite) => suite.suiteName.trim()).filter(Boolean)).map((suiteName) => ({ id: createRowId(), suiteName })));
       setExecutionSummaryText(result.executionSummaryText ?? executionSummaryText.trim());
@@ -200,12 +210,20 @@ export default function UpdateWeeklyReportPage() {
         <div>
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-muted)]">Reporting / Configuration</p>
           <h1 className="text-2xl font-semibold text-[var(--text)]">Update Weekly Report</h1>
-          <p className="mt-1 text-sm text-[var(--text-muted)]">Configure report suites, summary notes, HSDES lookup, allocation, links, and custom tables.</p>
+          <p className="mt-1 text-sm text-[var(--text-muted)]">Configure shared report setup and links, then cycle-specific suites and report content.</p>
         </div>
       </header>
       <form onSubmit={save} className="space-y-4">
         <div className="flex justify-end">
           <button type="submit" disabled={loading || saving} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-semibold text-[var(--accent-text)] disabled:cursor-not-allowed disabled:opacity-60">{saving ? "Saving…" : "Save updates"}</button>
+        </div>
+        <div className="flex flex-wrap items-end gap-4 border-y border-[var(--border)] bg-[var(--surface)] px-4 py-3">
+          <label className="block w-full max-w-sm text-sm font-semibold text-[var(--text)]" htmlFor="weekly-report-cycle">Execution Cycle
+            <select id="weekly-report-cycle" value={selectedCycleId} onChange={(event) => { setSaved(false); setError(""); setSelectedCycleId(event.target.value); }} disabled={loading || saving} className="mt-1 h-10 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm font-normal text-[var(--text)] disabled:opacity-50">
+              {cycles.map((cycle) => <option key={cycle.id} value={cycle.id}>{cycle.name}</option>)}
+            </select>
+          </label>
+          <p className="max-w-3xl pb-2 text-xs leading-5 text-[var(--text-muted)]">Report Setup (BKC and HSDES source) and Report Links are shared. Suites, summary notes, allocation, and custom tables below belong to the selected cycle.</p>
         </div>
         <div className="grid items-start gap-4 lg:grid-cols-2">
         <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="weekly-report-setup-heading">

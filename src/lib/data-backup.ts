@@ -35,7 +35,7 @@ function categoryForPath(filePath: string): DataBackupCategory | null {
   if (EXECUTION_FILES.has(filePath) || RUN_HISTORY_FILE.test(filePath)) return "execution";
   if (/^execution-tab-data\/[a-f0-9]{32}\.json$/.test(filePath)) return "execution";
   if (APP_SETTING_FILES.has(filePath)) return "appSettings";
-  if (filePath === "weekly-report-settings.json") return "weeklyReports";
+  if (filePath === "weekly-report-settings.json" || filePath === "weekly-report-cycle-settings.json") return "weeklyReports";
   const weeklyReportMatch = /^weekly-reports\/([^/]+)\.json$/.exec(filePath);
   if (weeklyReportMatch && isSavedReportKey(weeklyReportMatch[1])) return "weeklyReports";
   return null;
@@ -109,7 +109,7 @@ async function categoryPaths(category: DataBackupCategory): Promise<string[]> {
     return entries.filter((entry) => entry.isFile() && APP_SETTING_FILES.has(entry.name)).map((entry) => entry.name);
   }
 
-  const paths = entries.filter((entry) => entry.isFile() && entry.name === "weekly-report-settings.json").map((entry) => entry.name);
+  const paths = entries.filter((entry) => entry.isFile() && (entry.name === "weekly-report-settings.json" || entry.name === "weekly-report-cycle-settings.json")).map((entry) => entry.name);
   try {
     const reports = await readdir(path.join(config.dataDir, WEEKLY_REPORTS_DIRECTORY), { withFileTypes: true });
     paths.push(...reports

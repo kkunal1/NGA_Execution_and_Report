@@ -5,7 +5,7 @@ import { getDashboardSettings } from "./dashboard-settings";
 import { withFailureProgress } from "./saved-weekly-reports";
 
 export async function generateCompleteWeeklyReport(suites: string[], from: Date, to: Date, cycle?: { id: string; name: string }) {
-  const [settings, dashboardSettings] = await Promise.all([getWeeklyReportSettings(), getDashboardSettings()]);
+  const [settings, dashboardSettings] = await Promise.all([getWeeklyReportSettings(cycle?.id), getDashboardSettings()]);
   const sectionVisibility = dashboardSettings.weeklyReportSections;
   const [report, sightingResult] = await Promise.all([
     generateWeeklyReport(suites, from, to, settings.bkc, settings.teamPlatformCounts, settings.links, settings.cpuColumns, settings.cpuBreakdownTitle, settings.cpuBaseLabels, settings.executionSummaryText),

@@ -38,7 +38,11 @@ export async function listWeeklyReportCycles(): Promise<WeeklyReportCycle[]> {
     listCustomExecutionTabs(),
     getExecutionMenuOrder(),
   ]);
-  return buildWeeklyReportCycles(refresh.suitesByProfile, settings.suites, tabs, order);
+  const cycles = buildWeeklyReportCycles(refresh.suitesByProfile, settings.suites, tabs, order);
+  return Promise.all(cycles.map(async (cycle) => ({
+    ...cycle,
+    suiteNames: (await getWeeklyReportSettings(cycle.id)).suites,
+  })));
 }
 
 export async function getWeeklyReportCycle(cycleId: string): Promise<WeeklyReportCycle | null> {

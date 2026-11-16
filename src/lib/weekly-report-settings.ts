@@ -1,6 +1,9 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { config } from "./config";
+import { B0_SUITES, B2_SUITES } from "./execution-suites";
+import { getCustomExecutionTab } from "./execution-tabs";
+import { getRefreshSettings } from "./refresh-settings";
 import { DEFAULT_CPU_ALLOCATION_TITLE, displayCpuAllocationTitle } from "./weekly-report-display";
 import { DEFAULT_EXECUTION_SUMMARY_TEXT, DEFAULT_WEEKLY_REPORT_SUITES } from "./weekly-report-defaults";
 
@@ -14,6 +17,7 @@ export type TeamPlatformCount = { team: string; x1: number; x4: number; extraCou
 export type WeeklyReportLink = { label: string; url: string };
 export type CustomReportTable = { id: string; title: string; columns: string[]; rows: string[][]; enabled?: boolean };
 export type WeeklyReportSettings = { bkc: string; suites: string[]; executionSummaryText: string; cpuAllocationEnabled: boolean; teamPlatformCounts: TeamPlatformCount[]; cpuColumns: string[]; cpuBaseLabels: CpuBaseLabels; cpuBreakdownTitle: string; hsdesLink: string; links: WeeklyReportLink[]; customTables: CustomReportTable[] };
+type WeeklyReportCycleSettings = Pick<WeeklyReportSettings, "suites" | "executionSummaryText" | "cpuAllocationEnabled" | "teamPlatformCounts" | "cpuColumns" | "cpuBaseLabels" | "cpuBreakdownTitle" | "customTables">;
 export const DEFAULT_TEAM_PLATFORM_COUNTS: TeamPlatformCount[] = [
   { team: "PV.BKC", x1: 6, x4: 2 },
   { team: "DM", x1: 2, x4: 0 },
@@ -25,6 +29,11 @@ export const DEFAULT_WEEKLY_REPORT_LINKS: WeeklyReportLink[] = [
 ];
 
 const settingsPath = path.join(config.dataDir, "weekly-report-settings.json");
+const cycleSettingsPath = path.join(config.dataDir, "weekly-report-cycle-settings.json");
+
+function isReportCycleId(value: string) {
+  return value === "b0" || value === "b2" || /^[a-f0-9]{32}$/.test(value);
+}
 
 export function normalizeWeeklyReportBkc(value: unknown): string | null {
   if (typeof value !== "string") return null;
@@ -140,7 +149,7 @@ export function normalizeCustomReportTables(value: unknown): CustomReportTable[]
   return tables;
 }
 
-export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
+async function readLegacyWeeklyReportSettings(): Promise<WeeklyReportSettings> {
   try {
     const saved = JSON.parse(await readFile(settingsPath, "utf8")) as Partial<WeeklyReportSettings>;
     const cpuColumns = normalizeCpuColumns(saved.cpuColumns ?? []) ?? [];
@@ -176,7 +185,57 @@ export async function getWeeklyReportSettings(): Promise<WeeklyReportSettings> {
   }
 }
 
-export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS, customTablesValue?: unknown, suitesValue: unknown = DEFAULT_WEEKLY_REPORT_SUITES, executionSummaryTextValue: unknown = DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabledValue: unknown = true): Promise<WeeklyReportSettings> {
+async function readCycleSettingsMap(): Promise<Record<string, unknown>> {
+  try {
+    const saved = JSON.parse(await readFile(cycleSettingsPath, "utf8")) as unknown;
+    return saved && typeof saved === "object" && !Array.isArray(saved) ? saved as Record<string, unknown> : {};
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw error;
+  }
+}
+
+function normalizeCycleSettings(value: unknown, fallback: WeeklyReportSettings): WeeklyReportCycleSettings {
+  const saved = value && typeof value === "object" ? value as Record<string, unknown> : {};
+  const cpuColumns = normalizeCpuColumns(saved.cpuColumns) ?? fallback.cpuColumns;
+  return {
+    suites: normalizeWeeklyReportSuites(saved.suites) ?? fallback.suites,
+    executionSummaryText: normalizeExecutionSummaryText(saved.executionSummaryText) || fallback.executionSummaryText,
+    cpuAllocationEnabled: typeof saved.cpuAllocationEnabled === "boolean" ? saved.cpuAllocationEnabled : fallback.cpuAllocationEnabled,
+    teamPlatformCounts: normalizeTeamPlatformCounts(saved.teamPlatformCounts, cpuColumns) ?? fallback.teamPlatformCounts,
+    cpuColumns,
+    cpuBaseLabels: normalizeCpuBaseLabels(saved.cpuBaseLabels) ?? fallback.cpuBaseLabels,
+    cpuBreakdownTitle: normalizeCpuBreakdownTitle(saved.cpuBreakdownTitle) ?? fallback.cpuBreakdownTitle,
+    customTables: normalizeCustomReportTables(saved.customTables) ?? fallback.customTables,
+  };
+}
+
+export async function getWeeklyReportSettings(cycleId = "b2"): Promise<WeeklyReportSettings> {
+  if (!isReportCycleId(cycleId)) throw new TypeError("Select a valid execution cycle.");
+  const [shared, refreshSettings, cycleSettings] = await Promise.all([
+    readLegacyWeeklyReportSettings(),
+    getRefreshSettings(),
+    readCycleSettingsMap(),
+  ]);
+  let suiteFallback = shared.suites;
+  if (cycleId === "b0") {
+    suiteFallback = refreshSettings.suitesByProfile.b0.length ? refreshSettings.suitesByProfile.b0 : [B0_SUITES.P1, B0_SUITES.P2];
+  } else if (cycleId === "b2") {
+    const configuredB2Suites = shared.suites.filter((suite) => /_B2_/i.test(suite));
+    suiteFallback = refreshSettings.suitesByProfile.b2.length
+      ? refreshSettings.suitesByProfile.b2
+      : configuredB2Suites.length ? configuredB2Suites : [B2_SUITES.P1, B2_SUITES.P2];
+  } else {
+    const tab = await getCustomExecutionTab(cycleId);
+    if (!tab) throw new TypeError("Select an available execution cycle.");
+    suiteFallback = tab.suiteNames;
+  }
+  const fallback = { ...shared, suites: suiteFallback };
+  return { ...fallback, ...normalizeCycleSettings(cycleSettings[cycleId], fallback) };
+}
+
+export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: unknown, hsdesLinkValue: unknown, linksValue: unknown, columnsValue: unknown, titleValue: unknown, baseLabelsValue: unknown = DEFAULT_CPU_BASE_LABELS, customTablesValue?: unknown, suitesValue: unknown = DEFAULT_WEEKLY_REPORT_SUITES, executionSummaryTextValue: unknown = DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabledValue: unknown = true, cycleId = "b2"): Promise<WeeklyReportSettings> {
+  if (!isReportCycleId(cycleId)) throw new TypeError("Select a valid execution cycle.");
   const bkc = normalizeWeeklyReportBkc(bkcValue);
   const suites = normalizeWeeklyReportSuites(suitesValue);
   const executionSummaryText = normalizeExecutionSummaryText(executionSummaryTextValue);
@@ -188,7 +247,7 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
   const hsdesLink = normalizeWeeklyReportHsdesLink(hsdesLinkValue);
   const links = normalizeWeeklyReportLinks(linksValue);
   const customTables = customTablesValue === undefined
-    ? (await getWeeklyReportSettings()).customTables
+    ? (await getWeeklyReportSettings(cycleId)).customTables
     : normalizeCustomReportTables(customTablesValue);
   if (!bkc) throw new TypeError("Enter a BKC value such as BKC#40 or BKC#WW41.");
   if (!suites) throw new TypeError("Enter one to 20 unique NGAi suite names, each up to 512 characters.");
@@ -204,9 +263,13 @@ export async function saveWeeklyReportSettings(bkcValue: unknown, countsValue: u
   if (!links) throw new TypeError("Enter up to 20 report links with a label and valid HTTPS URL.");
   if (!customTables) throw new TypeError("Enter up to 10 custom tables with up to 12 columns and 100 rows each.");
   await mkdir(config.dataDir, { recursive: true });
-  const settings = { bkc, suites, executionSummaryText: executionSummaryText || DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabled, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, hsdesLink, links, customTables };
-  await writeFile(settingsPath, JSON.stringify(settings, null, 2), { encoding: "utf8", mode: 0o600 });
-  return settings;
+  const shared = await readLegacyWeeklyReportSettings();
+  const sharedSettings = { ...shared, bkc, hsdesLink, links };
+  await writeFile(settingsPath, JSON.stringify(sharedSettings, null, 2), { encoding: "utf8", mode: 0o600 });
+  const cycleSettings = await readCycleSettingsMap();
+  cycleSettings[cycleId] = { suites, executionSummaryText: executionSummaryText || DEFAULT_EXECUTION_SUMMARY_TEXT, cpuAllocationEnabled, teamPlatformCounts, cpuColumns, cpuBaseLabels, cpuBreakdownTitle, customTables } satisfies WeeklyReportCycleSettings;
+  await writeFile(cycleSettingsPath, JSON.stringify(cycleSettings, null, 2), { encoding: "utf8", mode: 0o600 });
+  return getWeeklyReportSettings(cycleId);
 }
 
 export function normalizeCpuBaseLabels(value: unknown): CpuBaseLabels | null {

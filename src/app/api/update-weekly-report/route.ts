@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { authorizeWeeklyReportFeature } from "@/lib/weekly-report-access";
 import { getWeeklyReportSettings, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeExecutionSummaryText, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks, normalizeWeeklyReportSuites, saveWeeklyReportSettings } from "@/lib/weekly-report-settings";
+import { listWeeklyReportCycles } from "@/lib/weekly-report-cycles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -8,14 +9,25 @@ export const dynamic = "force-dynamic";
 export async function GET(req: Request) {
   const denied = await authorizeWeeklyReportFeature(req, "weeklyReportUpdate");
   if (denied) return denied;
-  return NextResponse.json(await getWeeklyReportSettings());
+  try {
+    const cycleId = new URL(req.url).searchParams.get("cycleId") ?? "b2";
+    const [settings, cycles] = await Promise.all([getWeeklyReportSettings(cycleId), listWeeklyReportCycles()]);
+    return NextResponse.json({ ...settings, cycleId, cycles });
+  } catch (error) {
+    return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load Weekly Report settings." }, { status: 400 });
+  }
 }
 
 export async function PUT(req: Request) {
   const denied = await authorizeWeeklyReportFeature(req, "weeklyReportUpdate");
   if (denied) return denied;
   try {
-    const body = (await req.json()) as { bkc?: unknown; suites?: unknown; executionSummaryText?: unknown; cpuAllocationEnabled?: unknown; teamPlatformCounts?: unknown; cpuColumns?: unknown; cpuBaseLabels?: unknown; cpuBreakdownTitle?: unknown; hsdesLink?: unknown; links?: unknown; customTables?: unknown };
+    const body = (await req.json()) as { cycleId?: unknown; bkc?: unknown; suites?: unknown; executionSummaryText?: unknown; cpuAllocationEnabled?: unknown; teamPlatformCounts?: unknown; cpuColumns?: unknown; cpuBaseLabels?: unknown; cpuBreakdownTitle?: unknown; hsdesLink?: unknown; links?: unknown; customTables?: unknown };
+    const cycleId = typeof body.cycleId === "string" ? body.cycleId : "b2";
+    const cycles = await listWeeklyReportCycles();
+    if (!cycles.some((cycle) => cycle.id === cycleId)) {
+      return NextResponse.json({ error: "Select an available execution cycle." }, { status: 400 });
+    }
     const bkc = normalizeWeeklyReportBkc(body.bkc);
     const suites = normalizeWeeklyReportSuites(body.suites);
     const executionSummaryText = normalizeExecutionSummaryText(body.executionSummaryText);
@@ -29,7 +41,8 @@ export async function PUT(req: Request) {
     if (!bkc || !suites || executionSummaryText === null || typeof body.cpuAllocationEnabled !== "boolean" || !cpuColumns || !cpuBaseLabels || !cpuBreakdownTitle || !teamPlatformCounts || !hsdesLink || !links || (body.customTables !== undefined && !customTables)) {
       return NextResponse.json({ error: "Enter a valid BKC, one to 20 unique NGAi suites, execution summary text under 10,000 characters, CPU breakdown title, HSDES query link, report links, and valid team counts." }, { status: 400 });
     }
-    return NextResponse.json(await saveWeeklyReportSettings(bkc, teamPlatformCounts, hsdesLink, links, cpuColumns, cpuBreakdownTitle, cpuBaseLabels, customTables, suites, executionSummaryText, body.cpuAllocationEnabled));
+    const settings = await saveWeeklyReportSettings(bkc, teamPlatformCounts, hsdesLink, links, cpuColumns, cpuBreakdownTitle, cpuBaseLabels, customTables, suites, executionSummaryText, body.cpuAllocationEnabled, cycleId);
+    return NextResponse.json({ ...settings, cycleId, cycles });
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Could not save Weekly Report settings." },

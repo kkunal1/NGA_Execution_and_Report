@@ -801,6 +801,13 @@ assert.equal(validateDataBackup({ ...validBackupBundle, files: [
   { path: "execution-menu-order.json", content: JSON.stringify(["b2", customTabId, "b0"]) },
   { path: `execution-tab-data/${customTabId}.json`, content: JSON.stringify({ run: null, abortedRows: [], abortedSuiteNames: [], abortedFetchedAt: null }) },
 ] }).files.length, 3, "custom tab definitions, snapshots, and submenu order are valid execution backup files");
+const weeklyBackupBundle = { ...validBackupBundle, categories: ["weeklyReports"], files: [
+  { path: "weekly-report-settings.json", content: "{}" },
+  { path: "weekly-report-cycle-settings.json", content: "{}" },
+  { path: "weekly-reports/2026-11-15--b2.json", content: "{}" },
+  { path: "weekly-reports/2026-11-15--0123456789abcdef0123456789abcdef.json", content: "{}" },
+] };
+assert.equal(validateDataBackup(weeklyBackupBundle).files.length, 4, "cycle settings and cycle-specific report history are valid Weekly Report backup files");
 assert.throws(() => validateDataBackup({ ...validBackupBundle, files: [{ path: "../admin-users.json", content: "[]" }] }), /unsupported or duplicate path|unsafe file path/);
 assert.throws(() => validateDataBackup({ ...validBackupBundle, files: [{ path: "ngai-token.json", content: "{}" }] }), /unsupported or duplicate path|unsafe file path/);
 assert.equal(isWorkWeekKey("2027-WW01"), true);

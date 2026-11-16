@@ -270,13 +270,29 @@ export function transferWeeklyReportTable(source: WeeklyReportSettings, target: 
   }
   const table = source.customTables.find((item) => item.id === tableId);
   if (!table) throw new TypeError("The table is no longer in this cycle. Reload and try again.");
+  const matchingTable = target.customTables.find((item) =>
+    item.title.trim().toLowerCase() === table.title.trim().toLowerCase()
+    && JSON.stringify(item.columns) === JSON.stringify(table.columns)
+    && JSON.stringify(item.rows) === JSON.stringify(table.rows)
+    && (item.enabled !== false) === (table.enabled !== false));
+  if (matchingTable) {
+    return {
+      source: { ...source, customTables: source.customTables.filter((item) => item.id !== tableId) },
+      target,
+    };
+  }
   if (target.customTables.length >= 10) throw new TypeError("The target cycle already has 10 custom tables.");
-  if (target.customTables.some((item) => item.id === table.id || item.title.trim().toLowerCase() === table.title.trim().toLowerCase())) {
-    throw new TypeError("The target cycle already has a table with this name or ID. Rename the table or choose another cycle.");
+  const movedTable = { ...table };
+  if (target.customTables.some((item) => item.id === movedTable.id)) movedTable.id = randomUUID();
+  let titleIndex = 1;
+  while (target.customTables.some((item) => item.title.trim().toLowerCase() === movedTable.title.trim().toLowerCase())) {
+    const suffix = titleIndex === 1 ? " (moved)" : ` (moved ${titleIndex})`;
+    movedTable.title = `${table.title.trim().slice(0, 120 - suffix.length)}${suffix}`;
+    titleIndex += 1;
   }
   return {
     source: { ...source, customTables: source.customTables.filter((item) => item.id !== tableId) },
-    target: { ...target, customTables: [...target.customTables, table] },
+    target: { ...target, customTables: [...target.customTables, movedTable] },
   };
 }
 

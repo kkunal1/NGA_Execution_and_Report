@@ -665,8 +665,37 @@ assert.deepEqual(movedCustomTable.target.suites, ["target_suite"], "moving a tab
 assert.equal(movedCustomTable.target.executionSummaryText, "Target summary");
 assert.equal(tableSourceCycle.customTables.length, 1, "transfer does not mutate input settings");
 assert.throws(() => transferWeeklyReportTable(tableSourceCycle, tableTargetCycle, "missing"), /no longer/);
-assert.throws(() => transferWeeklyReportTable(tableSourceCycle, { ...tableTargetCycle, customTables: tableSourceCycle.customTables }, "summary_table"), /already has/);
-assert.throws(() => transferWeeklyReportTable(tableSourceCycle, { ...tableTargetCycle, customTables: [{ ...customTableFixture[0], id: "different", title: " SUMMARY " }] }, "summary_table"), /already has/);
+const identicalTableTarget = { ...tableTargetCycle, customTables: structuredClone(tableSourceCycle.customTables) };
+const reconciledTable = transferWeeklyReportTable(tableSourceCycle, identicalTableTarget, "summary_table");
+assert.deepEqual(reconciledTable.source.customTables, []);
+assert.deepEqual(reconciledTable.target.customTables, identicalTableTarget.customTables, "identical legacy copies complete the move without duplicating or overwriting target data");
+const conflictingTableTarget = { ...tableTargetCycle, customTables: [{ ...customTableFixture[0], rows: [["Passed", "99"]] }] };
+const resolvedTable = transferWeeklyReportTable(tableSourceCycle, conflictingTableTarget, "summary_table");
+assert.deepEqual(resolvedTable.source.customTables, []);
+assert.deepEqual(resolvedTable.target.customTables[0], conflictingTableTarget.customTables[0], "existing target data is preserved");
+assert.notEqual(resolvedTable.target.customTables[1].id, "summary_table", "cycle-local ID collisions receive a fresh ID");
+assert.equal(resolvedTable.target.customTables[1].title, "Summary (moved)");
+assert.deepEqual(resolvedTable.target.customTables[1].rows, tableSourceCycle.customTables[0].rows);
+assert.equal(resolvedTable.target.customTables[1].enabled, false);
+assert.ok(normalizeCustomReportTables(resolvedTable.target.customTables), "resolved tables remain valid for subsequent saves");
+const titleOnlyConflict = transferWeeklyReportTable(tableSourceCycle, { ...tableTargetCycle, customTables: [{ ...customTableFixture[0], id: "different", title: " SUMMARY " }] }, "summary_table");
+assert.equal(titleOnlyConflict.target.customTables[1].title, "Summary (moved)");
+assert.equal(titleOnlyConflict.target.customTables[1].id, "summary_table", "a title collision alone does not change the table ID");
+const idOnlyConflict = transferWeeklyReportTable(tableSourceCycle, { ...tableTargetCycle, customTables: [{ ...customTableFixture[0], title: "Other table" }] }, "summary_table");
+assert.notEqual(idOnlyConflict.target.customTables[1].id, "summary_table");
+assert.equal(idOnlyConflict.target.customTables[1].title, "Summary");
+const repeatedTitleConflict = transferWeeklyReportTable(tableSourceCycle, { ...conflictingTableTarget, customTables: [...conflictingTableTarget.customTables, { ...customTableFixture[0], id: "previous_move", title: "Summary (moved)" }] }, "summary_table");
+assert.equal(repeatedTitleConflict.target.customTables[2].title, "Summary (moved 2)");
+const longestTableTitle = "T".repeat(120);
+const longTitleConflict = transferWeeklyReportTable(
+  { ...tableSourceCycle, customTables: [{ ...tableSourceCycle.customTables[0], title: longestTableTitle }] },
+  { ...conflictingTableTarget, customTables: [{ ...conflictingTableTarget.customTables[0], title: longestTableTitle }] },
+  "summary_table",
+);
+assert.equal(longTitleConflict.target.customTables[1].title.length, 120);
+assert.ok(normalizeCustomReportTables(longTitleConflict.target.customTables), "automatic suffixes respect title length limits");
+const fullIdenticalTarget = { ...tableTargetCycle, customTables: [...tableSourceCycle.customTables, ...Array.from({ length: 9 }, (_, index) => ({ ...customTableFixture[0], id: `existing_${index}`, title: `Existing ${index}` }))] };
+assert.equal(transferWeeklyReportTable(tableSourceCycle, fullIdenticalTarget, "summary_table").target.customTables.length, 10, "identical copies can be reconciled even when the target is full");
 assert.throws(() => transferWeeklyReportTable(tableSourceCycle, { ...tableTargetCycle, customTables: Array.from({ length: 10 }, (_, index) => ({ ...customTableFixture[0], id: `table_${index}` })) }, "summary_table"), /10 custom tables/);
 const movedAllocation = transferWeeklyReportTable(tableSourceCycle, tableTargetCycle, null);
 assert.equal(movedAllocation.source.cpuAllocationPresent, false, "allocation disappears from the source editor");
@@ -724,6 +753,19 @@ try {
     ]);
     assert.deepEqual((await getWeeklyReportSettings("b0")).customTables, []);
     assert.equal((await getWeeklyReportSettings("b2")).customTables.length, 2, "concurrent moves preserve both tables");
+    const sameTable = (await getWeeklyReportSettings("b2")).customTables[0];
+    await saveCycle({ ...await getWeeklyReportSettings("b0"), customTables: [sameTable] }, "b0");
+    await moveWeeklyReportTable("b0", "b2", sameTable.id);
+    assert.deepEqual((await getWeeklyReportSettings("b0")).customTables, []);
+    assert.equal((await getWeeklyReportSettings("b2")).customTables.length, 2, "identical legacy copies reconcile durably");
+    await saveCycle({ ...await getWeeklyReportSettings("b0"), customTables: [{ ...sameTable, rows: [["Changed", "42"]] }] }, "b0");
+    await moveWeeklyReportTable("b0", "b2", sameTable.id);
+    const collisionTarget = await getWeeklyReportSettings("b2");
+    assert.equal(collisionTarget.customTables.length, 3);
+    assert.notEqual(collisionTarget.customTables[2].id, sameTable.id);
+    assert.deepEqual(collisionTarget.customTables[2].rows, [["Changed", "42"]]);
+    await saveCycle(collisionTarget, "b2");
+    assert.equal((await getWeeklyReportSettings("b2")).customTables.length, 3, "resolved collisions remain valid across subsequent saves");
   `], { env: { ...process.env, NGA_DATA_DIR: cycleTableTestDir }, encoding: "utf8" });
 } finally {
   await rm(cycleTableTestDir, { recursive: true, force: true });

@@ -1,6 +1,6 @@
 import { generateCompleteWeeklyReport } from "./weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "./work-weeks";
-import { isDailyReportDate, listSavedReportKeys, makeCycleReportKey, parseCycleReportKey, saveDailyReport } from "./saved-weekly-reports";
+import { isDailyReportDate, listSavedReportKeys, loadSavedWeeklyReport, makeCycleReportKey, parseCycleReportKey, saveDailyReport } from "./saved-weekly-reports";
 import { listWeeklyReportCycles } from "./weekly-report-cycles";
 
 const DAY_MS = 86_400_000;
@@ -13,11 +13,13 @@ let running = false;
 let retryAt = 0;
 let retryDate = "";
 
+const defaultDependencies = { listSavedReportKeys, loadSavedWeeklyReport, listWeeklyReportCycles, generateCompleteWeeklyReport, saveDailyReport };
+
 function addDays(dateKey: string, days: number) {
   return new Date(Date.parse(`${dateKey}T00:00:00.000Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 
-export async function runDailyWeeklyReportCheck(now = new Date()) {
+export async function runDailyWeeklyReportCheck(now = new Date(), dependencies = defaultDependencies) {
   if (running) return;
   const istNow = new Date(now.getTime() + IST_OFFSET_MS);
   if (istNow.getUTCHours() * 60 + istNow.getUTCMinutes() < RUN_AFTER_MINUTES) return;
@@ -30,29 +32,35 @@ export async function runDailyWeeklyReportCheck(now = new Date()) {
   }
   try {
     if (Date.now() < retryAt) return;
-    const [savedKeys, cycles] = await Promise.all([listSavedReportKeys(), listWeeklyReportCycles()]);
+    const [savedKeys, cycles] = await Promise.all([dependencies.listSavedReportKeys(), dependencies.listWeeklyReportCycles()]);
     let failed = false;
     for (const cycle of cycles) {
-      const savedDates = savedKeys.flatMap((key) => {
+      const dailyKeys = new Map<string, string>();
+      for (const key of savedKeys) {
         const cycleKey = parseCycleReportKey(key);
-        if (cycleKey) return cycleKey.cycleId === cycle.id && isDailyReportDate(cycleKey.periodKey) ? [cycleKey.periodKey] : [];
-        return cycle.id === "b2" && isDailyReportDate(key) ? [key] : [];
-      }).sort();
-      let nextDate = savedDates.length ? addDays(savedDates[savedDates.length - 1], 1) : targetDate;
+        const date = cycleKey?.periodKey ?? key;
+        if (!isDailyReportDate(date) || date > targetDate) continue;
+        if (cycleKey ? cycleKey.cycleId !== cycle.id : cycle.id !== "b2") continue;
+        if (cycleKey || !dailyKeys.has(date)) dailyKeys.set(date, key);
+      }
+      const savedReports = await Promise.all([...dailyKeys].map(async ([date, key]) => ({ date, report: await dependencies.loadSavedWeeklyReport(key) })));
+      const finalizedDates = savedReports.filter(({ report }) => report && report.isCurrentDaySnapshot !== true).map(({ date }) => date).sort();
+      const pendingDates = new Set(savedReports.filter(({ report }) => !report || report.isCurrentDaySnapshot === true).map(({ date }) => date));
+      let nextDate = finalizedDates.length ? addDays(finalizedDates[finalizedDates.length - 1], 1) : [...pendingDates].sort()[0] ?? targetDate;
       while (nextDate <= targetDate) {
-        const key = makeCycleReportKey(nextDate, cycle.id);
-        if (!savedKeys.includes(key)) {
-          try {
-            const { from, to } = getISTDayRange(nextDate);
-            const report = await generateCompleteWeeklyReport(cycle.suiteNames, from, to, { id: cycle.id, name: cycle.name });
-            await saveDailyReport(key, report);
-            console.info(`Saved automatic Weekly Report for ${cycle.name} on ${nextDate}.`);
-          } catch (error) {
-            failed = true;
-            console.error(`Automatic Weekly Report failed for ${cycle.name} on ${nextDate}:`, error instanceof Error ? error.message : error);
-          }
-        }
+        pendingDates.add(nextDate);
         nextDate = addDays(nextDate, 1);
+      }
+      for (const date of [...pendingDates].sort()) {
+        try {
+          const { from, to } = getISTDayRange(date);
+          const report = await dependencies.generateCompleteWeeklyReport(cycle.suiteNames, from, to, { id: cycle.id, name: cycle.name });
+          await dependencies.saveDailyReport(makeCycleReportKey(date, cycle.id), { ...report, isCurrentDaySnapshot: false });
+          console.info(`Saved automatic Weekly Report for ${cycle.name} on ${date}.`);
+        } catch (error) {
+          failed = true;
+          console.error(`Automatic Weekly Report failed for ${cycle.name} on ${date}:`, error instanceof Error ? error.message : error);
+        }
       }
     }
     retryAt = failed ? Date.now() + RETRY_DELAY_MS : 0;

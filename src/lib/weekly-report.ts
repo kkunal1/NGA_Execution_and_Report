@@ -84,6 +84,7 @@ export type WeeklyReport = {
   generatedAt: string;
   suites: string[];
   executionCycleId?: string;
+  isCurrentDaySnapshot?: boolean;
   executionCycleName?: string;
   from: string;
   to: string;

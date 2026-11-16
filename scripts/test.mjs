@@ -949,6 +949,84 @@ assert.deepEqual(parseCycleReportKey("2026-11-15--b2"), { periodKey: "2026-11-15
 assert.equal(isSavedReportKey("2026-11-15--0123456789abcdef0123456789abcdef"), true);
 assert.equal(isSavedReportKey("2026-WW46--b0"), true);
 assert.equal(isSavedReportKey("2026-11-15--../../latest"), false);
+const reportSnapshotTestDir = await mkdtemp(path.join(tmpdir(), "nga-report-snapshots-"));
+try {
+  execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    import { saveDailyReport, loadSavedWeeklyReport, listSavedReportKeys, makeCycleReportKey } from "./src/lib/saved-weekly-reports.ts";
+    import { runDailyWeeklyReportCheck } from "./src/lib/daily-weekly-report-scheduler.ts";
+    import { getISTDayRange } from "./src/lib/work-weeks.ts";
+    const base = ${JSON.stringify(weeklyReport)};
+    const cycles = ["b0", "b2", "0123456789abcdef0123456789abcdef"].map((id) => ({ id, name: id, suiteNames: [id + "_suite"] }));
+    const date = "2026-11-16";
+    const snapshot = (cycle, day = date) => ({ ...base, from: getISTDayRange(day).from.toISOString(), to: new Date(getISTDayRange(day).from.getTime() + 3600000).toISOString(), executionCycleId: cycle.id, suites: cycle.suiteNames, isCurrentDaySnapshot: true });
+    for (const cycle of cycles) {
+      await saveDailyReport(makeCycleReportKey(date, cycle.id), snapshot(cycle));
+      assert.equal((await loadSavedWeeklyReport(makeCycleReportKey(date, cycle.id))).executionCycleId, cycle.id);
+    }
+    assert.equal((await listSavedReportKeys()).length, 3, "snapshots have independent cycle keys");
+    await saveDailyReport(makeCycleReportKey(date, "b2"), { ...snapshot(cycles[1]), latestPassed: 222 });
+    assert.equal((await loadSavedWeeklyReport(makeCycleReportKey(date, "b2"))).latestPassed, 222, "recreating replaces the same cycle snapshot");
+    assert.notEqual((await loadSavedWeeklyReport(makeCycleReportKey(date, "b0"))).latestPassed, 222, "recreating one cycle leaves other cycles untouched");
+    await saveDailyReport(makeCycleReportKey("2026-11-14", "b2"), snapshot(cycles[1], "2026-11-14"));
+    await saveDailyReport(makeCycleReportKey("2026-11-15", "b2"), { ...base, to: getISTDayRange("2026-11-15").to.toISOString(), executionCycleId: "b2" });
+    const generated = [];
+    const dependencies = {
+      listSavedReportKeys, loadSavedWeeklyReport, saveDailyReport,
+      listWeeklyReportCycles: async () => cycles,
+      generateCompleteWeeklyReport: async (suites, from, to, cycle) => {
+        generated.push({ id: cycle.id, from: from.toISOString(), to: to.toISOString() });
+        return { ...base, suites, from: from.toISOString(), to: to.toISOString(), executionCycleId: cycle.id };
+      },
+    };
+    await runDailyWeeklyReportCheck(new Date("2026-11-16T18:34:00.000Z"), dependencies);
+    assert.equal(generated.length, 0, "snapshots are not finalized before 12:05 AM IST");
+    await runDailyWeeklyReportCheck(new Date("2026-11-16T18:35:00.000Z"), dependencies);
+    assert.equal(generated.length, 4, "all cycles and an older unfinished snapshot are finalized");
+    for (const cycle of cycles) {
+      const report = await loadSavedWeeklyReport(makeCycleReportKey(date, cycle.id));
+      assert.equal(report.isCurrentDaySnapshot, false);
+      assert.equal(report.from, getISTDayRange(date).from.toISOString());
+      assert.equal(report.to, getISTDayRange(date).to.toISOString(), "EOD replaces a snapshot with the full-day report");
+    }
+    assert.equal((await loadSavedWeeklyReport(makeCycleReportKey("2026-11-14", "b2"))).isCurrentDaySnapshot, false, "unfinished older snapshots are not hidden by newer finals");
+    await runDailyWeeklyReportCheck(new Date("2026-11-16T18:36:00.000Z"), dependencies);
+    assert.equal(generated.length, 4, "already finalized reports are not regenerated");
+    await saveDailyReport(makeCycleReportKey("2026-11-18", "b0"), snapshot(cycles[0], "2026-11-18"));
+    await runDailyWeeklyReportCheck(new Date("2026-11-16T18:37:00.000Z"), dependencies);
+    assert.equal(generated.length, 4, "future snapshots do not change the finalization starting point");
+    assert.equal((await loadSavedWeeklyReport(makeCycleReportKey("2026-11-18", "b0"))).isCurrentDaySnapshot, true);
+    await saveDailyReport(makeCycleReportKey("2026-11-17", "b0"), snapshot(cycles[0], "2026-11-17"));
+    await runDailyWeeklyReportCheck(new Date("2026-11-17T18:35:00.000Z"), {
+      ...dependencies,
+      generateCompleteWeeklyReport: async (...args) => {
+        if (args[3].id === "b0") throw new Error("Expected test finalization failure");
+        return dependencies.generateCompleteWeeklyReport(...args);
+      },
+    });
+    assert.equal((await loadSavedWeeklyReport(makeCycleReportKey("2026-11-17", "b0"))).isCurrentDaySnapshot, true, "a generation failure leaves the snapshot loadable");
+    const originalNow = Date.now;
+    Date.now = () => originalNow() + 300001;
+    try { await runDailyWeeklyReportCheck(new Date("2026-11-17T18:40:00.000Z"), dependencies); }
+    finally { Date.now = originalNow; }
+    assert.equal((await loadSavedWeeklyReport(makeCycleReportKey("2026-11-17", "b0"))).isCurrentDaySnapshot, false, "failed finalization is retried and replaces the snapshot");
+    const catchUpDates = [];
+    await runDailyWeeklyReportCheck(new Date("2026-11-20T18:35:00.000Z"), {
+      ...dependencies,
+      listWeeklyReportCycles: async () => [cycles[0]],
+      listSavedReportKeys: async () => [makeCycleReportKey("2026-11-18", "b0")],
+      loadSavedWeeklyReport: async () => snapshot(cycles[0], "2026-11-18"),
+      generateCompleteWeeklyReport: async (suites, from, to, cycle) => {
+        catchUpDates.push(from.toISOString());
+        return { ...base, suites, from: from.toISOString(), to: to.toISOString(), executionCycleId: cycle.id };
+      },
+      saveDailyReport: async () => {},
+    });
+    assert.deepEqual(catchUpDates, ["2026-11-18", "2026-11-19", "2026-11-20"].map((day) => getISTDayRange(day).from.toISOString()), "the first snapshot also anchors missing-day catch-up");
+  `], { env: { ...process.env, NGA_DATA_DIR: reportSnapshotTestDir }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+} finally {
+  await rm(reportSnapshotTestDir, { recursive: true, force: true });
+}
 assert.equal(getDailyReportLabel("2026-10-19"), "WW43.1");
 assert.equal(getDailyReportLabel("2026-10-24"), "WW43.6");
 assert.equal(getDailyReportLabel("2026-10-25"), "WW43.7");

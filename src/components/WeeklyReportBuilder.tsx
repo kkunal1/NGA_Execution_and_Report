@@ -517,6 +517,7 @@ export default function WeeklyReportBuilder() {
       });
       const result = (await response.json()) as WeeklyReport & { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not create the current-day report.");
+      setSavedReportKeys((current) => current.includes(todayReportKey) ? current : [todayReportKey, ...current]);
       const nextReportLabel = reportOptionLabel(todayReportKey);
       setReport(result);
       setReportLabel(nextReportLabel);
@@ -624,7 +625,7 @@ export default function WeeklyReportBuilder() {
     </button>
   );
   const loadReportButton = (
-    <button type="button" onClick={() => void loadSavedReport()} disabled={!selectedReportIsSaved || loadingSaved || isCurrentDaySelected} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-60">
+    <button type="button" onClick={() => void loadSavedReport()} disabled={!selectedReportIsSaved || loadingSaved || busy} className="inline-flex h-10 shrink-0 items-center gap-2 rounded-md border border-[var(--border)] bg-[var(--surface)] px-4 text-sm font-medium text-[var(--text)] hover:bg-[var(--surface-alt)] disabled:opacity-60">
       <FolderOpen className="h-4 w-4" aria-hidden="true" />{loadingSaved ? "Loading…" : "Load Report"}
     </button>
   );
@@ -699,6 +700,7 @@ export default function WeeklyReportBuilder() {
             <label className="block text-xs font-semibold text-[var(--text-muted)]">Execution cycle
               <select
                 value={selectedCycleId}
+                disabled={busy || loadingSaved}
                 onChange={(event) => {
                   selectedReportKeyRef.current = "";
                   setSelectedReportKey("");
@@ -719,6 +721,7 @@ export default function WeeklyReportBuilder() {
             <label className="block text-xs font-semibold text-[var(--text-muted)]">Saved daily / weekly report
               <select
                 value={selectedReportKey}
+                disabled={busy || loadingSaved}
                 onChange={(event) => {
                   selectedReportKeyRef.current = event.target.value;
                   setSelectedReportKey(event.target.value);
@@ -742,7 +745,7 @@ export default function WeeklyReportBuilder() {
             {copyReportButton}
           </div>
         </div>
-        {isCurrentDaySelected && <p className="mt-2 overflow-x-auto whitespace-nowrap text-xs text-[var(--text-muted)]" role="status">Create a current report now; the final day report is auto-saved tomorrow after 12:05 AM IST.</p>}
+        {isCurrentDaySelected && <p className="mt-2 overflow-x-auto whitespace-nowrap text-xs text-[var(--text-muted)]" role="status">{selectedReportIsSaved ? "Current snapshot saved; the final day report replaces it tomorrow after 12:05 AM IST." : "Create a current report now; its snapshot is saved and finalized tomorrow after 12:05 AM IST."}</p>}
         {loadingSaved && <p className="mt-3 text-sm text-[var(--text-muted)]" role="status">Loading saved reports…</p>}
         {error && <p role="alert" className="mt-3 text-sm text-red-600">{error}</p>}
         {copyStatus && <p role="status" className={`mt-3 text-sm ${copyStatus.startsWith("Could not") ? "text-red-600" : "text-[var(--text-muted)]"}`}>{copyStatus}</p>}

@@ -5,6 +5,7 @@ import { fetchHsdesArticleDetails, fetchHsdesIssueData } from "@/lib/hsdes-sight
 import { generateCompleteWeeklyReport } from "@/lib/weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "@/lib/work-weeks";
 import { getWeeklyReportCycle } from "@/lib/weekly-report-cycles";
+import { makeCycleReportKey, saveDailyReport } from "@/lib/saved-weekly-reports";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -47,7 +48,11 @@ export async function POST(req: Request) {
     const { from } = getISTDayRange(today);
     const now = new Date();
     const to = now > from ? now : new Date(from.getTime() + 60_000);
-    const report = await generateCompleteWeeklyReport(cycle.suiteNames, from, to, { id: cycle.id, name: cycle.name });
+    const report = {
+      ...await generateCompleteWeeklyReport(cycle.suiteNames, from, to, { id: cycle.id, name: cycle.name }),
+      isCurrentDaySnapshot: true,
+    };
+    await saveDailyReport(makeCycleReportKey(today, cycle.id), report);
     return NextResponse.json(report);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not generate the current-day report." }, { status: 502 });

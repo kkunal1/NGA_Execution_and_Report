@@ -4,7 +4,7 @@ import { getWeeklyReportSettings } from "./weekly-report-settings";
 import { getDashboardSettings } from "./dashboard-settings";
 import { withFailureProgress } from "./saved-weekly-reports";
 
-export async function generateCompleteWeeklyReport(suites: string[], from: Date, to: Date) {
+export async function generateCompleteWeeklyReport(suites: string[], from: Date, to: Date, cycle?: { id: string; name: string }) {
   const [settings, dashboardSettings] = await Promise.all([getWeeklyReportSettings(), getDashboardSettings()]);
   const sectionVisibility = dashboardSettings.weeklyReportSections;
   const [report, sightingResult] = await Promise.all([
@@ -34,6 +34,7 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
   const hsdFailureReportTypes = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.reportType]));
   return withFailureProgress({
     ...report,
+    ...(cycle ? { executionCycleId: cycle.id, executionCycleName: cycle.name } : {}),
     sectionVisibility,
     teamPlatformCounts: sectionVisibility.cpuAllocation ? report.teamPlatformCounts : [],
     cpuColumns: sectionVisibility.cpuAllocation ? report.cpuColumns : [],

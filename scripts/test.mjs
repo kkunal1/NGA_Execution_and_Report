@@ -9,6 +9,7 @@ import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEma
 import { displayCpuAllocationTitle } from "../src/lib/weekly-report-display.ts";
 import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-users.ts";
 import { parseEmailAddressList } from "../src/lib/smtp-mail.ts";
+import { buildWeeklyReportCycles } from "../src/lib/weekly-report-cycles.ts";
 import { canAccessWeeklyReportFeature } from "../src/lib/weekly-report-access.ts";
 import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_CONFIG_COVERAGE_MAPPINGS, normalizeConfigCoverageMappings } from "../src/lib/config-coverage-settings.ts";
@@ -27,7 +28,7 @@ import { DEFAULT_EXECUTION_SUMMARY_TEXT } from "../src/lib/weekly-report-default
 import { renderReportHtml } from "../src/lib/report-html.ts";
 import { getDailyReportLabel, getISTDayRange, getWorkWeeks } from "../src/lib/work-weeks.ts";
 import { normalizeExecutionSummaryText, normalizeWeeklyReportSuites } from "../src/lib/weekly-report-settings.ts";
-import { isDailyReportDate, isSavedReportKey, isWorkWeekKey, withFailureProgress } from "../src/lib/saved-weekly-reports.ts";
+import { isDailyReportDate, isSavedReportKey, isWorkWeekKey, makeCycleReportKey, parseCycleReportKey, withFailureProgress } from "../src/lib/saved-weekly-reports.ts";
 import { validateDataBackup } from "../src/lib/data-backup.ts";
 import { isExecutionTabId, isValidExecutionMenuOrder, normalizeExecutionMenuOrder, normalizeExecutionTabName, normalizeExecutionTabSuites } from "../src/lib/execution-tabs.ts";
 
@@ -167,6 +168,18 @@ assert.equal(normalizeExecutionTabSuites(""), null);
 assert.deepEqual(mergeRefreshSuites({ b0: [B0_SUITES.P1], b2: [B2_SUITES.P1] }, [B0_SUITES.P2]), {
   b0: [B0_SUITES.P2], b2: [B2_SUITES.P1],
 }, "saving B0 refresh suites preserves the previously saved B2 suites");
+const reportCycles = buildWeeklyReportCycles(
+  { b0: [B0_SUITES.P1], b2: [B2_SUITES.P2] },
+  [B0_SUITES.P1],
+  [
+    { id: "0123456789abcdef0123456789abcdef", name: "AP2 VV A0", suiteNames: ["AP2 Suite"], createdAt: "2026-11-16T00:00:00Z", enabled: true },
+    { id: "fedcba9876543210fedcba9876543210", name: "Disabled", suiteNames: ["Disabled Suite"], createdAt: "2026-11-16T00:00:00Z", enabled: false },
+  ],
+  ["b2", "0123456789abcdef0123456789abcdef", "b0"],
+);
+assert.deepEqual(reportCycles.map(({ id }) => id), ["b2", "0123456789abcdef0123456789abcdef", "b0"]);
+assert.deepEqual(reportCycles[0].suiteNames, [B2_SUITES.P2]);
+assert.deepEqual(reportCycles[1].suiteNames, ["AP2 Suite"]);
 const multiSuiteFilename = buildReportFilename("Suite_One\nSuite_Two");
 assert.ok(!/[\r\n\t]/.test(multiSuiteFilename), "report filename must not contain control characters");
 assert.ok(multiSuiteFilename.startsWith("Suite_One_Suite_Two_"));
@@ -796,6 +809,11 @@ assert.equal(isWorkWeekKey("../2026-WW42"), false);
 assert.equal(isDailyReportDate("2026-10-19"), true);
 assert.equal(isDailyReportDate("2026-02-30"), false);
 assert.equal(isSavedReportKey("2026-10-19"), true);
+assert.equal(makeCycleReportKey("2026-11-15", "b2"), "2026-11-15--b2");
+assert.deepEqual(parseCycleReportKey("2026-11-15--b2"), { periodKey: "2026-11-15", cycleId: "b2" });
+assert.equal(isSavedReportKey("2026-11-15--0123456789abcdef0123456789abcdef"), true);
+assert.equal(isSavedReportKey("2026-WW46--b0"), true);
+assert.equal(isSavedReportKey("2026-11-15--../../latest"), false);
 assert.equal(getDailyReportLabel("2026-10-19"), "WW43.1");
 assert.equal(getDailyReportLabel("2026-10-24"), "WW43.6");
 assert.equal(getDailyReportLabel("2026-10-25"), "WW43.7");

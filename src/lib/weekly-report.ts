@@ -83,6 +83,8 @@ export type WeeklyReportDomainSummary = {
 export type WeeklyReport = {
   generatedAt: string;
   suites: string[];
+  executionCycleId?: string;
+  executionCycleName?: string;
   from: string;
   to: string;
   planned: number;

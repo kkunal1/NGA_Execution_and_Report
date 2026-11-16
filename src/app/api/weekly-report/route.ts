@@ -4,6 +4,7 @@ import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
 import { fetchHsdesArticleDetails, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
 import { generateCompleteWeeklyReport } from "@/lib/weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "@/lib/work-weeks";
+import { getWeeklyReportCycle } from "@/lib/weekly-report-cycles";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -35,16 +36,18 @@ export async function POST(req: Request) {
   if (denied) return denied;
 
   try {
-    const body = (await req.json()) as { mode?: unknown };
+    const body = (await req.json()) as { mode?: unknown; cycleId?: unknown };
     if (body.mode !== "currentDayPreview") {
       return NextResponse.json({ error: "Only a current-day report preview can be generated manually." }, { status: 400 });
     }
+    const cycleId = typeof body.cycleId === "string" ? body.cycleId : "b2";
+    const cycle = await getWeeklyReportCycle(cycleId);
+    if (!cycle) return NextResponse.json({ error: "Select an available execution cycle." }, { status: 400 });
     const today = getISTDateKey();
     const { from } = getISTDayRange(today);
     const now = new Date();
     const to = now > from ? now : new Date(from.getTime() + 60_000);
-    const { suites } = await getWeeklyReportSettings();
-    const report = await generateCompleteWeeklyReport(suites, from, to);
+    const report = await generateCompleteWeeklyReport(cycle.suiteNames, from, to, { id: cycle.id, name: cycle.name });
     return NextResponse.json(report);
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not generate the current-day report." }, { status: 502 });

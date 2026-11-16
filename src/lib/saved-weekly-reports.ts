@@ -19,7 +19,24 @@ export function isDailyReportDate(value: unknown): value is string {
 }
 
 export function isSavedReportKey(value: unknown): value is string {
-  return isWorkWeekKey(value) || isDailyReportDate(value);
+  if (isWorkWeekKey(value) || isDailyReportDate(value)) return true;
+  return parseCycleReportKey(value) !== null;
+}
+
+export type CycleReportKey = { periodKey: string; cycleId: string };
+
+export function parseCycleReportKey(value: unknown): CycleReportKey | null {
+  if (typeof value !== "string") return null;
+  const match = /^(.+)--(b0|b2|[a-f0-9]{32})$/.exec(value);
+  if (!match || (!isDailyReportDate(match[1]) && !isWorkWeekKey(match[1]))) return null;
+  return { periodKey: match[1], cycleId: match[2] };
+}
+
+export function makeCycleReportKey(periodKey: string, cycleId: string) {
+  if ((!isDailyReportDate(periodKey) && !isWorkWeekKey(periodKey)) || !/^(?:b0|b2|[a-f0-9]{32})$/.test(cycleId)) {
+    throw new TypeError("Select a valid report period and execution cycle.");
+  }
+  return `${periodKey}--${cycleId}`;
 }
 
 export async function listSavedReportKeys(): Promise<string[]> {
@@ -28,10 +45,12 @@ export async function listSavedReportKeys(): Promise<string[]> {
     return files.filter((file) => file.endsWith(".json") && isSavedReportKey(file.slice(0, -5)))
       .map((file) => file.slice(0, -5))
       .sort((left, right) => {
-        const leftDaily = isDailyReportDate(left);
-        const rightDaily = isDailyReportDate(right);
+        const leftKey = parseCycleReportKey(left)?.periodKey ?? left;
+        const rightKey = parseCycleReportKey(right)?.periodKey ?? right;
+        const leftDaily = isDailyReportDate(leftKey);
+        const rightDaily = isDailyReportDate(rightKey);
         if (leftDaily !== rightDaily) return leftDaily ? -1 : 1;
-        return right.localeCompare(left);
+        return rightKey.localeCompare(leftKey) || right.localeCompare(left);
       });
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
@@ -54,12 +73,14 @@ export async function loadSavedWeeklyReport(key: string): Promise<WeeklyReport |
 }
 
 export async function saveWeeklyReport(key: string, report: WeeklyReport): Promise<void> {
-  if (!isWorkWeekKey(key)) throw new TypeError("Select a valid work week.");
+  const periodKey = parseCycleReportKey(key)?.periodKey ?? key;
+  if (!isWorkWeekKey(periodKey)) throw new TypeError("Select a valid work week.");
   await writeReport(key, report);
 }
 
 export async function saveDailyReport(dateKey: string, report: WeeklyReport): Promise<void> {
-  if (!isDailyReportDate(dateKey)) throw new TypeError("Select a valid report date.");
+  const periodKey = parseCycleReportKey(dateKey)?.periodKey ?? dateKey;
+  if (!isDailyReportDate(periodKey)) throw new TypeError("Select a valid report date.");
   await writeReport(dateKey, report);
 }
 
@@ -80,18 +101,24 @@ export async function withFailureProgress(
   loadDailyReport: (key: string) => Promise<WeeklyReport | null> = loadSavedWeeklyReport,
 ): Promise<WeeklyReport> {
   const reportDate = getISTDateKey(new Date(Date.parse(report.to) - 1));
+  const reportCycleId = report.executionCycleId ?? (report.suites.some((suite) => /_B2_(?:P[12]_)?Tests_Cycle$/i.test(suite)) ? "b2" : null);
   const isB2Report = report.suites.some((suite) => /_B2_(?:P[12]_)?Tests_Cycle$/i.test(suite));
   let window: ReturnType<typeof getB2FailureProgressWindow> | undefined;
   if (isB2Report) {
     const suiteKey = (suites: string[]) => [...new Set(suites.map((suite) => suite.trim().toLowerCase()))].sort().join("\n");
     const previousDailyKeys = (await listSavedReportKeys())
-      .filter((key) => isDailyReportDate(key) && key < reportDate)
-      .sort((left, right) => right.localeCompare(left));
+      .filter((key) => {
+        const parsed = parseCycleReportKey(key);
+        const periodKey = parsed?.periodKey ?? key;
+        return isDailyReportDate(periodKey) && periodKey < reportDate &&
+          (parsed?.cycleId === reportCycleId || (!parsed && reportCycleId === "b2"));
+      })
+      .sort((left, right) => (parseCycleReportKey(right)?.periodKey ?? right).localeCompare(parseCycleReportKey(left)?.periodKey ?? left));
     let startDate = reportDate;
     for (const key of previousDailyKeys) {
       const previous = await loadDailyReport(key);
       if (!previous || suiteKey(previous.suites) !== suiteKey(report.suites)) continue;
-      startDate = previous.failureProgress?.days[0]?.date ?? key;
+      startDate = previous.failureProgress?.days[0]?.date ?? parseCycleReportKey(key)?.periodKey ?? key;
       break;
     }
     window = getB2FailureProgressWindow(startDate, reportDate);
@@ -99,7 +126,8 @@ export async function withFailureProgress(
   const days = buildFailureProgress(report, [], window).days;
   const history = await Promise.all(days.filter((day) => day.date < reportDate).map(async (day) => ({
     date: day.date,
-    report: await loadDailyReport(day.date),
+    report: await loadDailyReport(reportCycleId ? makeCycleReportKey(day.date, reportCycleId) : day.date) ??
+      (reportCycleId === "b2" ? await loadDailyReport(day.date) : null),
   })));
   return {
     ...report,

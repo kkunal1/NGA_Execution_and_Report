@@ -1,7 +1,7 @@
 import { generateCompleteWeeklyReport } from "./weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "./work-weeks";
-import { isDailyReportDate, listSavedReportKeys, saveDailyReport } from "./saved-weekly-reports";
-import { getWeeklyReportSettings } from "./weekly-report-settings";
+import { isDailyReportDate, listSavedReportKeys, makeCycleReportKey, parseCycleReportKey, saveDailyReport } from "./saved-weekly-reports";
+import { listWeeklyReportCycles } from "./weekly-report-cycles";
 
 const DAY_MS = 86_400_000;
 const IST_OFFSET_MS = 330 * 60_000;
@@ -30,19 +30,32 @@ export async function runDailyWeeklyReportCheck(now = new Date()) {
   }
   try {
     if (Date.now() < retryAt) return;
-    const savedDates = (await listSavedReportKeys()).filter(isDailyReportDate).sort();
-    if (savedDates.includes(targetDate)) return;
-
-    let nextDate = savedDates.length ? addDays(savedDates[savedDates.length - 1], 1) : targetDate;
-    while (nextDate <= targetDate) {
-      const { from, to } = getISTDayRange(nextDate);
-      const { suites } = await getWeeklyReportSettings();
-      const report = await generateCompleteWeeklyReport(suites, from, to);
-      await saveDailyReport(nextDate, report);
-      console.info(`Saved automatic Weekly Report for ${nextDate}.`);
-      nextDate = addDays(nextDate, 1);
+    const [savedKeys, cycles] = await Promise.all([listSavedReportKeys(), listWeeklyReportCycles()]);
+    let failed = false;
+    for (const cycle of cycles) {
+      const savedDates = savedKeys.flatMap((key) => {
+        const cycleKey = parseCycleReportKey(key);
+        if (cycleKey) return cycleKey.cycleId === cycle.id && isDailyReportDate(cycleKey.periodKey) ? [cycleKey.periodKey] : [];
+        return cycle.id === "b2" && isDailyReportDate(key) ? [key] : [];
+      }).sort();
+      let nextDate = savedDates.length ? addDays(savedDates[savedDates.length - 1], 1) : targetDate;
+      while (nextDate <= targetDate) {
+        const key = makeCycleReportKey(nextDate, cycle.id);
+        if (!savedKeys.includes(key)) {
+          try {
+            const { from, to } = getISTDayRange(nextDate);
+            const report = await generateCompleteWeeklyReport(cycle.suiteNames, from, to, { id: cycle.id, name: cycle.name });
+            await saveDailyReport(key, report);
+            console.info(`Saved automatic Weekly Report for ${cycle.name} on ${nextDate}.`);
+          } catch (error) {
+            failed = true;
+            console.error(`Automatic Weekly Report failed for ${cycle.name} on ${nextDate}:`, error instanceof Error ? error.message : error);
+          }
+        }
+        nextDate = addDays(nextDate, 1);
+      }
     }
-    retryAt = 0;
+    retryAt = failed ? Date.now() + RETRY_DELAY_MS : 0;
   } catch (error) {
     retryAt = Date.now() + RETRY_DELAY_MS;
     console.error("Automatic daily Weekly Report generation failed:", error instanceof Error ? error.message : error);

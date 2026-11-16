@@ -9,6 +9,7 @@ import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 import { normalizeHsdesReportType } from "@/lib/hsdes-report-type";
 import { executionSummaryValues, renderExecutionSummaryHtml } from "@/lib/execution-summary-format";
 import { DEFAULT_EXECUTION_SUMMARY_TEXT } from "@/lib/weekly-report-defaults";
+import type { WeeklyReportCycle } from "@/lib/weekly-report-cycles";
 
 const WEEKLY_REPORT_STORAGE_KEY = "nga-weekly-report-current";
 const percentage = (count: number, total: number) => total ? `${(count / total * 100).toFixed(1)}%` : "0%";
@@ -27,14 +28,17 @@ const formatValidationGroup = (group: string) => group.replace(/^pv_/i, "").spli
   .join(" ");
 
 function reportOptionLabel(key: string) {
-  if (/^\d{4}-\d{2}-\d{2}$/.test(key)) {
-    const dateYear = key.slice(0, 4);
+  const cycleKey = /^(.+?)--(?:b0|b2|[a-f0-9]{32})$/.exec(key);
+  const periodKey = cycleKey?.[1] ?? key;
+  const legacySuffix = cycleKey ? "" : " (legacy B2 report)";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(periodKey)) {
+    const dateYear = periodKey.slice(0, 4);
     const currentYear = getISTDateKey().slice(0, 4);
-    const label = getDailyReportLabel(key);
-    return dateYear === currentYear ? label : `${dateYear} ${label}`;
+    const label = getDailyReportLabel(periodKey);
+    return `${dateYear === currentYear ? label : `${dateYear} ${label}`}${legacySuffix}`;
   }
-  const match = key.match(/^(\d{4})-(WW\d{2})$/);
-  return match ? `${match[2]} (weekly archive)` : key;
+  const match = periodKey.match(/^(\d{4})-(WW\d{2})$/);
+  return match ? `${match[2]} (weekly archive)${legacySuffix}` : key;
 }
 
 function copyHtmlWithSelection(html: string): boolean {
@@ -165,9 +169,11 @@ function Breakdown({ title, rows, prebootAbortCounts, highlightFailureBreakdown 
 export default function WeeklyReportBuilder() {
   const [selectedReportKey, setSelectedReportKey] = useState("");
   const selectedReportKeyRef = useRef("");
+  const [reportCycles, setReportCycles] = useState<WeeklyReportCycle[]>([]);
+  const [selectedCycleId, setSelectedCycleId] = useState("b2");
   const [savedReportKeys, setSavedReportKeys] = useState<string[]>([]);
   const [availableReportKeys, setAvailableReportKeys] = useState<string[]>([]);
-  const [todayReportKey, setTodayReportKey] = useState(() => getISTDateKey());
+  const [todayReportKey, setTodayReportKey] = useState(() => `${getISTDateKey()}--b2`);
   const [report, setReport] = useState<WeeklyReport | null>(null);
   const [reportLabel, setReportLabel] = useState<string | null>(null);
   const [reportReady, setReportReady] = useState(false);
@@ -200,14 +206,16 @@ export default function WeeklyReportBuilder() {
     try {
       const stored = window.sessionStorage.getItem(WEEKLY_REPORT_STORAGE_KEY);
       if (stored) {
-        const cached = JSON.parse(stored) as { report?: unknown; generatedWeek?: unknown; selectedReportKey?: unknown };
+        const cached = JSON.parse(stored) as { report?: unknown; generatedWeek?: unknown; selectedReportKey?: unknown; cycleId?: unknown };
         if (typeof cached.report === "object" && cached.report !== null && !Array.isArray(cached.report)) {
           const cachedReport = cached.report as WeeklyReport;
           if (Array.isArray(cachedReport.suites) && typeof cachedReport.from === "string" && Number.isFinite(Date.parse(cachedReport.from)) &&
             typeof cachedReport.to === "string" && Number.isFinite(Date.parse(cachedReport.to))) {
-            const cachedKey = typeof cached.selectedReportKey === "string" && /^\d{4}-\d{2}-\d{2}$/.test(cached.selectedReportKey)
+            const cachedCycleId = typeof cached.cycleId === "string" ? cached.cycleId : cachedReport.executionCycleId ?? "b2";
+            setSelectedCycleId(cachedCycleId);
+            const cachedKey = typeof cached.selectedReportKey === "string" && /^(?:\d{4}-\d{2}-\d{2}|\d{4}-WW\d{2})(?:--(?:b0|b2|[a-f0-9]{32}))?$/.test(cached.selectedReportKey)
               ? cached.selectedReportKey
-              : getISTDateKey(new Date(cachedReport.from));
+              : `${getISTDateKey(new Date(cachedReport.from))}--${cachedCycleId}`;
             const cachedLabel = typeof cached.generatedWeek === "string" ? cached.generatedWeek : reportOptionLabel(cachedKey);
             selectedReportKeyRef.current = cachedKey;
             setSelectedReportKey(cachedKey);
@@ -296,14 +304,15 @@ export default function WeeklyReportBuilder() {
 
   useEffect(() => {
     let cancelled = false;
-    let previousToday = getISTDateKey();
+    let previousToday = "";
     const refreshSavedReports = async () => {
       try {
-        const response = await fetch("/api/weekly-report/saved", { cache: "no-store" });
-        const data = (await response.json()) as { reports?: string[]; savedReports?: string[]; today?: string; sectionVisibility?: WeeklyReport["sectionVisibility"]; error?: string };
+        const response = await fetch(`/api/weekly-report/saved?cycleId=${encodeURIComponent(selectedCycleId)}`, { cache: "no-store" });
+        const data = (await response.json()) as { reports?: string[]; savedReports?: string[]; today?: string; cycles?: WeeklyReportCycle[]; sectionVisibility?: WeeklyReport["sectionVisibility"]; error?: string };
         if (!response.ok) throw new Error(data.error || "Could not list saved Weekly Reports.");
         if (cancelled) return;
-        const today = data.today ?? getISTDateKey();
+        setReportCycles(data.cycles ?? []);
+        const today = data.today ?? `${getISTDateKey()}--${selectedCycleId}`;
         const reportKeys = data.reports ?? [today];
         const savedKeys = data.savedReports ?? reportKeys.filter((key) => key !== today);
         if (data.sectionVisibility) {
@@ -341,7 +350,7 @@ export default function WeeklyReportBuilder() {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [selectedCycleId]);
 
   const createStyledReportDocument = () => {
     const article = reportElementRef.current;
@@ -484,7 +493,7 @@ export default function WeeklyReportBuilder() {
       setHsdesDetailsLoading(false);
       setCopyStatus("");
       try {
-        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: data.report, generatedWeek: nextReportLabel, selectedReportKey }));
+        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: data.report, generatedWeek: nextReportLabel, selectedReportKey, cycleId: selectedCycleId }));
       } catch {
         setError("Report loaded, but this browser could not save it for navigation.");
       }
@@ -504,7 +513,7 @@ export default function WeeklyReportBuilder() {
       const response = await fetch("/api/weekly-report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "currentDayPreview" }),
+        body: JSON.stringify({ mode: "currentDayPreview", cycleId: selectedCycleId }),
       });
       const result = (await response.json()) as WeeklyReport & { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not create the current-day report.");
@@ -514,7 +523,7 @@ export default function WeeklyReportBuilder() {
       setHsdesDetailsError("");
       setHsdesDetailsLoading(false);
       try {
-        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: result, generatedWeek: nextReportLabel, selectedReportKey: todayReportKey }));
+        window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: result, generatedWeek: nextReportLabel, selectedReportKey: todayReportKey, cycleId: selectedCycleId }));
       } catch {
         setError("Report created, but this browser could not cache it for navigation.");
       }
@@ -675,7 +684,27 @@ export default function WeeklyReportBuilder() {
       <section className="border-y border-[var(--border)] bg-[var(--surface)] px-4 py-4">
         <div className="flex flex-wrap items-start gap-x-3 gap-y-2">
           <div className="w-full max-w-xs shrink-0">
-            <label className="block text-xs font-semibold text-[var(--text-muted)]">Saved daily report
+            <label className="block text-xs font-semibold text-[var(--text-muted)]">Execution cycle
+              <select
+                value={selectedCycleId}
+                onChange={(event) => {
+                  selectedReportKeyRef.current = "";
+                  setSelectedReportKey("");
+                  setSelectedCycleId(event.target.value);
+                  setReport(null);
+                  setReportLabel(null);
+                  setHsdesDetailsError("");
+                  setCopyStatus("");
+                  try { window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY); } catch { /* Ignore unavailable browser storage. */ }
+                }}
+                className={`mt-1 ${control}`}
+              >
+                {reportCycles.map((cycle) => <option key={cycle.id} value={cycle.id}>{cycle.name}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="w-full max-w-xs shrink-0">
+            <label className="block text-xs font-semibold text-[var(--text-muted)]">Saved daily / weekly report
               <select
                 value={selectedReportKey}
                 onChange={(event) => {

@@ -1028,6 +1028,77 @@ try {
   await rm(reportSnapshotTestDir, { recursive: true, force: true });
 }
 assert.equal(getDailyReportLabel("2026-10-19"), "WW43.1");
+const hsdSnapshotTestDir = await mkdtemp(path.join(tmpdir(), "nga-hsd-snapshots-"));
+try {
+  execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    import { completeWeeklyReportHsdDetails, fetchWeeklyReportHsdDetails } from "./src/lib/weekly-report-service.ts";
+    import { mergeWeeklyReportHsdDetails, missingWeeklyReportHsdIds } from "./src/lib/weekly-report-hsd-details.ts";
+    import { saveDailyReport, loadSavedWeeklyReport, saveWeeklyReportHsdDetails } from "./src/lib/saved-weekly-reports.ts";
+    const base = ${JSON.stringify(weeklyReport)};
+    const ids = Array.from({ length: 30 }, (_, index) => String(16030000000 + index));
+    const fixture = {
+      ...base, generatedAt: "2026-11-16T15:00:00.000Z", executionCycleId: "b2",
+      hsdesIssues: [], hsdFailureTitles: {}, hsdFailureStatuses: {}, hsdFailureReportTypes: {}, hsdFailureDaysOpen: {},
+      hsdFailureSummaries: ids.map((hsdId) => ({ hsdId, failedRuns: 1, domains: [{ domain: "pv_security", failedRuns: 1 }] })),
+    };
+    let active = 0, maximumActive = 0, calls = 0;
+    const fetchDetails = async ([id]) => {
+      calls++; active++; maximumActive = Math.max(maximumActive, active);
+      await Promise.resolve(); active--;
+      return { [id]: { title: "Title " + id, status: "open", reportType: "sighting", daysOpen: Number(id) - Number(ids[0]) } };
+    };
+    const complete = await completeWeeklyReportHsdDetails(fixture, fetchDetails);
+    assert.equal(calls, 30, "every linked HSD is enriched, including IDs with fewer than five failed runs");
+    assert.ok(maximumActive <= 25, "lookups remain bounded for reports with more than 25 HSDs");
+    assert.equal(complete.hsdFailureDaysOpen[ids[0]], 0, "zero days open is preserved");
+    assert.deepEqual(missingWeeklyReportHsdIds(complete), []);
+    const key = "2026-11-16--b2";
+    await saveDailyReport(key, complete);
+    const loaded = await loadSavedWeeklyReport(key);
+    assert.deepEqual(loaded, complete, "saved report retains all enriched HSD fields");
+    await completeWeeklyReportHsdDetails(loaded, async () => { throw new Error("a complete snapshot must not refetch HSD details"); });
+    assert.equal(calls, 30);
+    const partial = await completeWeeklyReportHsdDetails(fixture, async (batch) => {
+      if (batch[0] === ids[29]) throw new Error("Expected single-ID failure");
+      return fetchDetails(batch);
+    });
+    assert.equal(Object.keys(partial.hsdFailureTitles).length, 29, "one failure does not discard the successful HSD details");
+    assert.match(partial.sightingWarning, new RegExp(ids[29]));
+    const invalidDetails = { hsdFailureTitles: { [ids[0]]: "Not found" }, hsdFailureStatuses: { [ids[0]]: "Unknown" }, hsdFailureReportTypes: { [ids[0]]: "Unknown" } };
+    assert.deepEqual(mergeWeeklyReportHsdDetails(complete, invalidDetails), complete, "failed refresh placeholders never erase known values");
+    const recovered = mergeWeeklyReportHsdDetails({ ...fixture, hsdesIssues: [{ id: ids[0], title: "Query title", status: "complete", reportType: "test_request", daysOpen: 4 }] }, {});
+    assert.equal(recovered.hsdFailureTitles[ids[0]], "Query title", "query-provided details are copied into snapshot maps");
+    assert.equal(recovered.hsdFailureStatuses[ids[0]], "complete");
+    await saveDailyReport(key, fixture);
+    await saveDailyReport("2026-11-16--b0", { ...fixture, executionCycleId: "b0" });
+    const detailsFor = (id) => ({ hsdFailureTitles: { [id]: complete.hsdFailureTitles[id] }, hsdFailureStatuses: { [id]: "open" }, hsdFailureReportTypes: { [id]: "sighting" }, hsdFailureDaysOpen: { [id]: complete.hsdFailureDaysOpen[id] } });
+    await Promise.all([
+      saveWeeklyReportHsdDetails(key, fixture.generatedAt, detailsFor(ids[0])),
+      saveWeeklyReportHsdDetails(key, fixture.generatedAt, detailsFor(ids[1])),
+    ]);
+    const patched = await loadSavedWeeklyReport(key);
+    assert.equal(patched.hsdFailureTitles[ids[0]], complete.hsdFailureTitles[ids[0]]);
+    assert.equal(patched.hsdFailureTitles[ids[1]], complete.hsdFailureTitles[ids[1]], "concurrent browser batches both persist");
+    assert.deepEqual((await loadSavedWeeklyReport("2026-11-16--b0")).hsdFailureTitles, {}, "HSD enrichment stays in the requested cycle");
+    assert.equal(patched.generatedAt, fixture.generatedAt);
+    assert.deepEqual(patched.hsdFailureSummaries, fixture.hsdFailureSummaries);
+    const newer = { ...fixture, generatedAt: "2026-11-16T16:00:00.000Z", latestPassed: 99 };
+    await Promise.all([saveWeeklyReportHsdDetails(key, fixture.generatedAt, detailsFor(ids[2])), saveDailyReport(key, newer)]);
+    assert.deepEqual(await loadSavedWeeklyReport(key), newer, "a regenerated report wins over enrichment of its old version");
+    await saveWeeklyReportHsdDetails(key, fixture.generatedAt, detailsFor(ids[3]));
+    assert.deepEqual(await loadSavedWeeklyReport(key), newer, "a late lookup cannot overwrite a newer snapshot");
+    await assert.rejects(() => saveWeeklyReportHsdDetails("../invalid", fixture.generatedAt, {}), /valid saved report/);
+    const partialLookup = await fetchWeeklyReportHsdDetails([ids[0], ids[1]], async ([id]) => {
+      if (id === ids[1]) throw new Error("Expected lookup failure");
+      return fetchDetails([id]);
+    });
+    assert.deepEqual(partialLookup.failedIds, [ids[1]]);
+    assert.equal(partialLookup.hsdFailureTitles[ids[0]], complete.hsdFailureTitles[ids[0]]);
+  `], { env: { ...process.env, NGA_DATA_DIR: hsdSnapshotTestDir }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+} finally {
+  await rm(hsdSnapshotTestDir, { recursive: true, force: true });
+}
 assert.equal(getDailyReportLabel("2026-10-24"), "WW43.6");
 assert.equal(getDailyReportLabel("2026-10-25"), "WW43.7");
 assert.equal(mondayRange.from.toISOString(), "2026-10-18T18:30:00.000Z");

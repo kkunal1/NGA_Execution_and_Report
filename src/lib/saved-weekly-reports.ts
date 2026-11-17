@@ -5,8 +5,19 @@ import { config } from "./config";
 import type { WeeklyReport } from "./weekly-report";
 import { buildFailureProgress, getB2FailureProgressWindow } from "./weekly-report-metrics";
 import { getISTDateKey } from "./work-weeks";
+import { mergeWeeklyReportHsdDetails, type WeeklyReportHsdDetails } from "./weekly-report-hsd-details";
 
 const reportsPath = path.join(config.dataDir, "weekly-reports");
+const reportWrites = new Map<string, Promise<unknown>>();
+
+function serializeReportWrite<Result>(key: string, write: () => Promise<Result>): Promise<Result> {
+  const previous = reportWrites.get(key) ?? Promise.resolve();
+  const result = previous.catch(() => undefined).then(write);
+  reportWrites.set(key, result);
+  const cleanup = () => { if (reportWrites.get(key) === result) reportWrites.delete(key); };
+  void result.then(cleanup, cleanup);
+  return result;
+}
 
 export function isWorkWeekKey(value: unknown): value is string {
   return typeof value === "string" && /^\d{4}-WW(?:0[1-9]|[1-4]\d|5[0-3])$/.test(value);
@@ -75,13 +86,22 @@ export async function loadSavedWeeklyReport(key: string): Promise<WeeklyReport |
 export async function saveWeeklyReport(key: string, report: WeeklyReport): Promise<void> {
   const periodKey = parseCycleReportKey(key)?.periodKey ?? key;
   if (!isWorkWeekKey(periodKey)) throw new TypeError("Select a valid work week.");
-  await writeReport(key, report);
+  await serializeReportWrite(key, () => writeReport(key, report));
 }
 
 export async function saveDailyReport(dateKey: string, report: WeeklyReport): Promise<void> {
   const periodKey = parseCycleReportKey(dateKey)?.periodKey ?? dateKey;
   if (!isDailyReportDate(periodKey)) throw new TypeError("Select a valid report date.");
-  await writeReport(dateKey, report);
+  await serializeReportWrite(dateKey, () => writeReport(dateKey, report));
+}
+
+export async function saveWeeklyReportHsdDetails(key: string, generatedAt: string, details: WeeklyReportHsdDetails): Promise<void> {
+  if (!isSavedReportKey(key)) throw new TypeError("Select a valid saved report.");
+  await serializeReportWrite(key, async () => {
+    const saved = await loadSavedWeeklyReport(key);
+    if (!saved || saved.generatedAt !== generatedAt) return;
+    await writeReport(key, mergeWeeklyReportHsdDetails(saved, details));
+  });
 }
 
 async function writeReport(key: string, report: WeeklyReport) {

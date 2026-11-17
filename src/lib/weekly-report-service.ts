@@ -1,8 +1,38 @@
 import { canonicalizeSightingDomain, fetchHsdesArticleDetails, fetchHsdesIssueData } from "./hsdes-sightings";
-import { generateWeeklyReport } from "./weekly-report";
+import { generateWeeklyReport, type WeeklyReport } from "./weekly-report";
 import { getWeeklyReportSettings } from "./weekly-report-settings";
 import { getDashboardSettings } from "./dashboard-settings";
 import { withFailureProgress } from "./saved-weekly-reports";
+import { mergeWeeklyReportHsdDetails, missingWeeklyReportHsdIds, type WeeklyReportHsdDetails } from "./weekly-report-hsd-details";
+
+export async function fetchWeeklyReportHsdDetails(ids: string[], fetchDetails = fetchHsdesArticleDetails) {
+  const details: Required<WeeklyReportHsdDetails> = { hsdFailureTitles: {}, hsdFailureStatuses: {}, hsdFailureReportTypes: {}, hsdFailureDaysOpen: {} };
+  const failedIds: string[] = [];
+  const uniqueIds = [...new Set(ids)];
+  for (let index = 0; index < uniqueIds.length; index += 25) {
+    const batch = uniqueIds.slice(index, index + 25);
+    const results = await Promise.allSettled(batch.map((id) => fetchDetails([id])));
+    results.forEach((result, resultIndex) => {
+      const id = batch[resultIndex];
+      const article = result.status === "fulfilled" ? result.value[id] : undefined;
+      if (!article) { failedIds.push(id); return; }
+      details.hsdFailureTitles[id] = article.title;
+      details.hsdFailureStatuses[id] = article.status;
+      details.hsdFailureReportTypes[id] = article.reportType;
+      if (article.daysOpen !== null) details.hsdFailureDaysOpen[id] = article.daysOpen;
+    });
+  }
+  return { ...details, failedIds };
+}
+
+export async function completeWeeklyReportHsdDetails(report: WeeklyReport, fetchDetails = fetchHsdesArticleDetails): Promise<WeeklyReport> {
+  const missingIds = missingWeeklyReportHsdIds(report);
+  const details = await fetchWeeklyReportHsdDetails(missingIds, fetchDetails);
+  const merged = mergeWeeklyReportHsdDetails(report, details);
+  return details.failedIds.length
+    ? { ...merged, sightingWarning: [report.sightingWarning, `HSD details unavailable for: ${details.failedIds.join(", ")}`].filter(Boolean).join(" ") }
+    : merged;
+}
 
 export async function generateCompleteWeeklyReport(suites: string[], from: Date, to: Date, cycle?: { id: string; name: string }) {
   const [settings, dashboardSettings] = await Promise.all([getWeeklyReportSettings(cycle?.id), getDashboardSettings()]);
@@ -27,12 +57,7 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
       }))
     : report.backlogFailures;
   const hsdFailureSummaries = sectionVisibility.hsdFailureSummary ? report.hsdFailureSummaries : [];
-  const hsdIds = hsdFailureSummaries.filter((summary) => summary.failedRuns >= 5).map((summary) => summary.hsdId);
-  const hsdArticleDetails = sectionVisibility.hsdFailureSummary ? await fetchHsdesArticleDetails(hsdIds) : {};
-  const hsdFailureTitles = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.title]));
-  const hsdFailureStatuses = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.status]));
-  const hsdFailureReportTypes = Object.fromEntries(Object.entries(hsdArticleDetails).map(([id, article]) => [id, article.reportType]));
-  return withFailureProgress({
+  return withFailureProgress(await completeWeeklyReportHsdDetails({
     ...report,
     ...(cycle ? { executionCycleId: cycle.id, executionCycleName: cycle.name } : {}),
     sectionVisibility,
@@ -43,11 +68,8 @@ export async function generateCompleteWeeklyReport(suites: string[], from: Date,
     hsdFailureSummaries,
     hsdesIssues: sightingResult.issues,
     agedHsdesIssues: sightingResult.agedIssues,
-    hsdFailureTitles,
-    hsdFailureStatuses,
-    hsdFailureReportTypes,
     sightingWarning: sightingResult.warning,
     cpuAllocationEnabled: settings.cpuAllocationEnabled,
     customTables: settings.customTables,
-  });
+  }));
 }

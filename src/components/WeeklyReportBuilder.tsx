@@ -7,6 +7,7 @@ import { buildFailureProgress, weeklyReportYetToAttemptCount } from "@/lib/weekl
 import { displayCpuAllocationTitle } from "@/lib/weekly-report-display";
 import { getDailyReportLabel, getISTDateKey } from "@/lib/work-weeks";
 import { normalizeHsdesReportType } from "@/lib/hsdes-report-type";
+import { mergeWeeklyReportHsdDetails, missingWeeklyReportHsdIds, type WeeklyReportHsdDetails } from "@/lib/weekly-report-hsd-details";
 import { executionSummaryValues, renderExecutionSummaryHtml } from "@/lib/execution-summary-format";
 import { DEFAULT_EXECUTION_SUMMARY_TEXT } from "@/lib/weekly-report-defaults";
 import type { WeeklyReportCycle } from "@/lib/weekly-report-cycles";
@@ -231,64 +232,42 @@ export default function WeeklyReportBuilder() {
     }
   }, []);
 
-  const missingHsdDetailsIds = (report?.hsdFailureSummaries ?? [])
-    .filter((summary) => {
-      const issue = report?.hsdesIssues?.find((item) => item.id === summary.hsdId);
-      const title = report?.hsdFailureTitles?.[summary.hsdId] || issue?.title;
-      const status = report?.hsdFailureStatuses?.[summary.hsdId] || issue?.status;
-      const daysOpen = report?.hsdFailureDaysOpen?.[summary.hsdId] ?? issue?.daysOpen;
-      const reportType = normalizeHsdesReportType(report?.hsdFailureReportTypes?.[summary.hsdId], issue?.reportType);
-      return !title || !status || status.trim().toLowerCase() === "unknown" || daysOpen == null || reportType === "Unknown";
-    })
-    .map((summary) => summary.hsdId);
+  const missingHsdDetailsIds = report ? missingWeeklyReportHsdIds(report) : [];
   const missingHsdDetailsKey = [...new Set(missingHsdDetailsIds)].join("|");
 
   useEffect(() => {
-    const reportKey = reportLabel ?? "current-report";
+    if (!report) return;
+    const reportKey = `${report.executionCycleId ?? selectedCycleId}:${selectedReportKey}:${report.generatedAt}`;
     const uniqueIds = [...new Set(missingHsdDetailsIds)]
       .filter((id) => !attemptedHsdDetailsRef.current.has(`${reportKey}:${id}`));
-    if (!report || !uniqueIds.length) return;
+    if (!uniqueIds.length) return;
     let cancelled = false;
     const batches: string[][] = [];
     for (let index = 0; index < uniqueIds.length; index += 25) batches.push(uniqueIds.slice(index, index + 25));
     setHsdesDetailsLoading(true);
     setHsdesDetailsError("");
-    void Promise.all(batches.map(async (ids) => {
+    void Promise.allSettled(batches.map(async (ids) => {
       const query = new URLSearchParams();
       ids.forEach((id) => query.append("hsdId", id));
+      if (selectedReportKey) {
+        query.set("reportKey", selectedReportKey);
+        query.set("generatedAt", report.generatedAt);
+      }
       const response = await fetch(`/api/weekly-report?${query.toString()}`, { cache: "no-store" });
-      const result = (await response.json()) as {
-        hsdFailureTitles?: Record<string, string>;
-        hsdFailureStatuses?: Record<string, string>;
-        hsdFailureReportTypes?: Record<string, string>;
-        hsdFailureDaysOpen?: Record<string, number>;
-        error?: string;
-      };
+      const result = (await response.json()) as WeeklyReportHsdDetails & { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not retrieve HSD details.");
       return result;
     }))
       .then((results) => {
-        const titles = Object.assign({}, ...results.map((result) => result.hsdFailureTitles));
-        const statuses = Object.assign({}, ...results.map((result) => result.hsdFailureStatuses));
-        const reportTypes = Object.assign({}, ...results.map((result) => result.hsdFailureReportTypes));
-        const daysOpen = Object.assign({}, ...results.map((result) => result.hsdFailureDaysOpen));
-        uniqueIds.forEach((id) => attemptedHsdDetailsRef.current.add(`${reportKey}:${id}`));
-        const unresolvedIds = uniqueIds.filter((id) => !titles[id] || !statuses[id] || statuses[id].trim().toLowerCase() === "unknown" || daysOpen[id] == null);
-        if (unresolvedIds.length) throw new Error(`HSDES did not return title, status, and days open for: ${unresolvedIds.join(", ")}`);
-        return { titles, statuses, reportTypes, daysOpen };
-      })
-      .then(({ titles, statuses, reportTypes, daysOpen }) => {
         if (cancelled) return;
-        const refreshedReport = {
-          ...report,
-          hsdFailureTitles: { ...report.hsdFailureTitles, ...titles },
-          hsdFailureStatuses: { ...report.hsdFailureStatuses, ...statuses },
-          hsdFailureReportTypes: { ...report.hsdFailureReportTypes, ...reportTypes },
-          hsdFailureDaysOpen: { ...report.hsdFailureDaysOpen, ...daysOpen },
-        };
+        uniqueIds.forEach((id) => attemptedHsdDetailsRef.current.add(`${reportKey}:${id}`));
+        const refreshedReport = results.reduce((current, result) => result.status === "fulfilled" ? mergeWeeklyReportHsdDetails(current, result.value) : current, report);
+        const unresolvedIds = missingWeeklyReportHsdIds(refreshedReport);
+        setHsdesDetailsError(unresolvedIds.length ? `HSD details unavailable for: ${unresolvedIds.join(", ")}. Load the report again to retry.` : "");
+        setHsdesDetailsLoading(false);
         setReport(refreshedReport);
         try {
-          window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek: reportLabel, selectedReportKey: selectedReportKeyRef.current }));
+          window.sessionStorage.setItem(WEEKLY_REPORT_STORAGE_KEY, JSON.stringify({ report: refreshedReport, generatedWeek: reportLabel, selectedReportKey, cycleId: selectedCycleId }));
         } catch {
           // Keep fetched titles visible even if the browser cannot cache them.
         }
@@ -300,7 +279,7 @@ export default function WeeklyReportBuilder() {
         if (!cancelled) setHsdesDetailsLoading(false);
       });
     return () => { cancelled = true; };
-  }, [report, missingHsdDetailsKey, reportLabel]);
+  }, [report, missingHsdDetailsKey, reportLabel, selectedCycleId, selectedReportKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -486,6 +465,7 @@ export default function WeeklyReportBuilder() {
       const response = await fetch(`/api/weekly-report/saved?key=${encodeURIComponent(selectedReportKey)}`, { cache: "no-store" });
       const data = (await response.json()) as { report?: WeeklyReport; error?: string };
       if (!response.ok || !data.report) throw new Error(data.error || "Could not load the saved Weekly Report.");
+      attemptedHsdDetailsRef.current.clear();
       setReport(data.report);
       const nextReportLabel = reportOptionLabel(selectedReportKey);
       setReportLabel(nextReportLabel);
@@ -517,6 +497,7 @@ export default function WeeklyReportBuilder() {
       });
       const result = (await response.json()) as WeeklyReport & { error?: string };
       if (!response.ok) throw new Error(result.error || "Could not create the current-day report.");
+      attemptedHsdDetailsRef.current.clear();
       setSavedReportKeys((current) => current.includes(todayReportKey) ? current : [todayReportKey, ...current]);
       const nextReportLabel = reportOptionLabel(todayReportKey);
       setReport(result);
@@ -708,6 +689,7 @@ export default function WeeklyReportBuilder() {
                   setReport(null);
                   setReportLabel(null);
                   setHsdesDetailsError("");
+                  setHsdesDetailsLoading(false);
                   setCopyStatus("");
                   try { window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY); } catch { /* Ignore unavailable browser storage. */ }
                 }}
@@ -728,6 +710,7 @@ export default function WeeklyReportBuilder() {
                   setReport(null);
                   setReportLabel(null);
                   setHsdesDetailsError("");
+                  setHsdesDetailsLoading(false);
                   setCopyStatus("");
                   try { window.sessionStorage.removeItem(WEEKLY_REPORT_STORAGE_KEY); } catch { /* Ignore unavailable browser storage. */ }
                 }}
@@ -946,6 +929,8 @@ export default function WeeklyReportBuilder() {
         {hsdFailureSection}
         {report.sectionVisibility?.hsdFailureSummary !== false && <section className="border-t border-[#d4e0eb] px-5 py-6 sm:px-7">
           <h2 className="mb-1 text-base font-bold text-[#204e76]">HSDES Issues Linked to Failed Tests</h2>
+          {hsdesDetailsLoading && <p role="status" className="mb-3 text-xs text-[#647e94]">Loading missing HSD details...</p>}
+          {hsdesDetailsError && <p role="alert" className="mb-3 border-l-2 border-amber-500 bg-amber-50 px-3 py-2 text-sm text-amber-900">{hsdesDetailsError}</p>}
           {bucketizedHsdIssues.length ? (
             <>
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">

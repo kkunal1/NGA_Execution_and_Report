@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
 import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
-import { fetchHsdesArticleDetails, fetchHsdesIssueData } from "@/lib/hsdes-sightings";
-import { generateCompleteWeeklyReport } from "@/lib/weekly-report-service";
+import { fetchHsdesIssueData } from "@/lib/hsdes-sightings";
+import { fetchWeeklyReportHsdDetails, generateCompleteWeeklyReport } from "@/lib/weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "@/lib/work-weeks";
 import { getWeeklyReportCycle } from "@/lib/weekly-report-cycles";
-import { makeCycleReportKey, saveDailyReport } from "@/lib/saved-weekly-reports";
+import { isSavedReportKey, makeCycleReportKey, saveDailyReport, saveWeeklyReportHsdDetails } from "@/lib/saved-weekly-reports";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,17 +15,20 @@ export async function GET(req: Request) {
   if (denied) return denied;
 
   try {
-    const reportSettings = await getWeeklyReportSettings();
-    const hsdIds = new URL(req.url).searchParams.getAll("hsdId");
+    const params = new URL(req.url).searchParams;
+    const hsdIds = params.getAll("hsdId");
     if (hsdIds.length) {
-      const details = await fetchHsdesArticleDetails(hsdIds);
-      return NextResponse.json({
-        hsdFailureTitles: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.title])),
-        hsdFailureStatuses: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.status])),
-        hsdFailureReportTypes: Object.fromEntries(Object.entries(details).map(([id, article]) => [id, article.reportType])),
-        hsdFailureDaysOpen: Object.fromEntries(Object.entries(details).flatMap(([id, article]) => article.daysOpen === null ? [] : [[id, article.daysOpen]])),
-      });
+      const reportKey = params.get("reportKey");
+      const generatedAt = params.get("generatedAt");
+      if (hsdIds.length > 25 || hsdIds.some((id) => !/^\d{10,}$/.test(id))
+        || (reportKey !== null && (!isSavedReportKey(reportKey) || !generatedAt || !Number.isFinite(Date.parse(generatedAt))))) {
+        return NextResponse.json({ error: "Select valid HSD IDs and a saved report version." }, { status: 400 });
+      }
+      const details = await fetchWeeklyReportHsdDetails(hsdIds);
+      if (reportKey && generatedAt) await saveWeeklyReportHsdDetails(reportKey, generatedAt, details);
+      return NextResponse.json(details);
     }
+    const reportSettings = await getWeeklyReportSettings();
     return NextResponse.json(await fetchHsdesIssueData(reportSettings.hsdesLink));
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Could not load HSDES issue details." }, { status: 502 });

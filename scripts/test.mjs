@@ -19,7 +19,7 @@ import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_CONFIG_COVERAGE_MAPPINGS, normalizeConfigCoverageMappings } from "../src/lib/config-coverage-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames, selectConfiguredPoolNames } from "../src/lib/pool-system-settings.ts";
 import { aggregateUncoveredConfigs, poolMembershipFilter } from "../src/lib/pool-systems.ts";
-import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks, transferWeeklyReportTable } from "../src/lib/weekly-report-settings.ts";
+import { DEFAULT_CPU_BASE_LABELS, DEFAULT_CPU_BREAKDOWN_TITLE, DEFAULT_TEAM_PLATFORM_COUNTS, DEFAULT_WEEKLY_REPORT_BKC, DEFAULT_WEEKLY_REPORT_HSDES_LINK, DEFAULT_WEEKLY_REPORT_LINKS, normalizeCpuBaseLabels, normalizeCpuBreakdownTitle, normalizeCpuColumns, normalizeCustomReportTables, normalizeTeamPlatformCounts, normalizeWeeklyReportBkc, normalizeWeeklyReportEmailSubject, normalizeWeeklyReportHsdesLink, normalizeWeeklyReportLinks, transferWeeklyReportTable } from "../src/lib/weekly-report-settings.ts";
 import { aggregateHsdesIssueIdsByDomain, canonicalizeSightingDomain, collectHsdesQueryPages, extractHsdesArticleDetails, extractHsdesArticleTitle, fetchHsdesArticleDetails, extractHsdesIssues, extractHsdesIssuesOlderThan, normalizeHsdesReportType } from "../src/lib/hsdes-sightings.ts";
 import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
@@ -603,6 +603,30 @@ assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-24T18:30
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-25T18:30:00.000Z" }), "DMR AP1 B2 Execution Daily Status Report For WW44.1");
 assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 B2 Execution Daily Status Report For WW44.2");
 assert.equal(weeklyReportEmailFilename({ ...weeklyReport, from: "2026-10-26T18:30:00.000Z" }), "DMR AP1 B2 Execution Daily Status Report For WW44.2.html");
+const cycleSubjectTemplate = "DMR AP2 VV A0 Execution Daily Status Report For {{reportDay}}";
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, from: "2026-11-16T18:30:00.000Z" }, cycleSubjectTemplate), "DMR AP2 VV A0 Execution Daily Status Report For WW47.2");
+assert.equal(weeklyReportEmailFilename({ ...weeklyReport, from: "2026-11-17T18:30:00.000Z" }, cycleSubjectTemplate), "DMR AP2 VV A0 Execution Daily Status Report For WW47.3.html");
+assert.equal(weeklyReportEmailSubject({ ...weeklyReport, executionCycleName: "Custom cycle", from: "2026-11-16T18:30:00.000Z" }), "Custom cycle Daily Status Report For WW47.2");
+assert.equal(weeklyReportEmailFilename({ ...weeklyReport, from: "2026-11-16T18:30:00.000Z" }, "Cycle / status {{reportDay}}"), "Cycle _ status WW47.2.html");
+assert.equal(normalizeWeeklyReportEmailSubject("Cycle {{reportDay}}"), "Cycle {{reportDay}}");
+assert.equal(normalizeWeeklyReportEmailSubject("Cycle WW47.2"), null);
+assert.equal(normalizeWeeklyReportEmailSubject("Cycle\r\nInjected {{reportDay}}"), null);
+assert.equal(normalizeWeeklyReportEmailSubject("x".repeat(181) + "{{reportDay}}"), null);
+execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+  import { createRequire } from "node:module";
+  import assert from "node:assert/strict";
+  const require = createRequire(import.meta.url);
+  const nodemailer = require("nodemailer");
+  let message;
+  nodemailer.createTransport = () => ({ sendMail: async data => { message = data; return { accepted: ["recipient@example.test"] }; }, close: () => {} });
+  const { sendWeeklySmtpReport } = await import("./src/lib/smtp-mail.ts");
+  const report = { ...${JSON.stringify(weeklyReport)}, from: "2026-11-16T18:30:00.000Z" };
+  const result = await sendWeeklySmtpReport("sender@example.test", "test-password", "recipient@example.test", "", report, "AP2 Status {{reportDay}}");
+  assert.equal(message.subject, "AP2 Status WW47.2");
+  assert.equal(message.attachments[0].filename, "AP2 Status WW47.2.html");
+  assert.equal(result.filename, message.attachments[0].filename);
+  assert.ok(message.attachments[0].content.includes("<html"));
+`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.cpuBaseLabels, DEFAULT_CPU_BASE_LABELS);
 assert.equal(weeklyReport.cpuBreakdownTitle, DEFAULT_CPU_BREAKDOWN_TITLE);
@@ -723,13 +747,28 @@ try {
       settings.bkc, settings.teamPlatformCounts, settings.hsdesLink, settings.links,
       settings.cpuColumns, settings.cpuBreakdownTitle, settings.cpuBaseLabels,
       settings.customTables, settings.suites, settings.executionSummaryText,
-      settings.cpuAllocationEnabled, cycleId, settings.cpuAllocationPresent,
+      settings.cpuAllocationEnabled, cycleId, settings.cpuAllocationPresent, settings.emailSubjectTemplate,
     );
+    const b2Subject = "B2 daily {{reportDay}}";
+    const b0Subject = "B0 daily {{reportDay}}";
+    const customId = "0123456789abcdef0123456789abcdef";
+    await writeFile(path.join(directory, "execution-tabs.json"), JSON.stringify([{ id: customId, name: "AP2 A0 Execution", suiteNames: ["A0_suite"], createdAt: "2026-11-01T00:00:00Z", enabled: true }]));
+    const custom = await getWeeklyReportSettings(customId);
+    assert.equal(custom.emailSubjectTemplate, "AP2 A0 Execution Daily Status Report For {{reportDay}}");
+    await saveCycle({ ...custom, emailSubjectTemplate: "AP2 custom {{reportDay}}" }, customId);
+    await saveCycle({ ...await getWeeklyReportSettings("b2"), emailSubjectTemplate: b2Subject }, "b2");
+    await saveCycle({ ...await getWeeklyReportSettings("b0"), emailSubjectTemplate: b0Subject }, "b0");
+    assert.equal((await getWeeklyReportSettings("b2")).emailSubjectTemplate, b2Subject);
+    assert.equal((await getWeeklyReportSettings("b0")).emailSubjectTemplate, b0Subject);
+    assert.equal((await getWeeklyReportSettings(customId)).emailSubjectTemplate, "AP2 custom {{reportDay}}");
+    await assert.rejects(async () => saveCycle({ ...await getWeeklyReportSettings("b0"), emailSubjectTemplate: "Missing day" }, "b0"), /reportDay/);
     assert.equal((await getWeeklyReportSettings("b2")).customTables.length, 1);
     assert.deepEqual((await getWeeklyReportSettings("b0")).customTables, [], "legacy custom tables do not leak to another cycle");
     assert.equal((await getWeeklyReportSettings("b0")).cpuAllocationPresent, false);
     assert.equal((await getWeeklyReportSettings("b0")).cpuAllocationEnabled, false);
     await moveWeeklyReportTable("b2", "b0", "summary_table");
+    assert.equal((await getWeeklyReportSettings("b2")).emailSubjectTemplate, b2Subject, "moving a table retains the source subject");
+    assert.equal((await getWeeklyReportSettings("b0")).emailSubjectTemplate, b0Subject, "moving a table retains the target subject");
     assert.deepEqual((await getWeeklyReportSettings("b2")).customTables, []);
     assert.deepEqual((await getWeeklyReportSettings("b0")).customTables, fixture.customTables);
     const freshTable = { id: "created_in_b0", title: "B0 only", columns: ["Team"], rows: [["BKC"]], enabled: true };

@@ -4,6 +4,7 @@ import { authorizeWeeklyReportFeature } from "@/lib/weekly-report-access";
 import { getDashboardSettings } from "@/lib/dashboard-settings";
 import type { WeeklyReport } from "@/lib/weekly-report";
 import { withFailureProgress } from "@/lib/saved-weekly-reports";
+import { getWeeklyReportSettings } from "@/lib/weekly-report-settings";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -43,7 +44,13 @@ export async function POST(req: Request) {
     }
     const settings = await getDashboardSettings();
     const report = { ...await withFailureProgress(body.report), sectionVisibility: settings.weeklyReportSections };
-    const result = await sendWeeklySmtpReport(body.sender, body.password, body.recipient, body.cc ?? "", report);
+    let subjectTemplate: string | undefined;
+    try {
+      subjectTemplate = (await getWeeklyReportSettings(report.executionCycleId ?? "b2")).emailSubjectTemplate;
+    } catch (error) {
+      if (!(error instanceof TypeError)) throw error;
+    }
+    const result = await sendWeeklySmtpReport(body.sender, body.password, body.recipient, body.cc ?? "", report, subjectTemplate);
     return NextResponse.json({ ok: true, ...result });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Weekly Report email failed." }, { status: 502 });

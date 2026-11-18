@@ -9,13 +9,15 @@ import { normalizeHsdesReportType } from "./hsdes-report-type";
 
 const stages: Stage[] = ["Preboot", "PreTest", "Test", "PostTest", "Cleanup"];
 
-export function weeklyReportEmailSubject(report: WeeklyReport) {
+export function weeklyReportEmailSubject(report: WeeklyReport, subjectTemplate?: string) {
   const reportDate = getISTDateKey(new Date(report.from));
-  return `DMR AP1 B2 Execution Daily Status Report For ${getDailyReportLabel(reportDate)}`;
+  const cycleName = report.executionCycleName?.trim() || (report.executionCycleId === "b0" ? "DMR AP1 PV B0 Execution" : "DMR AP1 B2 Execution");
+  const template = subjectTemplate?.trim() || `${cycleName} Daily Status Report For {{reportDay}}`;
+  return template.replaceAll("{{reportDay}}", getDailyReportLabel(reportDate));
 }
 
-export function weeklyReportEmailFilename(report: WeeklyReport) {
-  return `${weeklyReportEmailSubject(report)}.html`;
+export function weeklyReportEmailFilename(report: WeeklyReport, subjectTemplate?: string) {
+  return `${weeklyReportEmailSubject(report, subjectTemplate).replace(/[<>:"/\\|?*\x00-\x1f]/g, "_").replace(/[. ]+$/, "")}.html`;
 }
 
 export const weeklyReportEmailSignatureText = "\n\n\nRegards,\nKrishna Kunal";

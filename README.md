@@ -56,6 +56,7 @@ Open http://localhost:3000 and:
 - **HTML report** – opens `/api/report`, which also writes `reports/execution-report-<runId>.html`.
 - **Download** – same report as a file download.
 - **Daily/Weekly Report**: Create Report saves the current day's snapshot separately for each execution cycle. Load Report reopens that snapshot, including after switching cycles or reloading the page. Creating again updates it. After 12:05 AM IST the next day, the production server replaces it with the final full-day report; failed finalization is retried without deleting the snapshot.
+- **Update Weekly Report**: Select an execution cycle and set its Email subject using `{{reportDay}}`, then save updates. Email uses that cycle's saved subject and the report's date; the HTML attachment uses the same name, with filename-unsafe characters replaced.
 
 ## API
 

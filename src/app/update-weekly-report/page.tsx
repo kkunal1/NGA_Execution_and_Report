@@ -23,6 +23,7 @@ export default function UpdateWeeklyReportPage() {
   const [bkc, setBkc] = useState("BKC#40");
   const [suites, setSuites] = useState<EditableSuite[]>(DEFAULT_WEEKLY_REPORT_SUITES.map((suiteName) => ({ id: createRowId(), suiteName })));
   const [executionSummaryText, setExecutionSummaryText] = useState(DEFAULT_EXECUTION_SUMMARY_TEXT);
+  const [emailSubjectTemplate, setEmailSubjectTemplate] = useState("");
   const [cpuAllocationPresent, setCpuAllocationPresent] = useState(true);
   const [cpuAllocationEnabled, setCpuAllocationEnabled] = useState(true);
   const formRef = useRef<HTMLFormElement>(null);
@@ -55,6 +56,7 @@ export default function UpdateWeeklyReportPage() {
           bkc?: string;
           suites?: string[];
           executionSummaryText?: string;
+          emailSubjectTemplate?: string;
           cpuAllocationPresent?: boolean;
           cpuAllocationEnabled?: boolean;
           teamPlatformCounts?: TeamPlatformCount[];
@@ -72,6 +74,7 @@ export default function UpdateWeeklyReportPage() {
           if (result.bkc) setBkc(result.bkc);
           setSuites((result.suites ?? DEFAULT_WEEKLY_REPORT_SUITES).map((suiteName) => ({ id: createRowId(), suiteName })));
           setExecutionSummaryText(result.executionSummaryText ?? DEFAULT_EXECUTION_SUMMARY_TEXT);
+          setEmailSubjectTemplate(result.emailSubjectTemplate ?? "");
           setCpuAllocationPresent(result.cpuAllocationPresent !== false);
           setCpuAllocationEnabled(result.cpuAllocationEnabled !== false);
           setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
@@ -95,6 +98,10 @@ export default function UpdateWeeklyReportPage() {
   const save = async (event?: FormEvent<HTMLFormElement>): Promise<boolean> => {
     event?.preventDefault();
     if (formRef.current && !formRef.current.reportValidity()) return false;
+    if (!emailSubjectTemplate.includes("{{reportDay}}")) {
+      setError("Email subject must include {{reportDay}}.");
+      return false;
+    }
     setSaving(true);
     setError("");
     setSaved(false);
@@ -107,6 +114,7 @@ export default function UpdateWeeklyReportPage() {
           bkc,
           suites: suites.map((suite) => suite.suiteName),
           executionSummaryText,
+          emailSubjectTemplate,
           cpuAllocationPresent,
           cpuAllocationEnabled,
           teamPlatformCounts: teamPlatformCounts.map((row) => ({ team: row.team, x1: Number(row.x1), x4: Number(row.x4), extraCounts: row.extraCounts.map(Number) })),
@@ -123,6 +131,7 @@ export default function UpdateWeeklyReportPage() {
         bkc?: string;
         suites?: string[];
         executionSummaryText?: string;
+        emailSubjectTemplate?: string;
         cpuAllocationPresent?: boolean;
         cpuAllocationEnabled?: boolean;
         teamPlatformCounts?: TeamPlatformCount[];
@@ -139,6 +148,7 @@ export default function UpdateWeeklyReportPage() {
       setBkc(result.bkc ?? bkc.trim());
       setSuites((result.suites ?? suites.map((suite) => suite.suiteName.trim()).filter(Boolean)).map((suiteName) => ({ id: createRowId(), suiteName })));
       setExecutionSummaryText(result.executionSummaryText ?? executionSummaryText.trim());
+      setEmailSubjectTemplate(result.emailSubjectTemplate ?? emailSubjectTemplate.trim());
       setCpuAllocationPresent(result.cpuAllocationPresent !== false);
       setCpuAllocationEnabled(result.cpuAllocationEnabled !== false);
       setCpuColumns((result.cpuColumns ?? []).map((label) => ({ id: createRowId(), label })));
@@ -282,6 +292,11 @@ export default function UpdateWeeklyReportPage() {
           <p className="max-w-3xl pb-2 text-xs leading-5 text-[var(--text-muted)]">Report Setup (BKC and HSDES source) and Report Links are shared. Suites, summary notes, allocation, and custom tables below belong to the selected cycle.</p>
         </div>
         {(moveStatus || error) && <p role={error ? "alert" : "status"} className={`text-sm ${error ? "text-red-600" : "text-[var(--text-muted)]"}`}>{error || moveStatus}</p>}
+        <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5">
+          <label htmlFor="weekly-report-email-subject" className="block text-sm font-semibold text-[var(--text)]">Email subject</label>
+          <input id="weekly-report-email-subject" required maxLength={180} value={emailSubjectTemplate} onChange={(event) => { setEmailSubjectTemplate(event.target.value); setSaved(false); }} className="mt-2 h-10 w-full max-w-4xl rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 text-sm text-[var(--text)]" />
+          <p className="mt-2 text-xs text-[var(--text-muted)]">Use {"{{reportDay}}"} for the report day, for example WW47.2. The attachment uses the same name.</p>
+        </section>
         <div className="grid items-start gap-4 lg:grid-cols-2">
         <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="weekly-report-setup-heading">
           <h2 id="weekly-report-setup-heading" className="text-base font-semibold text-[var(--text)]">Report setup</h2>

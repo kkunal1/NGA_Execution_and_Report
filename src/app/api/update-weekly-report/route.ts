@@ -22,7 +22,7 @@ export async function PUT(req: Request) {
   const denied = await authorizeWeeklyReportFeature(req, "weeklyReportUpdate");
   if (denied) return denied;
   try {
-    const body = (await req.json()) as { cycleId?: unknown; bkc?: unknown; suites?: unknown; executionSummaryText?: unknown; cpuAllocationPresent?: unknown; cpuAllocationEnabled?: unknown; teamPlatformCounts?: unknown; cpuColumns?: unknown; cpuBaseLabels?: unknown; cpuBreakdownTitle?: unknown; hsdesLink?: unknown; links?: unknown; customTables?: unknown };
+    const body = (await req.json()) as { cycleId?: unknown; bkc?: unknown; suites?: unknown; executionSummaryText?: unknown; emailSubjectTemplate?: unknown; cpuAllocationPresent?: unknown; cpuAllocationEnabled?: unknown; teamPlatformCounts?: unknown; cpuColumns?: unknown; cpuBaseLabels?: unknown; cpuBreakdownTitle?: unknown; hsdesLink?: unknown; links?: unknown; customTables?: unknown };
     const cycleId = typeof body.cycleId === "string" ? body.cycleId : "b2";
     const cycles = await listWeeklyReportCycles();
     if (!cycles.some((cycle) => cycle.id === cycleId)) {
@@ -41,7 +41,7 @@ export async function PUT(req: Request) {
     if (!bkc || !suites || executionSummaryText === null || typeof body.cpuAllocationEnabled !== "boolean" || !cpuColumns || !cpuBaseLabels || !cpuBreakdownTitle || !teamPlatformCounts || !hsdesLink || !links || (body.customTables !== undefined && !customTables)) {
       return NextResponse.json({ error: "Enter a valid BKC, one to 20 unique NGAi suites, execution summary text under 10,000 characters, CPU breakdown title, HSDES query link, report links, and valid team counts." }, { status: 400 });
     }
-    const settings = await saveWeeklyReportSettings(bkc, teamPlatformCounts, hsdesLink, links, cpuColumns, cpuBreakdownTitle, cpuBaseLabels, customTables, suites, executionSummaryText, body.cpuAllocationEnabled, cycleId, body.cpuAllocationPresent ?? true);
+    const settings = await saveWeeklyReportSettings(bkc, teamPlatformCounts, hsdesLink, links, cpuColumns, cpuBreakdownTitle, cpuBaseLabels, customTables, suites, executionSummaryText, body.cpuAllocationEnabled, cycleId, body.cpuAllocationPresent ?? true, body.emailSubjectTemplate);
     return NextResponse.json({ ...settings, cycleId, cycles });
   } catch (error) {
     return NextResponse.json(

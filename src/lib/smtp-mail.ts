@@ -15,7 +15,7 @@ export function parseEmailAddressList(value: string, fieldName: string, required
   return addresses;
 }
 
-export async function sendWeeklySmtpReport(senderEmail: string, password: string, recipientInput: string, ccInput: string, report: WeeklyReport) {
+export async function sendWeeklySmtpReport(senderEmail: string, password: string, recipientInput: string, ccInput: string, report: WeeklyReport, subjectTemplate?: string) {
   const sender = senderEmail.trim();
   const host = process.env.MAIL_SMTP_HOST?.trim() || "SMTPAUTH.INTEL.COM";
   const port = Number(process.env.MAIL_SMTP_PORT || 587);
@@ -27,8 +27,8 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
 
   const from = report.from.slice(0, 10);
   const toDate = report.to.slice(0, 10);
-  const subject = weeklyReportEmailSubject(report);
-  const filename = weeklyReportEmailFilename(report);
+  const subject = weeklyReportEmailSubject(report, subjectTemplate);
+  const filename = weeklyReportEmailFilename(report, subjectTemplate);
   const attempted = report.latestPassed + report.latestFailed + report.latestRerunPendingRunning;
   const reportHtml = renderWeeklyReportEmailHtml(report);
   const emailBodyHtml = renderWeeklyReportEmailHtml(report, { showYetToAttempt: false });

@@ -35,8 +35,187 @@ import { normalizeExecutionSummaryText, normalizeWeeklyReportSuites } from "../s
 import { isDailyReportDate, isSavedReportKey, isWorkWeekKey, makeCycleReportKey, parseCycleReportKey, withFailureProgress } from "../src/lib/saved-weekly-reports.ts";
 import { validateDataBackup } from "../src/lib/data-backup.ts";
 import { isExecutionTabId, isValidExecutionMenuOrder, normalizeExecutionMenuOrder, normalizeExecutionTabName, normalizeExecutionTabSuites } from "../src/lib/execution-tabs.ts";
+import { aggregateExecutionData, executionHistoryUrl, plannedConfigurationsUrl, summarizePlannedConfigurations } from "../src/lib/execution-data.ts";
+import { baseExecutionConfigName, categorizeExecutionAttempt, formatExecutionCategoryCounts, formatExecutionDays, groupDomainExecutionCategories, groupExecutionSystemsByConfig } from "../src/lib/execution-data-view.ts";
+import { buildExecutionDataHtml, executionDataHtmlFilename } from "../src/lib/execution-data-export.ts";
 
 const encryptionKey = Buffer.alloc(32, 7);
+const historyRun = (testRunId, testLineId, state, rerunIndex, stationId, stationName, start, end) => ({ testRunId, testLineId, state, rerunIndex, stationId, station: { stationName, config: stationId ? { configName: `Config ${stationId}` } : null, system: stationId ? [{ systemId: stationId, systemName: stationName }] : [] }, testLine: { testLineName: "Test A" }, validationGroup: { testGroupName: "pv_security" }, testStartDateTime: start, testEndDateTime: end });
+const historyRuns = [
+  { suite: "B0_P1", record: historyRun("run-1", "line-1", "Failed", 0, "station-1", "System A", "2026-11-20T01:00:00Z", "2026-11-20T02:00:00Z") },
+  { suite: "B0_P1", record: historyRun("run-2", "line-1", "Passed", 1, "station-2", "System B", "2026-11-20T03:00:00Z", "2026-11-20T03:30:00Z") },
+  { suite: "B0_P1", record: historyRun("run-3", "line-1", "Running", 2, "station-1", "System A", "2026-11-20T04:00:00Z", null) },
+  { suite: "B0_P1", record: historyRun("pending", "line-1", "PendingRunning", 3, null, null, null, null) },
+  { suite: "B0_P2", record: historyRun("run-2", "line-1", "Passed", 1, "station-2", "System B", "2026-11-20T03:00:00Z", "2026-11-20T03:30:00Z") },
+  { suite: "B0_P2", record: historyRun("run-4", "line-2", "Failed", 0, null, null, "2026-11-20T05:00:00Z", "2026-11-20T04:00:00Z") },
+];
+const history = aggregateExecutionData(historyRuns);
+assert.equal(history.totalTests, 2);
+assert.equal(history.totalAttempts, 4, "distinct started run IDs count all attempts, not pending or duplicate records");
+assert.equal(history.domains[0].tests[0].attempts.length, 3, "failed, passed, and running attempts are retained per test line");
+assert.equal(history.totalSeconds, 5400, "only valid completed run durations contribute");
+assert.equal(history.missingDurations, 2);
+assert.equal(history.systems.length, 2, "systems are deduplicated by station ID");
+assert.equal(history.unknownStationAttempts, 1);
+assert.equal(history.unknownSystemAttempts, 1);
+const categorizedHistory = groupDomainExecutionCategories(history.domains[0]);
+assert.equal(categorizedHistory.nga.reduce((count, item) => count + item.attempts.length, 0), 3);
+assert.equal(categorizedHistory.manualUnverified.reduce((count, item) => count + item.attempts.length, 0), 1);
+assert.equal(categorizedHistory.unknown.length, 0);
+const mixedTestHistory = aggregateExecutionData([
+  historyRuns[0],
+  { suite: "B0_P1", record: { ...historyRuns[0].record, testRunId: "manual-run", stationId: null, station: null } },
+  { suite: "B0_P1", record: { ...historyRuns[0].record, testRunId: "unmapped-run", stationId: "station-unknown", station: { stationName: "Station unknown", system: [] } } },
+]);
+const mixedCategories = groupDomainExecutionCategories(mixedTestHistory.domains[0]);
+assert.equal(mixedCategories.nga[0].test.id, "line-1");
+assert.equal(mixedCategories.manualUnverified[0].test.id, "line-1", "a test with both execution types appears in both categories");
+assert.equal(mixedCategories.unknown[0].test.id, "line-1");
+assert.deepEqual(mixedCategories.nga[0].attempts.map((attempt) => attempt.runId), ["run-1"]);
+assert.deepEqual(mixedCategories.manualUnverified[0].attempts.map((attempt) => attempt.runId), ["manual-run"]);
+assert.deepEqual(mixedCategories.unknown[0].attempts.map((attempt) => attempt.runId), ["unmapped-run"]);
+assert.equal(categorizeExecutionAttempt(mixedCategories.unknown[0].attempts[0]), "unknown", "a station without a mapped system is not classified as manual");
+assert.equal(formatExecutionCategoryCounts(mixedCategories.unknown), "1 test | 1 run");
+assert.equal(formatExecutionCategoryCounts([]), "0 tests | 0 runs");
+const mixedExport = buildExecutionDataHtml(mixedTestHistory, "B0 Execution", ["B0_P1"]);
+assert.ok(mixedExport.includes("Executed on NGA"));
+assert.ok(mixedExport.includes("Manually Executed (unverified)"));
+assert.ok(mixedExport.includes("System mapping unavailable"));
+assert.ok(mixedExport.includes("run-1"));
+assert.ok(mixedExport.includes("unmapped-run"));
+assert.ok(!mixedExport.includes("manual-run"), "manual section lists names only, without attempt details or time");
+assert.match(mixedExport, /1 execution attempt is listed under manual execution; system details are unavailable and individual execution times are not shown\./);
+const historyExport = buildExecutionDataHtml({ ...history, plannedConfigurations: { count: 25, missingTestLines: 0 } }, "B0 Execution", ["B0_P1", "B0_P2"]);
+assert.match(historyExport, /Test cycle: B0_P1; B0_P2/);
+assert.match(historyExport, /25 planned configurations/);
+assert.match(historyExport, /run-1/);
+assert.match(historyExport, /run-2/);
+assert.match(historyExport, /System A/);
+assert.match(historyExport, /Unavailable/);
+assert.ok(!historyExport.includes("planned base"));
+assert.equal(executionDataHtmlFilename("../../B0 / test"), "execution-data-B0_test.html");
+const unsafeExport = buildExecutionDataHtml({ ...history, warnings: ['<script>alert("x")</script>'] }, "<img src=x>", ["<suite>"]);
+assert.ok(!unsafeExport.includes('<script>alert("x")</script>'));
+assert.ok(unsafeExport.includes("&lt;script&gt;"));
+assert.ok(unsafeExport.includes("&lt;suite&gt;"));
+assert.equal(history.domains[0].tests[0].attempts[0].configName, "Config station-1");
+assert.equal(history.domains[0].tests[1].attempts[0].configName, null);
+const configGroups = groupExecutionSystemsByConfig(history);
+assert.deepEqual(configGroups.map((group) => [group.configName, group.systems.map((system) => system.name)]), [["Config station-1", ["System A"]], ["Config station-2", ["System B"]]], "systems are grouped by configuration and repeated reruns deduplicated");
+const configVariants = ["15017256707-Oak_Stream_Platform_1_DMR-PD013-611", "15017256707-Oak_Stream_Platform_1_DMR-PD013-611_MIV", "15017256707-Oak_Stream_Platform_1_DMR-PD013-611_PCT", "15017256707-Oak_Stream_Platform_1_DMR-PD013-611_Windows_security", "Other-PD013-1105_RESET", "Other-PD013-1105_Windows"];
+assert.deepEqual(configVariants.map(baseExecutionConfigName), [configVariants[0], configVariants[0], configVariants[0], configVariants[0], "Other-PD013-1105", "Other-PD013-1105"]);
+assert.equal(baseExecutionConfigName("Config_with_underscores"), "Config_with_underscores", "unrelated underscores are preserved");
+assert.equal(baseExecutionConfigName("Unknown configuration"), "Unknown configuration");
+const variantRecords = configVariants.map((configName, index) => ({ suite: "B0_P1", record: { ...historyRuns[index % 2].record, testRunId: `variant-${index}`, station: { ...historyRuns[index % 2].record.station, config: { configName } } } }));
+const variantGroups = groupExecutionSystemsByConfig(aggregateExecutionData(variantRecords));
+assert.equal(variantGroups.length, 2, "suffix variants merge into the two base configurations");
+assert.equal(variantGroups.find((group) => group.configName === configVariants[0]).systems.length, 2, "systems shared across suffixes are counted once");
+assert.equal(variantGroups.find((group) => group.configName === "Other-PD013-1105").systems.length, 2);
+assert.equal(formatExecutionDays(0), "0.00 days");
+assert.equal(formatExecutionDays(86400), "1.00 days");
+assert.equal(formatExecutionDays(5400), "0.06 days");
+const changedConfigHistory = aggregateExecutionData([{ suite: "B0_P1", record: historyRuns[0].record }, { suite: "B0_P1", record: { ...historyRuns[2].record, station: { ...historyRuns[2].record.station, config: { configName: "Another configuration" } } } }]);
+assert.equal(groupExecutionSystemsByConfig(changedConfigHistory).length, 2, "one system can appear in more than one observed configuration");
+const legacyHistory = structuredClone(history);
+for (const domain of legacyHistory.domains) for (const test of domain.tests) for (const attempt of test.attempts) delete attempt.configName;
+assert.equal(groupExecutionSystemsByConfig(legacyHistory)[0].configName, "Unknown configuration", "cached results without config remain usable");
+const ambiguousHistory = aggregateExecutionData([{ suite: "B0_P1", record: { ...historyRuns[0].record, station: { stationName: "Station", system: [{ systemId: "one", systemName: "System one" }, { systemId: "two", systemName: "System two" }] } } }]);
+assert.equal(ambiguousHistory.systems.length, 0, "ambiguous station mappings are not falsely attributed");
+assert.equal(ambiguousHistory.unknownSystemAttempts, 1);
+const historyUrl = executionHistoryUrl("B0_P1", 1000);
+assert.ok(!/latest/i.test(historyUrl.searchParams.get("$filter")));
+assert.match(historyUrl.searchParams.get("$filter"), /TestStartDateTime ne null/);
+assert.equal(historyUrl.searchParams.get("$skip"), "1000");
+assert.match(historyUrl.searchParams.get("$select"), /TestRunId/);
+assert.match(historyUrl.searchParams.get("$expand"), /System\(\$select=SystemId,SystemName\)/);
+assert.match(historyUrl.searchParams.get("$expand"), /Config\(\$select=ConfigName\)/);
+const plannedUrl = plannedConfigurationsUrl("Test's_suite", 1000);
+assert.equal(plannedUrl.pathname.endsWith("/TestLine"), true);
+assert.match(plannedUrl.searchParams.get("$filter"), /Test''s_suite/);
+assert.match(plannedUrl.searchParams.get("$expand"), /Config\(\$select=ConfigName\)/);
+assert.equal(plannedUrl.searchParams.get("$skip"), "1000");
+assert.deepEqual(summarizePlannedConfigurations([{ config: { configName: "Example-PD013-611" } }, { Config: { ConfigName: "EXAMPLE-PD013-611_MIV" } }, { config: { configName: "Example-PD013-1105_RESET" } }, { config: null }]), { count: 2, missingTestLines: 1 }, "planned config variants merge while missing mappings remain explicit");
+const historyTestDir = await mkdtemp(path.join(tmpdir(), "nga-execution-history-"));
+try {
+  execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+    import assert from "node:assert/strict";
+    import { createServer } from "node:http";
+    const queries = [];
+    let failPlanned = false;
+    const server = createServer((request, response) => {
+      const url = new URL(request.url, "http://127.0.0.1");
+      queries.push(url);
+      const filter = url.searchParams.get("$filter");
+      assert.ok(!/latest/i.test(filter));
+      const suite = filter.toLowerCase().includes("b0_p1") ? "p1" : "p2";
+      const skip = Number(url.searchParams.get("$skip") || 0);
+      const count = suite === "p1" ? 1001 : 1;
+      const start = skip;
+      const end = Math.min(skip + 1000, count);
+      if (url.pathname.endsWith("/TestLine")) {
+        if (failPlanned) { response.writeHead(503); response.end("Unavailable"); return; }
+        const value = Array.from({ length: end - start }, (_, offset) => ({
+          testLineId: suite + "-line-" + (start + offset),
+          config: suite === "p2" && offset === 0 ? null : { configName: suite === "p1" && (start + offset) % 2 ? "Base-PD013-611_MIV" : "Base-PD013-611" },
+        }));
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({ value, "@odata.count": count }));
+        return;
+      }
+      const value = Array.from({ length: end - start }, (_, offset) => ({
+        testRunId: suite + "-run-" + (start + offset), testLineId: suite + "-line",
+        state: (start + offset) % 2 ? "Passed" : "Failed", rerunIndex: start + offset,
+        testStartDateTime: "2026-11-20T01:00:00Z", testEndDateTime: "2026-11-20T01:01:00Z",
+        stationId: "station-1", station: { stationName: "Station A", config: { configName: "Config A" }, system: [{ systemId: "system-1", systemName: "System A" }] },
+        validationGroup: { testGroupName: "pv_security" }, testLine: { testLineName: suite + " test" },
+      }));
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ value, "@odata.count": count }));
+    });
+    await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
+    try {
+      process.env.NGAI_API_URL = "http://127.0.0.1:" + server.address().port + "/TestRunComposite";
+      process.env.NGA_DATA_DIR = ${JSON.stringify(historyTestDir)};
+      process.env.NO_PROXY = "127.0.0.1";
+      process.env.NGAI_PROXY_URL = "";
+      const { fetchExecutionHistory, fetchPlannedConfigurations } = await import("./src/lib/execution-data.ts");
+      const result = await fetchExecutionHistory(["B0_P1", "B0_P2"]);
+      assert.equal(result.totalTests, 2);
+      assert.equal(result.totalAttempts, 1002, "all pages and selected suites contribute historical runs");
+      assert.equal(result.systems.length, 1, "same station across suites counts once");
+      assert.equal(result.domains[0].tests[0].attempts[0].configName, "Config A", "station configuration is preserved per run");
+      assert.equal(result.totalSeconds, 60120);
+      assert.equal(queries.length, 3);
+      assert.equal(queries[1].searchParams.get("$skip"), "1000");
+      const planned = await fetchPlannedConfigurations(["B0_P1", "B0_P2"]);
+      assert.deepEqual(planned, { count: 1, missingTestLines: 1 }, "planned configs deduplicate across suites and pagination, including unrun test lines");
+      assert.equal(queries.length, 6);
+      assert.equal(queries[4].searchParams.get("$skip"), "1000");
+      const { createSessionToken, AUTH_COOKIE } = await import("./src/lib/auth.ts");
+      const { POST } = await import("./src/app/api/execution-data/route.ts");
+      const session = await createSessionToken("viewer", "execution-data-test");
+      const apiRequest = (body) => new Request("http://localhost/api/execution-data", { method: "POST", headers: { cookie: AUTH_COOKIE + "=" + session, "content-type": "application/json" }, body: JSON.stringify(body) });
+      const unauthorized = await POST(new Request("http://localhost/api/execution-data", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ cycleId: "b0" }) }));
+      assert.equal(unauthorized.status, 401);
+      const response = await POST(apiRequest({ cycleId: "b0" }));
+      assert.equal(response.status, 200);
+      const apiData = await response.json();
+      assert.equal(apiData.result.cycleName, "DMR AP1 PV B0 Execution");
+      assert.equal(apiData.result.suiteNames.length, 2);
+      assert.deepEqual(apiData.result.plannedConfigurations, { count: 1, missingTestLines: 1 });
+      failPlanned = true;
+      const partialResponse = await POST(apiRequest({ cycleId: "b0" }));
+      assert.equal(partialResponse.status, 200, "history remains available when the planned query fails");
+      const partialData = await partialResponse.json();
+      assert.equal(partialData.result.plannedConfigurations, null);
+      assert.equal(partialData.result.totalAttempts, 1002);
+      const invalid = await POST(apiRequest({ cycleId: "b0", suiteName: "unconfigured suite" }));
+      assert.equal(invalid.status, 400);
+    } finally { await new Promise(resolve => server.close(resolve)); }
+  `], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+} finally {
+  await rm(historyTestDir, { recursive: true, force: true });
+}
 const failureSnapshot = (date, counts, suites = ["suite"]) => ({
   to: getISTDayRange(date).to.toISOString(),
   generatedAt: getISTDayRange(date).to.toISOString(),
@@ -626,6 +805,44 @@ execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", 
   assert.equal(message.attachments[0].filename, "AP2 Status WW47.2.html");
   assert.equal(result.filename, message.attachments[0].filename);
   assert.ok(message.attachments[0].content.includes("<html"));
+`], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
+  import { createRequire } from "node:module";
+  import assert from "node:assert/strict";
+  const require = createRequire(import.meta.url);
+  const nodemailer = require("nodemailer");
+  let message, closed = false, calls = 0;
+  nodemailer.createTransport = () => ({ sendMail: async data => { calls++; message = data; return { accepted: ["recipient@example.test"] }; }, close: () => { closed = true; } });
+  const { sendTemporaryTestEmail } = await import("./src/lib/smtp-mail.ts");
+  const { renderTemporaryTestEmail, TEMPORARY_EMAIL_SUBJECT, TEMPORARY_EMAIL_FILENAME } = await import("./src/lib/temporary-test-email.ts");
+  const result = await sendTemporaryTestEmail("sender@example.test", "test-password", "recipient@example.test");
+  assert.equal(message.from, "sender@example.test");
+  assert.equal(message.to, "recipient@example.test");
+  assert.equal(message.cc, undefined, "test mail has no automatic CC");
+  assert.equal(message.bcc, undefined);
+  assert.ok(message.subject.startsWith("[TEST]"));
+  assert.equal(message.subject, TEMPORARY_EMAIL_SUBJECT);
+  assert.equal(message.html, renderTemporaryTestEmail());
+  assert.equal(message.attachments[0].content, message.html, "attachment and email body show the same dummy design");
+  assert.equal(message.attachments[0].filename, TEMPORARY_EMAIL_FILENAME);
+  assert.equal(result.filename, TEMPORARY_EMAIL_FILENAME);
+  assert.ok(message.html.includes("background:#b8d7ed"));
+  assert.ok(message.html.includes("background:#fff1cf"));
+  assert.ok(!message.html.includes("max-width:980px"), "test email must use the available width");
+  assert.ok(message.html.includes('<tr><td style="padding:0"><table role="presentation" width="100%"'), "the email container has no centered outer gutter");
+  const sectionCount = (message.html.match(/bgcolor="#d1e7f7" style="border-collapse:collapse/g) || []).length;
+  assert.equal(sectionCount, 10);
+  assert.equal((message.html.match(/height="26" style="height:26px/g) || []).length, sectionCount, "each section has an Outlook-compatible gap before its title");
+  assert.equal((message.html.match(/height="10" style="height:10px/g) || []).length, sectionCount, "each section has a gap between title and content");
+  assert.ok(message.html.includes("mso-line-height-rule:exactly"));
+  assert.ok(message.html.includes('bgcolor="#b8d7ed"'));
+  assert.ok(message.html.includes('bgcolor="#fff1cf"'));
+  assert.ok(message.html.includes("TEST EMAIL - illustrative data only."));
+  assert.equal(closed, true);
+  await assert.rejects(() => sendTemporaryTestEmail("sender@example.test", "test-password", "first@example.test,second@example.test"), /exactly one/);
+  assert.equal(calls, 1, "invalid recipients cannot trigger delivery");
+  await assert.rejects(() => sendTemporaryTestEmail("sender@example.test", "", "recipient@example.test"), /password/);
+  assert.equal(calls, 1);
 `], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 assert.equal(weeklyReport.runningBkc, "BKC#WW41");
 assert.deepEqual(weeklyReport.cpuBaseLabels, DEFAULT_CPU_BASE_LABELS);

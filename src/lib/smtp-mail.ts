@@ -1,6 +1,7 @@
 import { createTransport } from "nodemailer";
 import type { WeeklyReport } from "./weekly-report";
 import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSignatureText, weeklyReportEmailSubject } from "./weekly-report-email";
+import { renderTemporaryTestEmail, TEMPORARY_EMAIL_FILENAME, TEMPORARY_EMAIL_SUBJECT } from "./temporary-test-email";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const REPORT_COPY_EMAIL = "krishna.kunal@intel.com";
@@ -60,6 +61,38 @@ export async function sendWeeklySmtpReport(senderEmail: string, password: string
     });
     if (!result.accepted.length) throw new Error("The SMTP server did not accept the message for delivery.");
     return { sentTo: recipients.join(", "), filename };
+  } finally {
+    transporter.close();
+  }
+}
+
+export async function sendTemporaryTestEmail(senderEmail: string, password: string, recipientInput: string) {
+  const sender = senderEmail.trim();
+  const recipients = parseEmailAddressList(recipientInput, "recipient", true);
+  const host = process.env.MAIL_SMTP_HOST?.trim() || "SMTPAUTH.INTEL.COM";
+  const port = Number(process.env.MAIL_SMTP_PORT || 587);
+  if (!EMAIL_PATTERN.test(sender)) throw new Error("Enter a valid sender email address.");
+  if (!password.trim()) throw new Error("Enter your SMTP password.");
+  if (recipients.length !== 1) throw new Error("Enter exactly one test recipient.");
+  if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("MAIL_SMTP_PORT must be a valid port number.");
+  const html = renderTemporaryTestEmail();
+  const transporter = createTransport({
+    host, port, secure: false, requireTLS: true,
+    auth: { user: sender, pass: password },
+    tls: { minVersion: "TLSv1.2" },
+    connectionTimeout: 20_000, greetingTimeout: 20_000, socketTimeout: 60_000,
+  });
+  try {
+    const result = await transporter.sendMail({
+      from: sender,
+      to: recipients[0],
+      subject: TEMPORARY_EMAIL_SUBJECT,
+      text: "TEST EMAIL - illustrative dummy report data only. The formatted report is included below and attached.",
+      html,
+      attachments: [{ filename: TEMPORARY_EMAIL_FILENAME, content: html, contentType: "text/html; charset=utf-8" }],
+    });
+    if (!result.accepted.length) throw new Error("The SMTP server did not accept the test message.");
+    return { sentTo: recipients[0], filename: TEMPORARY_EMAIL_FILENAME };
   } finally {
     transporter.close();
   }

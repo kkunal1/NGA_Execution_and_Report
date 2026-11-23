@@ -15,6 +15,7 @@ const NAV = [
   { href: "/pool-systems", label: "All Execution Systems", icon: Server, visibilityKey: "poolSystems" as const },
   { href: "/weekly-report", label: "Weekly Report", icon: CalendarDays, visibilityKey: "weeklyReport" as const },
   { href: "/execution-time", label: "Check Execution Time", icon: Timer, visibilityKey: "executionTime" as const },
+  { href: "/execution-data", label: "Check Execution Data", icon: Boxes, visibilityKey: "executionTime" as const },
   { href: "/settings", label: "Settings", icon: SettingsIcon, adminOnly: true },
 ];
 
@@ -212,7 +213,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       (pathname === "/update-weekly-report" && !menuVisibility.weeklyReportUpdate) ||
       (pathname === "/weekly-report/send-email" && !menuVisibility.weeklyReportEmail)
     );
-    if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || disabledWeeklyFeature)) {
+    if (role === "viewer" && (pathname === "/settings" || pathname.startsWith("/settings/") || pathname === "/new-job" || pathname === "/weekly-report/test-email-design" || disabledWeeklyFeature)) {
       router.replace("/");
     }
   }, [menuVisibility, menuVisibilityReady, pathname, role, router]);
@@ -312,8 +313,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   }, [role]);
 
   const viewerWeeklyFeaturePending = role === "viewer" && !menuVisibilityReady &&
-    (pathname === "/update-weekly-report" || pathname === "/weekly-report/send-email");
+    (pathname === "/update-weekly-report" || pathname === "/weekly-report/send-email" || pathname === "/weekly-report/test-email-design");
   const viewerWeeklyFeatureDenied = role === "viewer" && menuVisibilityReady && (
+    pathname === "/weekly-report/test-email-design" ||
     (pathname === "/update-weekly-report" && !menuVisibility.weeklyReportUpdate) ||
     (pathname === "/weekly-report/send-email" && !menuVisibility.weeklyReportEmail)
   );
@@ -451,6 +453,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       </Link>}
                       {(role === "admin" || menuVisibility.weeklyReportEmail) && <Link href="/weekly-report/send-email" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/weekly-report/send-email" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
                         <Send className="h-3.5 w-3.5 shrink-0" /><span>Send Report Over Email</span>
+                      </Link>}
+                      {role === "admin" && <Link href="/weekly-report/test-email-design" className={`flex items-center gap-2 rounded-md px-3 py-2 text-xs transition ${pathname === "/weekly-report/test-email-design" ? "bg-white/10 text-white" : "text-[var(--sidebar-text)] hover:bg-white/10 hover:text-white"}`}>
+                        <Send className="h-3.5 w-3.5 shrink-0" /><span>Test Email Design (Temporary)</span>
                       </Link>}
                     </div>
                   )}

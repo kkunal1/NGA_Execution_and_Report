@@ -84,16 +84,25 @@ assert.ok(mixedExport.includes("System mapping unavailable"));
 assert.ok(mixedExport.includes("run-1"));
 assert.ok(mixedExport.includes("unmapped-run"));
 assert.ok(!mixedExport.includes("manual-run"), "manual section lists names only, without attempt details or time");
-assert.match(mixedExport, /1 execution attempt is listed under manual execution; system details are unavailable and individual execution times are not shown\./);
+assert.match(mixedExport, /<strong>1<\/strong> execution attempt is listed under manual execution; system details are unavailable and individual execution times are not shown\./);
+assert.ok(!mixedExport.includes("Total execution days"));
+assert.match(mixedExport, /Completed runs contributed <strong>[\d,]+h \d+m \d+s<\/strong> of cumulative execution time\./);
 const historyExport = buildExecutionDataHtml({ ...history, plannedConfigurations: { count: 25, missingTestLines: 0 } }, "B0 Execution", ["B0_P1", "B0_P2"]);
-assert.match(historyExport, /Test cycle: B0_P1; B0_P2/);
-assert.match(historyExport, /25 planned configurations/);
+assert.match(historyExport, /<strong>Test cycle:<\/strong> B0_P1; B0_P2/);
+assert.ok(historyExport.includes("<strong>Test cycle:</strong> B0_P1; B0_P2."));
+assert.ok(historyExport.includes("<strong>25</strong> planned configurations"));
+assert.ok(historyExport.includes("<strong>4</strong> execution attempts were recorded across <strong>2</strong> test lines"));
+assert.match(historyExport, /<strong>25<\/strong> planned configurations/);
 assert.match(historyExport, /run-1/);
 assert.match(historyExport, /run-2/);
 assert.match(historyExport, /System A/);
 assert.match(historyExport, /Unavailable/);
 assert.ok(!historyExport.includes("planned base"));
-assert.equal(executionDataHtmlFilename("../../B0 / test"), "execution-data-B0_test.html");
+assert.equal(executionDataHtmlFilename("../../B0 / test", new Date("2026-11-23T10:20:30.456Z")), "execution-data-B0_test-2026-11-23T10-20-30-456Z.html");
+assert.notEqual(
+  executionDataHtmlFilename("B0", new Date("2026-11-23T10:20:30.456Z")),
+  executionDataHtmlFilename("B0", new Date("2026-11-23T10:20:30.457Z")),
+);
 const unsafeExport = buildExecutionDataHtml({ ...history, warnings: ['<script>alert("x")</script>'] }, "<img src=x>", ["<suite>"]);
 assert.ok(!unsafeExport.includes('<script>alert("x")</script>'));
 assert.ok(unsafeExport.includes("&lt;script&gt;"));

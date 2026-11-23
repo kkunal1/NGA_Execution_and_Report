@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { ChevronRight, Download, Search } from "lucide-react";
 import type { ExecutionDataResult } from "@/lib/execution-data";
 import { formatValidationGroupName } from "@/lib/normalize";
-import { formatExecutionCategoryCounts, formatExecutionDays, groupDomainExecutionCategories, groupExecutionSystemsByConfig, type ExecutionCategoryTest } from "@/lib/execution-data-view";
+import { formatExecutionCategoryCounts, groupDomainExecutionCategories, groupExecutionSystemsByConfig, type ExecutionCategoryTest } from "@/lib/execution-data-view";
 import { buildExecutionDataHtml, executionDataHtmlFilename } from "@/lib/execution-data-export";
 
 type Cycle = { id: string; name: string; suiteNames: string[] };
@@ -161,8 +161,8 @@ export default function ExecutionDataPage() {
     {result && <div className="mt-5">
       <h2 className="break-all text-base font-semibold">{resultLabel}</h2>
       <p className="mt-1 text-xs text-[var(--text-muted)]">All started runs, including reruns and triage runs. Time is summed across completed runs, so parallel execution overlaps.</p>
-      <div className="mt-4 grid grid-cols-2 gap-3 border-y border-[var(--border)] py-4 sm:grid-cols-3 lg:grid-cols-5">
-        {[["Test lines", result.totalTests.toLocaleString()], ["Run attempts", result.totalAttempts.toLocaleString()], ["Known systems", result.systems.length.toLocaleString()], ["Total execution time", duration(result.totalSeconds)], ["Total execution days", formatExecutionDays(result.totalSeconds)]].map(([label, amount]) => <div key={label} className="min-w-0 border-l-2 border-[var(--accent)] pl-3"><p className="text-xs text-[var(--text-muted)]">{label}</p><p className="mt-1 break-words text-lg font-semibold tabular-nums">{amount}</p></div>)}
+      <div className="mt-4 grid grid-cols-2 gap-3 border-y border-[var(--border)] py-4 lg:grid-cols-4">
+        {[["Test lines", result.totalTests.toLocaleString()], ["Run attempts", result.totalAttempts.toLocaleString()], ["Known systems", result.systems.length.toLocaleString()], ["Total execution time", duration(result.totalSeconds)]].map(([label, amount]) => <div key={label} className="min-w-0 border-l-2 border-[var(--accent)] pl-3"><p className="text-xs text-[var(--text-muted)]">{label}</p><p className="mt-1 break-words text-lg font-semibold tabular-nums">{amount}</p></div>)}
       </div>
       <section aria-labelledby="execution-overview-heading" className="mt-4 border-l-2 border-[var(--accent)] bg-[var(--surface)] px-4 py-3">
         <h3 id="execution-overview-heading" className="text-sm font-semibold">Execution overview</h3>
@@ -172,7 +172,7 @@ export default function ExecutionDataPage() {
           {result.totalAttempts ? <>
           <li><strong className="text-[var(--text)]">{result.totalAttempts.toLocaleString()}</strong> {result.totalAttempts === 1 ? "execution attempt was" : "execution attempts were"} recorded across <strong className="text-[var(--text)]">{result.totalTests.toLocaleString()}</strong> {result.totalTests === 1 ? "test line" : "test lines"}, including reruns and triage runs.</li>
           <li>{result.systems.length ? <><strong className="text-[var(--text)]">{result.systems.length.toLocaleString()}</strong> distinct {result.systems.length === 1 ? "system was" : "systems were"} identified{knownConfigCount ? <> across <strong className="text-[var(--text)]">{knownConfigCount.toLocaleString()}</strong> known {knownConfigCount === 1 ? "configuration" : "configurations"}</> : "; configuration details are unavailable"}.</> : "No systems could be identified from the available mappings."}</li>
-          <li>Completed runs contributed <strong className="text-[var(--text)]">{duration(result.totalSeconds)}</strong> ({formatExecutionDays(result.totalSeconds)}) of cumulative execution time. Parallel runs may overlap.</li>
+          <li>Completed runs contributed <strong className="text-[var(--text)]">{duration(result.totalSeconds)}</strong> of cumulative execution time. Parallel runs may overlap.</li>
           {busiestDomain && busiestDomain.attempts > 0 && <li><strong className="text-[var(--text)]">{formatValidationGroupName(busiestDomain.name)}</strong> had the most recorded attempts ({busiestDomain.attempts.toLocaleString()}).</li>}
           <li><strong className="text-[var(--text)]">{manualAttempts.toLocaleString()}</strong> {manualAttempts === 1 ? "execution attempt is" : "execution attempts are"} listed under manual execution; system details are unavailable and individual execution times are not shown.</li>
           {unmappedAttempts > 0 && <li>{unmappedAttempts.toLocaleString()} {unmappedAttempts === 1 ? "attempt has" : "attempts have"} station information but no unique system mapping.</li>}

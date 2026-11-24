@@ -2,8 +2,6 @@
 
 This guide explains how to move this app and its saved data from one Windows computer to another. It covers saved Weekly Reports, run JSON files, Settings, admin accounts, login audit, and the saved NGAi token.
 
-Only this documentation file is being added for this guide. No application source code or settings are changed by these instructions.
-
 ## Important: Copying the Project vs. Cloning from Git
 
 Copying the complete project folder with File Explorer or another file-copy tool will copy the data folders and `.env.local` if they are included in the copy.

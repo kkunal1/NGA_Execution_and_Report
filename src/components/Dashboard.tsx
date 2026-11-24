@@ -141,6 +141,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
   const [testDetailsOpen, setTestDetailsOpen] = useState(false);
   const [testDetailsKind, setTestDetailsKind] = useState<"not-run" | "in-progress">("not-run");
   const [notRunTab, setNotRunTab] = useState<"not-run" | "yet-to-attempt">("not-run");
+  const [notRunDomainFilter, setNotRunDomainFilter] = useState("");
   const notRunDialogRef = useRef<HTMLDialogElement>(null);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
   const [dashboardSettings, setDashboardSettings] = useState({ showManualAborts: false });
@@ -544,13 +545,24 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
   const blockedRatePct = s ? pctOf(s.blocked, s.tests) : 0;
   const notRunRows = visibleRows.filter((row) => row.bucket === "Not Run");
   const yetToAttemptRows = notRunRows.filter((row) => row.rerunIndex == null || row.rerunIndex <= 0);
+  const notRunDomainOptions = [...new Set(notRunRows.map((row) => row.domain?.trim() ? `domain:${row.domain.trim()}` : "unmapped"))]
+    .sort((left, right) => {
+      const leftLabel = left === "unmapped" ? "Unmapped" : formatValidationGroupName(left.slice("domain:".length));
+      const rightLabel = right === "unmapped" ? "Unmapped" : formatValidationGroupName(right.slice("domain:".length));
+      return leftLabel.localeCompare(rightLabel);
+    });
+  const matchesNotRunDomain = (row: TestRow) => !notRunDomainFilter || (
+    notRunDomainFilter === "unmapped" ? !row.domain?.trim() : row.domain?.trim() === notRunDomainFilter.slice("domain:".length)
+  );
+  const filteredNotRunRows = notRunRows.filter(matchesNotRunDomain);
+  const filteredYetToAttemptRows = yetToAttemptRows.filter(matchesNotRunDomain);
   const yetToAttemptCount = yetToAttemptRows.length;
   const yetToAttemptPct = s ? pctOf(yetToAttemptCount, s.tests) : 0;
   const inProgressDetails = testDetailsKind === "in-progress";
   const testDetailsTitle = inProgressDetails ? "In Progress Tests" : "Not Run Tests";
   const testDetailsRows = inProgressDetails
     ? visibleRows.filter((row) => row.bucket === "In Progress")
-    : notRunTab === "not-run" ? notRunRows : yetToAttemptRows;
+    : notRunTab === "not-run" ? filteredNotRunRows : filteredYetToAttemptRows;
 
   const setLast7Days = () => {
     const to = new Date();
@@ -866,7 +878,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
             <Card label="Failed" value={s.failed} detail={`${failRatePct}%`} tone="text-[var(--card-fail-label)]" icon={XCircle} iconTone="bg-red-100 text-red-600" cardTone="bg-[var(--card-fail-bg)] border-[var(--card-fail-border)]" />
             <Card label="Blocked" value={s.blocked} detail={`${blockedRatePct}%`} tone="text-[var(--card-blocked-label)]" icon={ShieldBan} iconTone="bg-amber-100 text-amber-600" cardTone="bg-[var(--card-blocked-bg)] border-[var(--card-blocked-border)]" />
             <Card label="In progress" value={s.inProgress} tone="text-[var(--card-progress-label)]" icon={Clock} iconTone="bg-sky-100 text-sky-600" cardTone="bg-[var(--card-progress-bg)] border-[var(--card-progress-border)]" info="Click to view in-progress test details." onClick={() => { setTestDetailsKind("in-progress"); setTestDetailsOpen(true); }} />
-            <Card label="Not run" value={s.notRun} detail={`Yet to attempt: ${yetToAttemptCount} (${yetToAttemptPct}%)`} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" info="Click to view Not Run and yet-to-attempt test details." onClick={() => { setTestDetailsKind("not-run"); setNotRunTab("not-run"); setTestDetailsOpen(true); }} />
+            <Card label="Not run" value={s.notRun} detail={`Yet to attempt: ${yetToAttemptCount} (${yetToAttemptPct}%)`} tone="text-[var(--text-muted)]" icon={PlayCircle} iconTone="bg-slate-200 text-slate-600" cardTone="bg-[var(--surface-alt)] border-[var(--border)]" info="Click to view Not Run and yet-to-attempt test details." onClick={() => { setTestDetailsKind("not-run"); setNotRunTab("not-run"); setNotRunDomainFilter(""); setTestDetailsOpen(true); }} />
             {s.other > 0 && <Card label="Other" value={s.other} tone="text-[var(--card-violet-label)]" cardTone="bg-[var(--card-violet-bg)] border-[var(--card-violet-border)]" />}
           </section>
 
@@ -894,8 +906,8 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
               </header>
               {!inProgressDetails && <div role="tablist" aria-label="Not Run test lists" className="flex shrink-0 gap-1 border-b border-[var(--border)] px-4 pt-2">
                 {([
-                  ["not-run", `Not Run (${notRunRows.length})`],
-                  ["yet-to-attempt", `Yet to attempt (${yetToAttemptCount})`],
+                  ["not-run", `Not Run (${filteredNotRunRows.length})`],
+                  ["yet-to-attempt", `Yet to attempt (${filteredYetToAttemptRows.length})`],
                 ] as const).map(([tab, label]) => (
                   <button
                     key={tab}
@@ -916,6 +928,15 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
                     className={`min-h-10 border-b-2 px-3 py-2 text-sm font-medium ${notRunTab === tab ? "border-[var(--accent)] text-[var(--accent)]" : "border-transparent text-[var(--text-muted)] hover:text-[var(--text)]"}`}
                   >{label}</button>
                 ))}
+              </div>}
+              {!inProgressDetails && <div className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--border)] px-4 py-2">
+                <label className="flex items-center gap-2 text-xs font-medium text-[var(--text-muted)]">Domain
+                  <select value={notRunDomainFilter} onChange={(event) => setNotRunDomainFilter(event.target.value)} aria-label="Filter Not Run tests by domain" className="h-9 max-w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)]">
+                    <option value="">All domains</option>
+                    {notRunDomainOptions.map((option) => <option key={option} value={option}>{option === "unmapped" ? "Unmapped" : formatValidationGroupName(option.slice("domain:".length))}</option>)}
+                  </select>
+                </label>
+                <span className="text-xs tabular-nums text-[var(--text-muted)]" role="status">Showing {testDetailsRows.length} {testDetailsRows.length === 1 ? "testline" : "testlines"}</span>
               </div>}
               <div id="not-run-test-panel" role={inProgressDetails ? "region" : "tabpanel"} aria-labelledby={inProgressDetails ? "not-run-dialog-title" : `not-run-tab-${notRunTab}`} tabIndex={0} className="min-h-0 overflow-auto overscroll-contain">
                 <table className="w-full min-w-[560px] border-collapse text-left text-sm">

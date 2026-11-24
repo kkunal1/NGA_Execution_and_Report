@@ -38,6 +38,28 @@ import { isExecutionTabId, isValidExecutionMenuOrder, normalizeExecutionMenuOrde
 import { aggregateExecutionData, executionHistoryUrl, plannedConfigurationsUrl, summarizePlannedConfigurations } from "../src/lib/execution-data.ts";
 import { baseExecutionConfigName, categorizeExecutionAttempt, formatExecutionCategoryCounts, formatExecutionDays, groupDomainExecutionCategories, groupExecutionSystemsByConfig } from "../src/lib/execution-data-view.ts";
 import { buildExecutionDataHtml, executionDataHtmlFilename } from "../src/lib/execution-data-export.ts";
+import { cacheSessionValue } from "../src/lib/session-cache.ts";
+
+const sessionEntries = new Map([["unrelated", "keep"]]);
+const sessionStore = {
+  setItem: (key, value) => sessionEntries.set(key, value),
+  removeItem: (key) => sessionEntries.delete(key),
+};
+cacheSessionValue("run", { rows: [1] }, sessionStore);
+assert.deepEqual(JSON.parse(sessionEntries.get("run")), { rows: [1] });
+assert.doesNotThrow(() => cacheSessionValue("run", { rows: [2] }, {
+  ...sessionStore,
+  setItem: () => { throw new DOMException("Storage full", "QuotaExceededError"); },
+}));
+assert.equal(sessionEntries.has("run"), false, "failed writes remove stale results");
+assert.equal(sessionEntries.get("unrelated"), "keep");
+assert.doesNotThrow(() => cacheSessionValue("run", {}, {
+  setItem: () => { throw new Error("Storage blocked"); },
+  removeItem: () => { throw new Error("Storage blocked"); },
+}));
+cacheSessionValue("run", {}, sessionStore);
+cacheSessionValue("run", null, sessionStore);
+assert.equal(sessionEntries.has("run"), false);
 
 const encryptionKey = Buffer.alloc(32, 7);
 const historyRun = (testRunId, testLineId, state, rerunIndex, stationId, stationName, start, end) => ({ testRunId, testLineId, state, rerunIndex, stationId, station: { stationName, config: stationId ? { configName: `Config ${stationId}` } : null, system: stationId ? [{ systemId: stationId, systemName: stationName }] : [] }, testLine: { testLineName: "Test A" }, validationGroup: { testGroupName: "pv_security" }, testStartDateTime: start, testEndDateTime: end });

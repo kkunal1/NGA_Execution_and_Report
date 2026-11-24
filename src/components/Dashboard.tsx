@@ -12,6 +12,7 @@ import { B0_SUITES, B2_SUITES, isSuiteSelectedForProfile, type ExecutionProfile 
 import type { CustomExecutionTab } from "@/lib/execution-tabs";
 import { useAppRole } from "@/components/auth-context";
 import { useRefreshSchedule } from "@/components/refresh-context";
+import { cacheSessionValue } from "@/lib/session-cache";
 
 const SUITE_INPUT_KEY = "nga-suite-name-input";
 const NGAI_RUN_KEY = "nga-ngai-last-run";
@@ -149,8 +150,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
   const cacheProfileRun = useCallback((nextRun: RunResult | null) => {
     setRun(nextRun);
     try {
-      if (nextRun) window.sessionStorage.setItem(runCacheKey, JSON.stringify({ run: nextRun }));
-      else window.sessionStorage.removeItem(runCacheKey);
+      cacheSessionValue(runCacheKey, nextRun ? { run: nextRun } : null);
     } catch {
       // Keep the dashboard usable when browser storage is unavailable.
     }
@@ -214,7 +214,10 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
     } catch {
       /* ignore corrupt cache */
     }
-    const savedSuites = window.sessionStorage.getItem(suiteInputKey);
+    let savedSuites: string | null = null;
+    try {
+      savedSuites = window.sessionStorage.getItem(suiteInputKey);
+    } catch {}
     setSuiteNames(normalizeSuiteNames(
       savedSuites ?? restoredNgaiRef.current?.suiteNames ?? restoredNgaiRef.current?.suiteName ?? configuredSuites,
     ));
@@ -224,7 +227,9 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
 
   useEffect(() => {
     if (!suiteStateRestored) return;
-    window.sessionStorage.setItem(suiteInputKey, suiteNames.join("\n"));
+    try {
+      window.sessionStorage.setItem(suiteInputKey, suiteNames.join("\n"));
+    } catch {}
   }, [suiteInputKey, suiteNames, suiteStateRestored]);
 
   const selectedSuiteNames = normalizeSuiteNames([...suiteNames, suiteDraft]);
@@ -350,9 +355,9 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
       // Don't cache a zero-match result (usually a typo'd suite name) - otherwise it keeps
       // auto-restoring on reload, hiding the input box's real value and blocking new attempts.
       if (rows.length > 0) {
-        window.sessionStorage.setItem(runCacheKey, JSON.stringify({ suiteNames: suites, run: adapted }));
+        cacheSessionValue(runCacheKey, { suiteNames: suites, run: adapted });
       } else {
-        window.sessionStorage.removeItem(runCacheKey);
+        cacheSessionValue(runCacheKey, null);
       }
       await loadAbortedTests(suites);
     } catch (e) {
@@ -373,7 +378,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
       if (!res.ok) throw new Error(data.error ?? "Could not load aborted tests");
       const rows = filterAbortedRowsForSuites(data.rows ?? [], suites, dashboardProfile);
       setAbortedRows(rows);
-      window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: suites, rows }));
+      cacheSessionValue(abortedCacheKey, { suiteNames: suites, rows });
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -394,7 +399,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
         if (cancelled) return;
         const rows = filterAbortedRowsForSuites(snapshot.rows ?? [], autoRefreshSuites, dashboardProfile);
         setAbortedRows(rows);
-        window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: autoRefreshSuites, rows }));
+        cacheSessionValue(abortedCacheKey, { suiteNames: autoRefreshSuites, rows });
         const cachedSuites = new Set((snapshot.suiteNames ?? []).map((suite) => suite.toLowerCase()));
         if (isAdmin && (!snapshot.hasSnapshot || autoRefreshSuites.some((suite) => !cachedSuites.has(suite.toLowerCase())))) {
           await loadAbortedTests(autoRefreshSuites);
@@ -450,7 +455,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
             const aborted = (await abortedResponse.json()) as { rows?: TestRow[]; suiteNames?: string[] };
             const rows = filterAbortedRowsForSuites(aborted.rows ?? [], nextSuites, null);
             setAbortedRows(rows);
-            window.sessionStorage.setItem(abortedCacheKey, JSON.stringify({ suiteNames: nextSuites, rows }));
+            cacheSessionValue(abortedCacheKey, { suiteNames: nextSuites, rows });
           }
         } else if (runMatchesDashboard(data.run, dashboardProfile, configuredSuites)) {
           cacheProfileRun(data.run);

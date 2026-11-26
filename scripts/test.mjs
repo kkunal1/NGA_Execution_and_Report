@@ -26,7 +26,7 @@ import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
 import { B0_SUITES, B2_SUITES, isSuiteSelectedForProfile } from "../src/lib/execution-suites.ts";
-import { mergeRefreshSuites } from "../src/lib/refresh-settings.ts";
+import { getAutoRefreshSuites, isCycleAutoRefreshEnabled, mergeRefreshSuites, normalizeAutoRefreshByCycle } from "../src/lib/refresh-settings.ts";
 import { buildReportFilename } from "../src/lib/report-filename.ts";
 import { executionSummaryValues, renderExecutionSummaryHtml } from "../src/lib/execution-summary-format.ts";
 import { DEFAULT_EXECUTION_SUMMARY_TEXT } from "../src/lib/weekly-report-defaults.ts";
@@ -383,6 +383,12 @@ assert.equal(normalizeExecutionTabSuites(""), null);
 assert.deepEqual(mergeRefreshSuites({ b0: [B0_SUITES.P1], b2: [B2_SUITES.P1] }, [B0_SUITES.P2]), {
   b0: [B0_SUITES.P2], b2: [B2_SUITES.P1],
 }, "saving B0 refresh suites preserves the previously saved B2 suites");
+assert.deepEqual(normalizeAutoRefreshByCycle({ b0: false, b2: true, "0123456789abcdef0123456789abcdef": false, invalid: false, b1: "off" }), {
+  b0: false, b2: true, "0123456789abcdef0123456789abcdef": false,
+});
+assert.equal(isCycleAutoRefreshEnabled({ autoRefreshByCycle: {} }, "b0"), true, "old settings keep automatic refresh enabled by default");
+assert.equal(isCycleAutoRefreshEnabled({ autoRefreshByCycle: { b0: false } }, "b0"), false);
+assert.deepEqual(getAutoRefreshSuites({ intervalSeconds: 600, suitesByProfile: { b0: [B0_SUITES.P1], b2: [B2_SUITES.P1] }, autoRefreshByCycle: { b0: false } }), [B2_SUITES.P1]);
 const reportCycles = buildWeeklyReportCycles(
   { b0: [B0_SUITES.P1], b2: [B2_SUITES.P2] },
   [B0_SUITES.P1],
@@ -879,10 +885,11 @@ execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", 
   let message, closed = false, calls = 0;
   nodemailer.createTransport = () => ({ sendMail: async data => { calls++; message = data; return { accepted: ["recipient@example.test"] }; }, close: () => { closed = true; } });
   const { sendTemporaryTestEmail } = await import("./src/lib/smtp-mail.ts");
-  const { renderTemporaryTestEmail, TEMPORARY_EMAIL_SUBJECT, TEMPORARY_EMAIL_FILENAME } = await import("./src/lib/temporary-test-email.ts");
+  const { renderTemporaryTestEmail, TEMPORARY_EMAIL_SUBJECT, TEMPORARY_EMAIL_FILENAME, TEMPORARY_TEST_MAILBOX } = await import("./src/lib/temporary-test-email.ts");
   const result = await sendTemporaryTestEmail("sender@example.test", "test-password", "recipient@example.test");
   assert.equal(message.from, "sender@example.test");
   assert.equal(message.to, "recipient@example.test");
+  assert.equal(TEMPORARY_TEST_MAILBOX, "krishna.kunal@intel.com");
   assert.equal(message.cc, undefined, "test mail has no automatic CC");
   assert.equal(message.bcc, undefined);
   assert.ok(message.subject.startsWith("[TEST]"));
@@ -895,6 +902,11 @@ execFileSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", 
   assert.ok(message.html.includes("background:#fff1cf"));
   assert.ok(!message.html.includes("max-width:980px"), "test email must use the available width");
   assert.ok(message.html.includes('<tr><td style="padding:0"><table role="presentation" width="100%"'), "the email container has no centered outer gutter");
+  assert.ok(!message.html.includes("NGA EXECUTION TRACKER"), "temporary email omits the masthead");
+  assert.ok(!message.html.includes("Reporting window"), "temporary email omits the report header details");
+  assert.ok(message.html.includes('<tr><td style="padding:16px 0 28px"><p style="margin:0 0 14px;padding:8px 11px;border-left:3px solid #b27b2f;'), "temporary report starts with a compact Note banner and no horizontal wrapper padding");
+  assert.ok(message.html.includes("font-size:13px;line-height:1.45"), "temporary Note is readable without consuming excess space");
+  assert.ok(!message.html.includes("padding:26px 34px 34px"), "temporary email has no horizontal body gutters");
   const sectionCount = (message.html.match(/bgcolor="#d1e7f7" style="border-collapse:collapse/g) || []).length;
   assert.equal(sectionCount, 10);
   assert.equal((message.html.match(/height="26" style="height:26px/g) || []).length, sectionCount, "each section has an Outlook-compatible gap before its title");

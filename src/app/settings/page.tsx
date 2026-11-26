@@ -80,6 +80,7 @@ export default function SettingsPage() {
   const [ngaiTokenError, setNgaiTokenError] = useState("");
   const [ngaiTokenBusy, setNgaiTokenBusy] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState("60");
+  const [autoRefreshByCycle, setAutoRefreshByCycle] = useState<Record<string, boolean>>({});
   const [refreshSaved, setRefreshSaved] = useState(false);
   const [refreshError, setRefreshError] = useState("");
   const [poolNames, setPoolNames] = useState("");
@@ -216,9 +217,10 @@ export default function SettingsPage() {
       });
     void fetch("/api/settings/refresh", { cache: "no-store" })
       .then(async (response) => {
-        const data = (await response.json()) as { intervalSeconds?: number; error?: string };
+        const data = (await response.json()) as { intervalSeconds?: number; autoRefreshByCycle?: Record<string, boolean>; error?: string };
         if (!response.ok) throw new Error(data.error || "Could not load refresh settings.");
         setRefreshInterval(String(data.intervalSeconds ?? 60));
+        setAutoRefreshByCycle(data.autoRefreshByCycle ?? {});
       })
       .catch((error: unknown) => setRefreshError(error instanceof Error ? error.message : "Could not load refresh settings."));
     void fetch("/api/settings/pool-systems", { cache: "no-store" })
@@ -346,10 +348,11 @@ export default function SettingsPage() {
       const response = await fetch("/api/settings/refresh", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intervalSeconds }),
+        body: JSON.stringify({ intervalSeconds, autoRefreshByCycle }),
       });
-      const data = (await response.json()) as { error?: string };
+      const data = (await response.json()) as { error?: string; autoRefreshByCycle?: Record<string, boolean> };
       if (!response.ok) throw new Error(data.error || "Could not save refresh settings.");
+      setAutoRefreshByCycle(data.autoRefreshByCycle ?? autoRefreshByCycle);
       setRefreshSaved(true);
       window.setTimeout(() => setRefreshSaved(false), 2500);
     } catch (error) {
@@ -699,11 +702,58 @@ export default function SettingsPage() {
     .map((id) => ({ id, ...executionMenuLabels.get(id) }))
     .filter((item): item is { id: string; name: string; detail?: string } => Boolean(item.name));
 
+  const automaticRefreshSection = (
+    <section className="h-full rounded-lg border border-[var(--accent)] bg-[var(--header-from)] p-5 shadow-sm" aria-labelledby="refresh-heading">
+      <h2 id="refresh-heading" className="text-base font-semibold text-[var(--text)]">Automatic NGAi refresh</h2>
+      <p className="mt-2 text-sm text-[var(--text-muted)]">
+        The server refreshes selected cycles at this interval. Turning a cycle off stops its scheduled NGAi queries; manual Load NGAi data remains available. Set the interval to 0 to disable all scheduled refreshes.
+      </p>
+      <label className="mt-4 block max-w-xs text-sm font-medium text-[var(--text)]">
+        Refresh interval (seconds)
+        <input
+          type="number"
+          min={0}
+          max={3600}
+          step={15}
+          value={refreshInterval}
+          onChange={(event) => setRefreshInterval(event.target.value)}
+          className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
+        />
+      </label>
+      <fieldset className="mt-5 space-y-3">
+        <legend className="text-sm font-semibold text-[var(--text)]">Cycles included in automatic refresh</legend>
+        {[
+          { id: "b0", name: "DMR AP1 PV B0 Execution", enabled: true },
+          { id: "b2", name: "DMR AP1 PV B2 Execution", enabled: true },
+          ...customExecutionTabs.map((tab) => ({ id: tab.id, name: tab.name, enabled: tab.enabled })),
+        ].map((cycle) => (
+          <label key={cycle.id} className="flex items-center justify-between gap-4 text-sm text-[var(--text)]">
+            <span>{cycle.name}{!cycle.enabled ? " (disabled)" : ""}</span>
+            <input type="checkbox" role="switch" aria-label={`${cycle.name} automatic refresh`} checked={autoRefreshByCycle[cycle.id] !== false} disabled={!cycle.enabled} onChange={(event) => setAutoRefreshByCycle((current) => ({ ...current, [cycle.id]: event.target.checked }))} className="h-4 w-4 shrink-0 accent-[var(--accent)] disabled:opacity-50" />
+          </label>
+        ))}
+        {customTabsLoading && <p className="text-xs text-[var(--text-muted)]">Loading saved custom cycles…</p>}
+      </fieldset>
+      <button
+        type="button"
+        onClick={() => void saveRefreshSettings()}
+        className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)]"
+      >
+        Save refresh settings
+      </button>
+      <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
+        {refreshSaved ? "Refresh settings saved." : `Current interval: ${refreshInterval || "0"} seconds`}
+      </p>
+      {refreshError && <p className="mt-2 text-sm text-red-600" role="alert">{refreshError}</p>}
+    </section>
+  );
+
   return (
     <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-start gap-5 px-5 py-6 lg:grid-cols-2">
       <header className="mb-1 flex items-start justify-between gap-4 border-b border-[var(--border)] pb-5 lg:col-span-2">
         <div>
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-muted)]">Administration / Workspace</p>
+      {automaticRefreshSection}
           <h1 className="text-2xl font-semibold text-[var(--text)]">Settings</h1>
           <p className="mt-2 text-sm text-[var(--text-muted)]">Manage report content, data sources, delivery, and workspace access.</p>
         </div>
@@ -1002,35 +1052,6 @@ export default function SettingsPage() {
         </div>
       </section>
 
-      <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="refresh-heading">
-        <h2 id="refresh-heading" className="text-base font-semibold text-[var(--text)]">Automatic NGAi refresh</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">
-          Check the loaded suites for changes at this interval. Keep the admin dashboard open for automatic checks; connected viewers update when a new snapshot is saved. Set 0 to disable.
-        </p>
-        <label className="mt-4 block max-w-xs text-sm font-medium text-[var(--text)]">
-          Refresh interval (seconds)
-          <input
-            type="number"
-            min={0}
-            max={3600}
-            step={15}
-            value={refreshInterval}
-            onChange={(event) => setRefreshInterval(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm"
-          />
-        </label>
-        <button
-          type="button"
-          onClick={() => void saveRefreshSettings()}
-          className="mt-4 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-medium text-[var(--accent-text)]"
-        >
-          Save refresh interval
-        </button>
-        <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
-          {refreshSaved ? "Refresh interval saved." : `Current interval: ${refreshInterval || "0"} seconds`}
-        </p>
-        {refreshError && <p className="mt-2 text-sm text-red-600" role="alert">{refreshError}</p>}
-      </section>
 
       <section className="h-full rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5" aria-labelledby="pool-system-heading">
         <h2 id="pool-system-heading" className="text-base font-semibold text-[var(--text)]">Pool System Setting</h2>

@@ -4,8 +4,8 @@ import { config } from "./config";
 import { normalizeSuiteNames } from "./normalize";
 import type { ExecutionProfile } from "./execution-suites";
 
-export type RefreshSettings = { intervalSeconds: number; suitesByProfile: Record<ExecutionProfile, string[]> };
-type StoredRefreshSettings = { intervalSeconds?: unknown; suitesByProfile?: unknown };
+export type RefreshSettings = { intervalSeconds: number; suitesByProfile: Record<ExecutionProfile, string[]>; autoRefreshByCycle: Record<string, boolean> };
+type StoredRefreshSettings = { intervalSeconds?: unknown; suitesByProfile?: unknown; autoRefreshByCycle?: unknown };
 
 const settingsPath = path.join(config.dataDir, "refresh-settings.json");
 const statusPath = path.join(config.dataDir, "refresh-status.json");
@@ -16,6 +16,23 @@ function suitesForProfile(value: unknown, profile: ExecutionProfile) {
   if (!Array.isArray(value)) return [];
   return normalizeSuiteNames(value.filter((suite): suite is string => typeof suite === "string"))
     .filter((suite) => new RegExp(`_B${profile.slice(1)}_`, "i").test(suite));
+}
+
+export function normalizeAutoRefreshByCycle(value: unknown): Record<string, boolean> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(Object.entries(value as Record<string, unknown>).filter(([id, enabled]) =>
+    (id === "b0" || id === "b2" || /^[a-f0-9]{32}$/i.test(id)) && typeof enabled === "boolean",
+  )) as Record<string, boolean>;
+}
+
+export function isCycleAutoRefreshEnabled(settings: Pick<RefreshSettings, "autoRefreshByCycle">, cycleId: string): boolean {
+  return settings.autoRefreshByCycle[cycleId] !== false;
+}
+
+export function getAutoRefreshSuites(settings: RefreshSettings): string[] {
+  return normalizeSuiteNames((Object.keys(settings.suitesByProfile) as ExecutionProfile[])
+    .filter((profile) => isCycleAutoRefreshEnabled(settings, profile))
+    .flatMap((profile) => settings.suitesByProfile[profile]));
 }
 
 export function mergeRefreshSuites(
@@ -52,16 +69,21 @@ export async function getRefreshSettings(): Promise<RefreshSettings> {
         b0: suitesForProfile(suitesByProfile.b0, "b0"),
         b2: suitesForProfile(suitesByProfile.b2, "b2"),
       },
+      autoRefreshByCycle: normalizeAutoRefreshByCycle(saved.autoRefreshByCycle),
     };
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    return { intervalSeconds: DEFAULT_REFRESH_INTERVAL_SECONDS, suitesByProfile: { ...EMPTY_SUITES_BY_PROFILE } };
+    return { intervalSeconds: DEFAULT_REFRESH_INTERVAL_SECONDS, suitesByProfile: { ...EMPTY_SUITES_BY_PROFILE }, autoRefreshByCycle: {} };
   }
 }
 
-export async function saveRefreshSettings(settings: Pick<RefreshSettings, "intervalSeconds">): Promise<void> {
+export async function saveRefreshSettings(settings: Pick<RefreshSettings, "intervalSeconds"> & { autoRefreshByCycle?: unknown }): Promise<void> {
   const current = await getRefreshSettings();
-  const next = { ...current, intervalSeconds: settings.intervalSeconds };
+  const next = {
+    ...current,
+    intervalSeconds: settings.intervalSeconds,
+    ...(settings.autoRefreshByCycle === undefined ? {} : { autoRefreshByCycle: normalizeAutoRefreshByCycle(settings.autoRefreshByCycle) }),
+  };
   await mkdir(config.dataDir, { recursive: true });
   await writeFile(settingsPath, JSON.stringify(next, null, 2), { encoding: "utf8", mode: 0o600 });
   const nextRefreshAt = next.intervalSeconds > 0 ? Date.now() + next.intervalSeconds * 1000 : null;

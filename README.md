@@ -121,8 +121,11 @@ Settings is administrator-only and includes:
 - Additional administrator accounts (passwords are stored as salted hashes).
 - Weekly Report section visibility for generated, loaded, and emailed reports.
 - Data provider, encrypted NGAi token, and direct/proxy network routing.
-- Automatic NGAi refresh interval. Keep the admin dashboard open for periodic checks;
-  set `0` to disable. Viewers receive a saved snapshot when data changes.
+- Automatic NGAi refresh interval and per-cycle switches for B0, B2, and saved custom
+  execution cycles. The global interval applies to enabled cycles; turn a cycle off to
+  skip its scheduled NGAi queries while keeping manual **Load NGAi data** available.
+  Existing cycles default to enabled for compatibility. Set the global interval to `0`
+  to disable every scheduled refresh. Viewers receive a saved snapshot when data changes.
 - Pool names and pool/suite coverage mappings used by All Execution Systems.
 - Selected data backup and restore. Restore replaces data in selected categories; make
   a backup first. Admin accounts, login audit, API tokens, and mail secrets are excluded

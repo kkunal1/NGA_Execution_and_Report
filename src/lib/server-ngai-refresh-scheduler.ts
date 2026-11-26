@@ -1,5 +1,5 @@
 import { normalizeSuiteNames } from "./normalize";
-import { getRefreshSettings, getRefreshStatus, markRefreshCompleted } from "./refresh-settings";
+import { getAutoRefreshSuites, getRefreshSettings, getRefreshStatus, isCycleAutoRefreshEnabled, markRefreshCompleted } from "./refresh-settings";
 import { refreshNGAiData } from "./ngai-refresh-service";
 import { listCustomExecutionTabs } from "./execution-tabs";
 
@@ -14,9 +14,12 @@ export async function runServerNGAiRefreshCheck(now = Date.now()) {
     const [settings, status] = await Promise.all([getRefreshSettings(), getRefreshStatus()]);
     if (settings.intervalSeconds === 0 || !status.nextRefreshAt || now < status.nextRefreshAt) return;
 
-    const suites = normalizeSuiteNames([...settings.suitesByProfile.b0, ...settings.suitesByProfile.b2]);
-    const customTabs = (await listCustomExecutionTabs()).filter((tab) => tab.enabled);
-    if (!suites.length && !customTabs.length) return;
+    const suites = getAutoRefreshSuites(settings);
+    const customTabs = (await listCustomExecutionTabs()).filter((tab) => tab.enabled && isCycleAutoRefreshEnabled(settings, tab.id));
+    if (!suites.length && !customTabs.length) {
+      await markRefreshCompleted(settings.intervalSeconds);
+      return;
+    }
 
     if (suites.length) {
       try {

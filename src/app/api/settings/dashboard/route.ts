@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { authorizeRequest } from "@/lib/auth";
-import { getDashboardSettings, saveDashboardSettings, type DashboardSettings, type WeeklyReportSectionSettings } from "@/lib/dashboard-settings";
+import { getDashboardSettings, normalizeAutoDailyReportByCycle, saveDashboardSettings, type DashboardSettings, type WeeklyReportSectionSettings } from "@/lib/dashboard-settings";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -18,6 +18,7 @@ export async function PUT(req: Request) {
     const body = (await req.json()) as Partial<Record<keyof Awaited<ReturnType<typeof getDashboardSettings>>, unknown>>;
     const currentSettings = await getDashboardSettings();
     const weeklyReportSections = body.weeklyReportSections ?? currentSettings.weeklyReportSections;
+    const autoDailyReportByCycle = body.autoDailyReportByCycle ?? currentSettings.autoDailyReportByCycle;
     const validWeeklyReportSections = typeof weeklyReportSections === "object" && weeklyReportSections !== null &&
       typeof (weeklyReportSections as WeeklyReportSectionSettings).cpuAllocation === "boolean" &&
       typeof (weeklyReportSections as WeeklyReportSectionSettings).hsdFailureSummary === "boolean" &&
@@ -27,6 +28,7 @@ export async function PUT(req: Request) {
     if (typeof body.showManualAborts !== "boolean" || typeof body.poolSystems !== "boolean" || typeof body.weeklyReport !== "boolean" || typeof body.executionTime !== "boolean" ||
       (body.weeklyReportUpdate !== undefined && typeof body.weeklyReportUpdate !== "boolean") ||
       (body.weeklyReportEmail !== undefined && typeof body.weeklyReportEmail !== "boolean") ||
+      (body.autoDailyReportByCycle !== undefined && (!body.autoDailyReportByCycle || typeof body.autoDailyReportByCycle !== "object" || Array.isArray(body.autoDailyReportByCycle))) ||
       !validWeeklyReportSections || typeof body.ngaiTestRunData !== "boolean" ||
       (body.weeklyReportMode !== "dateRange" && body.weeklyReportMode !== "workWeek")) {
       return NextResponse.json({ error: "Invalid dashboard or Weekly Report settings." }, { status: 400 });
@@ -38,6 +40,8 @@ export async function PUT(req: Request) {
       weeklyReportUpdate: body.weeklyReportUpdate === true,
       weeklyReportEmail: body.weeklyReportEmail === true,
       weeklyReportSections: weeklyReportSections as WeeklyReportSectionSettings,
+      autoDailyReportByCycle: normalizeAutoDailyReportByCycle(autoDailyReportByCycle),
+      dailyReportSkippedThroughByCycle: currentSettings.dailyReportSkippedThroughByCycle,
       weeklyReportMode: body.weeklyReportMode,
       executionTime: body.executionTime,
       ngaiTestRunData: body.ngaiTestRunData,

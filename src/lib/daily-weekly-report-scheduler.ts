@@ -2,6 +2,7 @@ import { generateCompleteWeeklyReport } from "./weekly-report-service";
 import { getISTDateKey, getISTDayRange } from "./work-weeks";
 import { isDailyReportDate, listSavedReportKeys, loadSavedWeeklyReport, makeCycleReportKey, parseCycleReportKey, saveDailyReport } from "./saved-weekly-reports";
 import { listWeeklyReportCycles } from "./weekly-report-cycles";
+import { getDashboardSettings, isAutomaticDailyReportEnabled, markDailyReportSkippedThrough } from "./dashboard-settings";
 
 const DAY_MS = 86_400_000;
 const IST_OFFSET_MS = 330 * 60_000;
@@ -13,14 +14,15 @@ let running = false;
 let retryAt = 0;
 let retryDate = "";
 
-const defaultDependencies = { listSavedReportKeys, loadSavedWeeklyReport, listWeeklyReportCycles, generateCompleteWeeklyReport, saveDailyReport };
+const defaultDependencies = { listSavedReportKeys, loadSavedWeeklyReport, listWeeklyReportCycles, generateCompleteWeeklyReport, saveDailyReport, getDashboardSettings, markDailyReportSkippedThrough };
 
 function addDays(dateKey: string, days: number) {
   return new Date(Date.parse(`${dateKey}T00:00:00.000Z`) + days * DAY_MS).toISOString().slice(0, 10);
 }
 
-export async function runDailyWeeklyReportCheck(now = new Date(), dependencies = defaultDependencies) {
+export async function runDailyWeeklyReportCheck(now = new Date(), overrides: Partial<typeof defaultDependencies> = {}) {
   if (running) return;
+  const dependencies = { ...defaultDependencies, ...overrides };
   const istNow = new Date(now.getTime() + IST_OFFSET_MS);
   if (istNow.getUTCHours() * 60 + istNow.getUTCMinutes() < RUN_AFTER_MINUTES) return;
 
@@ -32,7 +34,16 @@ export async function runDailyWeeklyReportCheck(now = new Date(), dependencies =
   }
   try {
     if (Date.now() < retryAt) return;
-    const [savedKeys, cycles] = await Promise.all([dependencies.listSavedReportKeys(), dependencies.listWeeklyReportCycles()]);
+    const [savedKeys, availableCycles, dashboardSettings] = await Promise.all([
+      dependencies.listSavedReportKeys(),
+      dependencies.listWeeklyReportCycles(),
+      dependencies.getDashboardSettings(),
+    ]);
+    const cycles = [];
+    for (const cycle of availableCycles) {
+      if (isAutomaticDailyReportEnabled(dashboardSettings, cycle.id)) cycles.push(cycle);
+      else await dependencies.markDailyReportSkippedThrough(cycle.id, targetDate);
+    }
     let failed = false;
     for (const cycle of cycles) {
       const dailyKeys = new Map<string, string>();
@@ -46,7 +57,10 @@ export async function runDailyWeeklyReportCheck(now = new Date(), dependencies =
       const savedReports = await Promise.all([...dailyKeys].map(async ([date, key]) => ({ date, report: await dependencies.loadSavedWeeklyReport(key) })));
       const finalizedDates = savedReports.filter(({ report }) => report && report.isCurrentDaySnapshot !== true).map(({ date }) => date).sort();
       const pendingDates = new Set(savedReports.filter(({ report }) => !report || report.isCurrentDaySnapshot === true).map(({ date }) => date));
-      let nextDate = finalizedDates.length ? addDays(finalizedDates[finalizedDates.length - 1], 1) : [...pendingDates].sort()[0] ?? targetDate;
+      const skippedThrough = dashboardSettings.dailyReportSkippedThroughByCycle[cycle.id];
+      if (skippedThrough) for (const date of pendingDates) if (date <= skippedThrough) pendingDates.delete(date);
+      const lastProcessedDate = [...finalizedDates, ...(skippedThrough ? [skippedThrough] : [])].sort().at(-1);
+      let nextDate = lastProcessedDate ? addDays(lastProcessedDate, 1) : [...pendingDates].sort()[0] ?? targetDate;
       while (nextDate <= targetDate) {
         pendingDates.add(nextDate);
         nextDate = addDays(nextDate, 1);

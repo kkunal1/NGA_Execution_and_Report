@@ -16,7 +16,7 @@ import { isValidAdminPassword, normalizeAdminUsername } from "../src/lib/admin-u
 import { parseEmailAddressList } from "../src/lib/smtp-mail.ts";
 import { buildWeeklyReportCycles } from "../src/lib/weekly-report-cycles.ts";
 import { canAccessWeeklyReportFeature } from "../src/lib/weekly-report-access.ts";
-import { DEFAULT_DASHBOARD_SETTINGS } from "../src/lib/dashboard-settings.ts";
+import { DEFAULT_DASHBOARD_SETTINGS, isAutomaticDailyReportEnabled, normalizeAutoDailyReportByCycle } from "../src/lib/dashboard-settings.ts";
 import { DEFAULT_CONFIG_COVERAGE_MAPPINGS, normalizeConfigCoverageMappings } from "../src/lib/config-coverage-settings.ts";
 import { DEFAULT_POOL_NAMES, normalizePoolNames, selectConfiguredPoolNames } from "../src/lib/pool-system-settings.ts";
 import { aggregateUncoveredConfigs, poolMembershipFilter } from "../src/lib/pool-systems.ts";
@@ -317,6 +317,12 @@ assert.deepEqual(DEFAULT_DASHBOARD_SETTINGS.weeklyReportSections, {
   domainWise: true,
   overallFailureBreakdown: true,
   openHsdesIssues: false,
+});
+assert.deepEqual(DEFAULT_DASHBOARD_SETTINGS.autoDailyReportByCycle, {});
+assert.equal(isAutomaticDailyReportEnabled(DEFAULT_DASHBOARD_SETTINGS, "b0"), true, "existing cycles stay enabled until explicitly changed");
+assert.equal(isAutomaticDailyReportEnabled({ ...DEFAULT_DASHBOARD_SETTINGS, autoDailyReportByCycle: { b0: false } }, "b0"), false);
+assert.deepEqual(normalizeAutoDailyReportByCycle({ b0: false, b2: true, "0123456789abcdef0123456789abcdef": false, invalid: false }), {
+  b0: false, b2: true, "0123456789abcdef0123456789abcdef": false,
 });
 assert.deepEqual(DEFAULT_POOL_NAMES, ["pv_dmr-ap-ap1-b0"]);
 assert.deepEqual(selectConfiguredPoolNames(["pool-a", "pool-b"], ["pool-b"]), ["pool-b"]);
@@ -1288,6 +1294,7 @@ try {
     import assert from "node:assert/strict";
     import { saveDailyReport, loadSavedWeeklyReport, listSavedReportKeys, makeCycleReportKey } from "./src/lib/saved-weekly-reports.ts";
     import { runDailyWeeklyReportCheck } from "./src/lib/daily-weekly-report-scheduler.ts";
+    import { DEFAULT_DASHBOARD_SETTINGS } from "./src/lib/dashboard-settings.ts";
     import { getISTDayRange } from "./src/lib/work-weeks.ts";
     const base = ${JSON.stringify(weeklyReport)};
     const cycles = ["b0", "b2", "0123456789abcdef0123456789abcdef"].map((id) => ({ id, name: id, suiteNames: [id + "_suite"] }));
@@ -1356,6 +1363,35 @@ try {
       saveDailyReport: async () => {},
     });
     assert.deepEqual(catchUpDates, ["2026-11-18", "2026-11-19", "2026-11-20"].map((day) => getISTDayRange(day).from.toISOString()), "the first snapshot also anchors missing-day catch-up");
+    const disabledCycleGenerated = [];
+    const skippedCycles = [];
+    await runDailyWeeklyReportCheck(new Date("2026-11-21T18:35:00.000Z"), {
+      ...dependencies,
+      listSavedReportKeys: async () => [],
+      loadSavedWeeklyReport: async () => null,
+      getDashboardSettings: async () => ({ ...DEFAULT_DASHBOARD_SETTINGS, autoDailyReportByCycle: { b0: false } }),
+      markDailyReportSkippedThrough: async (cycleId, date) => skippedCycles.push([cycleId, date]),
+      generateCompleteWeeklyReport: async (suites, from, to, cycle) => {
+        disabledCycleGenerated.push({ id: cycle.id, from: from.toISOString() });
+        return { ...base, suites, from: from.toISOString(), to: to.toISOString(), executionCycleId: cycle.id };
+      },
+      saveDailyReport: async () => {},
+    });
+    assert.deepEqual(disabledCycleGenerated.map(({ id }) => id), ["b2", "0123456789abcdef0123456789abcdef"], "only enabled cycles are generated automatically");
+    assert.deepEqual(skippedCycles, [["b0", "2026-11-21"]], "disabled cycles record skipped dates for future catch-up control");
+    const resumedCycleDates = [];
+    await runDailyWeeklyReportCheck(new Date("2026-11-23T18:35:00.000Z"), {
+      ...dependencies,
+      listSavedReportKeys: async () => [makeCycleReportKey("2026-11-18", "b0")],
+      loadSavedWeeklyReport: async () => ({ isCurrentDaySnapshot: false }),
+      getDashboardSettings: async () => ({ ...DEFAULT_DASHBOARD_SETTINGS, autoDailyReportByCycle: {}, dailyReportSkippedThroughByCycle: { b0: "2026-11-21" } }),
+      generateCompleteWeeklyReport: async (suites, from, to, cycle) => {
+        if (cycle.id === "b0") resumedCycleDates.push(from.toISOString());
+        return { ...base, suites, from: from.toISOString(), to: to.toISOString(), executionCycleId: cycle.id };
+      },
+      saveDailyReport: async () => {},
+    });
+    assert.deepEqual(resumedCycleDates, ["2026-11-21T18:30:00.000Z", "2026-11-22T18:30:00.000Z"], "re-enabled cycles generate enabled dates but do not backfill dates intentionally skipped while disabled");
   `], { env: { ...process.env, NGA_DATA_DIR: reportSnapshotTestDir }, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 } finally {
   await rm(reportSnapshotTestDir, { recursive: true, force: true });

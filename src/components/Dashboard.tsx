@@ -678,7 +678,11 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
       return true;
     });
   }, [latestExecutedRows, executedDomainFilter, executedTestlineFilter, executedStatusFilter]);
-  const displayedExecutedRows = useMemo(() => filteredExecutedRows.slice(0, LATEST_EXECUTED_DISPLAY_LIMIT), [filteredExecutedRows]);
+  const hasExecutedFilters = Boolean(testFrom || testTo || executedDomainFilter.trim() || executedTestlineFilter.trim() || executedStatusFilter);
+  const displayedExecutedRows = useMemo(
+    () => hasExecutedFilters ? filteredExecutedRows : filteredExecutedRows.slice(0, LATEST_EXECUTED_DISPLAY_LIMIT),
+    [filteredExecutedRows, hasExecutedFilters],
+  );
   const filteredExecutedPassCount = filteredExecutedRows.filter((row) => row.bucket === "Passed").length;
   const filteredExecutedFailCount = filteredExecutedRows.filter((row) => row.bucket === "Failed").length;
 
@@ -1245,7 +1249,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
                 >
                   Last 7 days
                 </button>
-                {(testFrom || testTo || executedDomainFilter || executedTestlineFilter || executedStatusFilter) && (
+                {hasExecutedFilters && (
                   <button
                     type="button"
                     onClick={() => {

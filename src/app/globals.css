@@ -4,6 +4,7 @@
   --page-bg: #f8fafc;
   --surface: #ffffff;
   --surface-alt: #f8fafc;
+  --row-hover: #eef2f7;
   --border: #e2e8f0;
   --text: #0f172a;
   --text-muted: #64748b;
@@ -34,6 +35,7 @@
   --page-bg: #eff6ff;
   --surface: #ffffff;
   --surface-alt: #eff6ff;
+  --row-hover: #dbeafe;
   --border: #bfdbfe;
   --text: #0f172a;
   --text-muted: #475569;
@@ -64,6 +66,7 @@
   --page-bg: #0b1220;
   --surface: #111827;
   --surface-alt: #1e293b;
+  --row-hover: #29384d;
   --border: #334155;
   --text: #e5e7eb;
   --text-muted: #94a3b8;
@@ -94,4 +97,8 @@ html,
 body {
   background: var(--page-bg);
   color: var(--text);
+}
+
+.domain-wise-row.domain-wise-row:hover {
+  background-color: var(--row-hover);
 }

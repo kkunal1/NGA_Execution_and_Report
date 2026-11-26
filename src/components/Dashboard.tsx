@@ -17,7 +17,7 @@ import { cacheSessionValue } from "@/lib/session-cache";
 const SUITE_INPUT_KEY = "nga-suite-name-input";
 const NGAI_RUN_KEY = "nga-ngai-last-run";
 const NGAI_ABORTED_KEY = "nga-ngai-aborted-cache";
-const LATEST_EXECUTED_DISPLAY_LIMIT = 100;
+const LATEST_EXECUTED_DISPLAY_LIMIT = 50;
 const DEFAULT_PROFILE_SUITES: Record<ExecutionProfile, string[]> = {
   b0: [B0_SUITES.P1, B0_SUITES.P2],
   b2: [B2_SUITES.P1, B2_SUITES.P2],
@@ -143,6 +143,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
   const [testDetailsKind, setTestDetailsKind] = useState<"not-run" | "in-progress">("not-run");
   const [notRunTab, setNotRunTab] = useState<"not-run" | "yet-to-attempt">("not-run");
   const [notRunDomainFilter, setNotRunDomainFilter] = useState("");
+  const [expandedDomain, setExpandedDomain] = useState<string | null>(null);
   const notRunDialogRef = useRef<HTMLDialogElement>(null);
   const [refreshIntervalSeconds, setRefreshIntervalSeconds] = useState(0);
   const [dashboardSettings, setDashboardSettings] = useState({ showManualAborts: false });
@@ -993,10 +994,13 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
                     </tr>
                   </thead>
                   <tbody>
-                    {(s.byDomain ?? []).map((d, i) => (
-                      <tr key={d.domain} className="border-t border-[var(--border)] transition even:bg-[var(--surface-alt)] hover:bg-indigo-50/40">
+                    {(s.byDomain ?? []).map((d, i) => {
+                      const expanded = expandedDomain === d.domain;
+                      const toggleExpanded = () => setExpandedDomain((current) => current === d.domain ? null : d.domain);
+                      return <Fragment key={d.domain}>
+                      <tr tabIndex={0} aria-expanded={expanded} aria-label={`${expanded ? "Collapse" : "Expand"} ${formatValidationGroupName(d.domain)} configurations`} onClick={toggleExpanded} onKeyDown={(event) => { if (event.target !== event.currentTarget || (event.key !== "Enter" && event.key !== " ")) return; event.preventDefault(); toggleExpanded(); }} className="domain-wise-row cursor-pointer border-t border-[var(--border)] transition even:bg-[var(--surface-alt)] focus-visible:outline-2 focus-visible:outline-[var(--accent)]">
                         <td className="px-3 py-2 text-[var(--text-muted)]">{i + 1}</td>
-                        <td className="px-3 py-2 font-medium text-[var(--text)]">{formatValidationGroupName(d.domain)}</td>
+                        <td className="px-3 py-2 font-medium text-[var(--text)]"><span className="inline-flex items-center gap-1.5"><ChevronRight aria-hidden="true" className={`h-4 w-4 shrink-0 transition-transform ${expanded ? "rotate-90" : ""}`} />{formatValidationGroupName(d.domain)}</span></td>
                         <td className="px-3 py-2 tabular-nums">{d.tests}</td>
                         <td className="px-3 py-2 tabular-nums text-green-600">{d.passed}</td>
                         <td className={`px-3 py-2 tabular-nums ${d.passRatePct >= 80 ? "font-bold text-emerald-600" : "font-normal text-orange-400"}`}>{d.passRatePct}%</td>
@@ -1014,7 +1018,9 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
                         <td className="px-3 py-2 tabular-nums text-amber-600">{d.blocked}</td>
                         <td className="px-3 py-2 tabular-nums text-[var(--text-muted)]">{d.notRun}</td>
                       </tr>
-                    ))}
+                      {expanded && <tr className="border-t border-[var(--border)] bg-[var(--surface-alt)]"><td colSpan={9} className="px-8 py-3"><div className="overflow-x-auto"><table className="w-full min-w-[560px] text-left text-xs"><thead className="text-[var(--text-muted)]"><tr>{["Configuration", "Test lines", "Pass", "Fail", "Blocked", "In progress", "Not run"].map((heading) => <th key={heading} className="px-3 py-2 font-medium">{heading}</th>)}</tr></thead><tbody>{d.configurations.map((configuration) => <tr key={configuration.name} className="border-t border-[var(--border)]"><td className="break-all px-3 py-2 font-medium text-[var(--text)]">{configuration.name}</td><td className="px-3 py-2 tabular-nums">{configuration.tests}</td><td className="px-3 py-2 tabular-nums text-green-600">{configuration.passed}</td><td className="px-3 py-2 tabular-nums text-red-600">{configuration.failed}</td><td className="px-3 py-2 tabular-nums text-amber-600">{configuration.blocked}</td><td className="px-3 py-2 tabular-nums">{configuration.inProgress}</td><td className="px-3 py-2 tabular-nums">{configuration.notRun}</td></tr>)}</tbody></table></div></td></tr>}
+                      </Fragment>;
+                    })}
                     <tr className="border-t border-[var(--border)] bg-indigo-50 font-semibold text-indigo-900">
                       <td className="px-3 py-2" />
                       <td className="px-3 py-2">Total / Average</td>

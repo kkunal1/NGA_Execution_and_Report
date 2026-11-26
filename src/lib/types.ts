@@ -18,6 +18,7 @@ export type TestRow = {
   bucket: StateBucket;
   owner: string;
   platform: string;
+  configName?: string;
   /** Owner-team domain, from NGA's Validation Group Name (e.g. "pv_memory"). Empty if not available. */
   domain?: string;
   /** ISO end/start time of the test run, used for date-range filtering. Empty if not available. */
@@ -72,6 +73,15 @@ export type Summary = {
     blocked: number;
     inProgress: number;
     notRun: number;
+    configurations: {
+      name: string;
+      tests: number;
+      passed: number;
+      failed: number;
+      blocked: number;
+      inProgress: number;
+      notRun: number;
+    }[];
     passRatePct: number;
   }[];
   failures: TestRow[];

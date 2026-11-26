@@ -7,6 +7,7 @@ import type { StepGroups, TestRow } from "./types";
 export function normalizeRunRecord(record: Record<string, unknown>, index: number): TestRow {
   const revision = (record.testLineRevision ?? record.TestLineRevision) as Record<string, unknown> | null;
   const testLine = (record.testLine ?? record.TestLine) as Record<string, unknown> | null;
+  const testLineConfig = (testLine?.config ?? testLine?.Config) as Record<string, unknown> | null;
   const validationGroup = (record.validationGroup ?? record.ValidationGroup) as Record<string, unknown> | null;
   const autoDisablingTestStep = (record.autoDisablingTestStep ?? record.AutoDisablingTestStep) as Record<string, unknown> | null;
   const state = toText(record.state ?? record.stateDescription ?? "(empty)");
@@ -31,6 +32,7 @@ export function normalizeRunRecord(record: Record<string, unknown>, index: numbe
     bucket: bucketOf(state, goStatus),
     owner: toText(record.submittedBy ?? record.updatedBy),
     platform: toText(record.vType),
+    configName: toText(testLineConfig?.configName ?? testLineConfig?.ConfigName),
     domain: toText(validationGroup?.testGroupName ?? validationGroup?.TestGroupName),
     date: toText(record.testEndDateTime ?? record.TestEndDateTime ?? record.testStartDateTime ?? record.TestStartDateTime),
     abortStep: toText(autoDisablingTestStep?.testStepName ?? autoDisablingTestStep?.TestStepName),

@@ -125,7 +125,7 @@ async function fetchNGAiSuiteSingle(suiteName: string, dispatcher: ReturnType<ty
     url.searchParams.set("$top", String(pageSize));
     if (skip > 0) url.searchParams.set("$skip", String(skip));
     url.searchParams.set("$select", "RerunName,RerunIndex,State,StationId,StationRevisionNumber,TestEndDateTime,TestLineId,TestRunId,TestStartDateTime,ValidationGroupId,AutoDisablingTestStepId");
-    url.searchParams.set("$expand", "Failure($select=DebugSnapshotId,SightingId;$expand=Bucket($select=BucketName)),Station($select=StationName),TestLine($select=TestLineName,GoStatus),ValidationGroup($select=testGroupName),AutoDisablingTestStep($select=TestStepName)");
+    url.searchParams.set("$expand", "Failure($select=DebugSnapshotId,SightingId;$expand=Bucket($select=BucketName)),Station($select=StationName),TestLine($select=TestLineName,GoStatus;$expand=Config($select=ConfigName)),ValidationGroup($select=testGroupName),AutoDisablingTestStep($select=TestStepName)");
     return url;
   };
 

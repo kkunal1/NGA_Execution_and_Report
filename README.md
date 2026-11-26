@@ -176,8 +176,12 @@ permissions as the UI; admin-only operations are enforced server-side.
 | `/api/execution-tabs` | List and manage custom execution tabs and sidebar ordering. |
 | `/api/settings/*` | Admin settings for users, tokens, navigation, themes, refresh, pools, backups, mail, and audit. |
 
-For a trusted LAN deployment, configure admin credentials on the host, build, then run
-`npm run start:lan` (binds to all interfaces). On Windows, `npm run start:lan:12h`
+For a local production server, configure admin credentials, build, then run
+`npm start` (binds to `127.0.0.1`). For a trusted LAN deployment, run
+`npm run start:lan` (binds to all interfaces). Both commands automatically enable
+Node's `--use-system-ca` option. Use Node.js 24 LTS; older Node versions without this
+flag cannot run these commands. No manual PowerShell `NODE_OPTIONS` assignment is
+needed. On Windows, `npm run start:lan:12h`
 restarts the LAN server every 12 hours and sets Node's system-CA option. Do not expose
 the development server or fixed viewer login to an untrusted network. Put a shared
 deployment behind an approved HTTPS reverse proxy/firewall and keep persistent shared

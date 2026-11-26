@@ -125,6 +125,7 @@ export function makeRowFactory(stateColumn: string) {
       bucket: bucketOf(state, goStatus),
       owner: toText(pick(rec, ["owner", "assignee", "user", "wwid", "reporter"])),
       platform: toText(pick(rec, ["platform", "program", "project", "product"])),
+      configName: toText(pick(rec, ["configuration name", "config name"])),
       raw: rec,
     };
   };

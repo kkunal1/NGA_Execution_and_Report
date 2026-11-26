@@ -95,6 +95,13 @@ export function summarize(rows: TestRow[]): Summary {
     .map(([domain, list]) => {
       const t = countBuckets(list);
       const ex = t.Passed + t.Failed + t.Blocked;
+      const configurations = new Map<string, TestRow[]>();
+      for (const row of list) {
+        const name = row.configName?.trim() || "Configuration unavailable";
+        const configRows = configurations.get(name);
+        if (configRows) configRows.push(row);
+        else configurations.set(name, [row]);
+      }
       return {
         domain,
         tests: list.length,
@@ -104,10 +111,24 @@ export function summarize(rows: TestRow[]): Summary {
         blocked: t.Blocked,
         inProgress: t["In Progress"],
         notRun: t["Not Run"],
+        configurations: [...configurations.entries()]
+          .map(([name, configRows]) => {
+            const counts = countBuckets(configRows);
+            return {
+              name,
+              tests: configRows.length,
+              passed: counts.Passed,
+              failed: counts.Failed,
+              blocked: counts.Blocked,
+              inProgress: counts["In Progress"],
+              notRun: counts["Not Run"],
+            };
+          })
+          .sort((left, right) => left.name.localeCompare(right.name)),
         passRatePct: pct(t.Passed, list.length),
       };
     })
-    .sort((a, b) => b.tests - a.tests);
+    .sort((a, b) => b.failed - a.failed || a.domain.localeCompare(b.domain));
 
   return {
     tests: rows.length,

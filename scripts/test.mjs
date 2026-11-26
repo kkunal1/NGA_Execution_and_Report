@@ -7,6 +7,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { bucketOf, formatValidationGroupName, harvestRecords, makeRowFactory, findReportedTotal, normalizeSuiteNames } from "../src/lib/normalize.ts";
 import { summarize } from "../src/lib/summarize.ts";
+import { normalizeRunRecord } from "../src/lib/test-run-data.ts";
 import { summarizeWeeklyReport } from "../src/lib/weekly-report.ts";
 import { buildFailureProgress, getB2FailureProgressWindow, weeklyReportYetToAttemptCount } from "../src/lib/weekly-report-metrics.ts";
 import { renderWeeklyReportEmailHtml, weeklyReportEmailFilename, weeklyReportEmailSignatureText, weeklyReportEmailSubject } from "../src/lib/weekly-report-email.ts";
@@ -530,6 +531,39 @@ assert.equal(s.progressPct, 66.7);
 assert.equal(s.passRatePct, 33.3);
 assert.equal(s.byTestline[0].testline, "TL1");
 assert.equal(s.failures.length, 1);
+const domainSortRows = [
+  ...Array.from({ length: 5 }, (_, index) => ({
+    ...rows[0], id: `security-${index}`, domain: "pv_security",
+    bucket: index === 0 ? "Failed" : "Passed", state: index === 0 ? "Failed" : "Passed",
+  })),
+  ...Array.from({ length: 2 }, (_, index) => ({
+    ...rows[0], id: `memory-${index}`, domain: "pv_memory", bucket: "Failed", state: "Failed",
+  })),
+  { ...rows[0], id: "ras-0", domain: "pv_ras", bucket: "Failed", state: "Failed" },
+];
+const domainFailureSummary = summarize(domainSortRows);
+assert.deepEqual(domainFailureSummary.byDomain.map((domain) => domain.domain), ["pv_memory", "pv_ras", "pv_security"]);
+const configurationSummary = summarize([
+  { ...rows[0], id: "cfg-a-pass", domain: "pv_security", configName: "Config A", bucket: "Passed" },
+  { ...rows[1], id: "cfg-a-fail", domain: "pv_security", configName: "Config A", bucket: "Failed" },
+  { ...rows[2], id: "cfg-b-not-run", domain: "pv_security", configName: "Config B", bucket: "Not Run" },
+  { ...rows[2], id: "cfg-b-blocked", domain: "pv_security", configName: "Config B", bucket: "Blocked" },
+]);
+assert.deepEqual(configurationSummary.byDomain[0].configurations, [
+  { name: "Config A", tests: 2, passed: 1, failed: 1, blocked: 0, inProgress: 0, notRun: 0 },
+  { name: "Config B", tests: 2, passed: 0, failed: 0, blocked: 1, inProgress: 0, notRun: 1 },
+]);
+const normalizedConfigRun = normalizeRunRecord({
+  testRunId: "config-run",
+  state: "Failed",
+  testLine: { TestLineName: "Example Testline", Config: { ConfigName: "Example Config" } },
+  validationGroup: { TestGroupName: "pv_security" },
+}, 0);
+assert.equal(normalizedConfigRun.configName, "Example Config", "NGAi TestLine Config names are retained for domain breakdowns");
+const updatedDomainFailureSummary = summarize(domainSortRows.map((row) => row.domain === "pv_security"
+  ? { ...row, bucket: "Failed", state: "Failed" }
+  : row));
+assert.equal(updatedDomainFailureSummary.byDomain[0].domain, "pv_security", "domain order follows the current failure counts");
 const attemptedSummary = summarize([
   { ...rows[0], bucket: "Passed", state: "Passed", rerunIndex: 0 },
   { ...rows[1], bucket: "Failed", state: "Failed", rerunIndex: 0 },

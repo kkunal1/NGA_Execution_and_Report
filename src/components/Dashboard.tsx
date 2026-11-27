@@ -808,6 +808,16 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
         </div>
       </header>
 
+      <aside role="note" aria-labelledby="refresh-policy-notice-title" className="mb-5 flex items-start gap-3 rounded-xl border border-[var(--border)] border-l-4 border-l-[var(--accent)] bg-[var(--header-from)] px-4 py-3.5 shadow-sm">
+        <span className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--surface)] text-[var(--accent)]">
+          <Info className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <h2 id="refresh-policy-notice-title" className="text-sm font-semibold text-[var(--text)]">Notice: Automatic Refresh Interval Updated</h2>
+          <p className="mt-1 text-sm leading-relaxed text-[var(--text-muted)]">To improve system stability and optimize server performance, automatic data refresh intervals have been adjusted to 15–30 minutes, depending on the selected tab.</p>
+        </div>
+      </aside>
+
       {availableSuites.length > 0 && (
         <fieldset aria-label="Filter dashboard by loaded suite" className="mb-5 flex flex-wrap items-center gap-2 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-3">
           <legend className="px-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">Loaded suites</legend>

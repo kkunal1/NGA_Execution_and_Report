@@ -773,13 +773,37 @@ export default function SettingsPage() {
       {refreshError && <p className="mt-2 text-sm text-red-600" role="alert">{refreshError}</p>}
     </section>
   );
+  const automaticDailyReportSection = (
+    <section className="rounded-lg border-2 border-[var(--accent)] bg-[var(--header-from)] p-5 shadow-sm lg:col-span-2" aria-labelledby="automatic-daily-report-heading">
+      <h2 id="automatic-daily-report-heading" className="text-base font-semibold text-[var(--text)]">Automatic Daily Report Generation</h2>
+      <p className="mt-2 text-sm text-[var(--text-muted)]">Choose which cycles receive the previous day&apos;s scheduled report. These switches do not affect manual Create Report. Re-enabled cycles resume from the next scheduled day; skipped dates are not backfilled automatically.</p>
+      <fieldset className="mt-4 grid gap-2 sm:grid-cols-2">
+        <legend className="sr-only">Cycles included in automatic daily reports</legend>
+        {[
+          { id: "b0", name: "DMR AP1 PV B0 Execution" },
+          { id: "b2", name: "DMR AP1 PV B2 Execution" },
+          ...customExecutionTabs.filter((tab) => tab.enabled).map((tab) => ({ id: tab.id, name: tab.name })),
+        ].map((cycle) => (
+          <label key={cycle.id} className="flex min-h-11 items-center justify-between gap-4 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)]">
+            <span className="min-w-0 break-words">{cycle.name}</span>
+            <input type="checkbox" role="switch" aria-label={`${cycle.name} automatic daily report`} checked={dashboardSettings.autoDailyReportByCycle[cycle.id] !== false} onChange={(event) => { setDashboardSettings((current) => ({ ...current, autoDailyReportByCycle: { ...current.autoDailyReportByCycle, [cycle.id]: event.target.checked } })); setDashboardSettingsSaved(false); }} className="h-4 w-4 shrink-0 accent-[var(--accent)]" />
+          </label>
+        ))}
+        {customTabsLoading && <p className="text-xs text-[var(--text-muted)]">Loading saved custom cycles…</p>}
+      </fieldset>
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <button type="button" onClick={() => void saveDashboardSettings(dashboardSettings)} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)]">Save daily report selection</button>
+        <p className="text-sm text-[var(--text-muted)]" role="status" aria-live="polite">{dashboardSettingsSaved ? "Daily report cycle selection saved." : "Unselected cycles will be skipped by the daily report scheduler."}</p>
+      </div>
+      {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
+    </section>
+  );
 
   return (
     <div className="mx-auto grid w-full max-w-7xl grid-cols-1 items-start gap-5 px-5 py-6 lg:grid-cols-2">
       <header className="mb-1 flex items-start justify-between gap-4 border-b border-[var(--border)] pb-5 lg:col-span-2">
         <div>
           <p className="mb-2 text-[10px] font-semibold uppercase tracking-[1.2px] text-[var(--text-muted)]">Administration / Workspace</p>
-      {automaticRefreshSection}
           <h1 className="text-2xl font-semibold text-[var(--text)]">Settings</h1>
           <p className="mt-2 text-sm text-[var(--text-muted)]">Manage report content, data sources, delivery, and workspace access.</p>
         </div>
@@ -822,6 +846,8 @@ export default function SettingsPage() {
           )}
         </div>
       </header>
+      {automaticRefreshSection}
+      {automaticDailyReportSection}
       <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="navigation-visibility-heading">
         <div className="mb-3">
           <h2 id="navigation-visibility-heading" className="text-base font-semibold text-[var(--text)]">Navigation Visibility</h2>
@@ -995,29 +1021,6 @@ export default function SettingsPage() {
         <p className="mt-3 text-sm text-[var(--text-muted)]" role="status" aria-live="polite">
           {dashboardSettingsSaved ? "Weekly Report section settings saved." : "Changes apply to loaded, generated, and emailed reports for all users."}
         </p>
-        {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
-      </section>
-      <section className="rounded-lg border-2 border-[var(--accent)] bg-[var(--header-from)] p-5 shadow-sm lg:col-span-2" aria-labelledby="automatic-daily-report-heading">
-        <h2 id="automatic-daily-report-heading" className="text-base font-semibold text-[var(--text)]">Automatic Daily Report Generation</h2>
-        <p className="mt-2 text-sm text-[var(--text-muted)]">Choose which cycles receive the previous day&apos;s scheduled report. These switches do not affect manual Create Report. Re-enabled cycles resume from the next scheduled day; skipped dates are not backfilled automatically.</p>
-        <fieldset className="mt-4 grid gap-2 sm:grid-cols-2">
-          <legend className="sr-only">Cycles included in automatic daily reports</legend>
-          {[
-            { id: "b0", name: "DMR AP1 PV B0 Execution" },
-            { id: "b2", name: "DMR AP1 PV B2 Execution" },
-            ...customExecutionTabs.filter((tab) => tab.enabled).map((tab) => ({ id: tab.id, name: tab.name })),
-          ].map((cycle) => (
-            <label key={cycle.id} className="flex min-h-11 items-center justify-between gap-4 rounded-md border border-[var(--border)] bg-[var(--surface)] px-3 py-2 text-sm text-[var(--text)]">
-              <span className="min-w-0 break-words">{cycle.name}</span>
-              <input type="checkbox" role="switch" aria-label={`${cycle.name} automatic daily report`} checked={dashboardSettings.autoDailyReportByCycle[cycle.id] !== false} onChange={(event) => { setDashboardSettings((current) => ({ ...current, autoDailyReportByCycle: { ...current.autoDailyReportByCycle, [cycle.id]: event.target.checked } })); setDashboardSettingsSaved(false); }} className="h-4 w-4 shrink-0 accent-[var(--accent)]" />
-            </label>
-          ))}
-          {customTabsLoading && <p className="text-xs text-[var(--text-muted)]">Loading saved custom cycles…</p>}
-        </fieldset>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => void saveDashboardSettings(dashboardSettings)} className="h-10 rounded-md bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-text)]">Save daily report selection</button>
-          <p className="text-sm text-[var(--text-muted)]" role="status" aria-live="polite">{dashboardSettingsSaved ? "Daily report cycle selection saved." : "Unselected cycles will be skipped by the daily report scheduler."}</p>
-        </div>
         {dashboardSettingsError && <p className="mt-2 text-sm text-red-600" role="alert">{dashboardSettingsError}</p>}
       </section>
       <section className="rounded-lg border border-[var(--border)] bg-[var(--surface)] p-5 lg:col-span-2" aria-labelledby="data-source-network-heading">

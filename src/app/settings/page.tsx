@@ -774,7 +774,7 @@ export default function SettingsPage() {
     </section>
   );
   const automaticDailyReportSection = (
-    <section className="rounded-lg border-2 border-[var(--accent)] bg-[var(--header-from)] p-5 shadow-sm lg:col-span-2" aria-labelledby="automatic-daily-report-heading">
+    <section className="h-full rounded-lg border-2 border-[var(--accent)] bg-[var(--header-from)] p-5 shadow-sm" aria-labelledby="automatic-daily-report-heading">
       <h2 id="automatic-daily-report-heading" className="text-base font-semibold text-[var(--text)]">Automatic Daily Report Generation</h2>
       <p className="mt-2 text-sm text-[var(--text-muted)]">Choose which cycles receive the previous day&apos;s scheduled report. These switches do not affect manual Create Report. Re-enabled cycles resume from the next scheduled day; skipped dates are not backfilled automatically.</p>
       <fieldset className="mt-4 grid gap-2 sm:grid-cols-2">

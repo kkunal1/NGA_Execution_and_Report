@@ -1,5 +1,5 @@
 import { getLatestVersion, saveAbortedSnapshot, saveLatestIfChanged } from "./store";
-import { getRefreshSettings, getRefreshStatus, markRefreshCompleted, saveRefreshSuites } from "./refresh-settings";
+import { getRefreshSettings, getRefreshStatus, markRefreshCompleted, markRefreshCycleCompleted, saveRefreshSuites } from "./refresh-settings";
 import { loadAbortedTests, loadTestRunQuery } from "./test-run-data";
 import { getCustomExecutionTab, getCustomExecutionTabVersion, saveCustomExecutionTabAborted, saveCustomExecutionTabRun, updateCustomExecutionTabSuites } from "./execution-tabs";
 import { normalizeSuiteNames } from "./normalize";
@@ -10,7 +10,7 @@ let refreshQueue = Promise.resolve();
 
 export async function refreshNGAiData(
   suiteInput: string | string[] | undefined,
-  options: { network?: NetworkOverride; persist?: boolean; rememberSuites?: boolean; refreshAborted?: boolean; customTabId?: string; markSchedule?: boolean } = {},
+  options: { network?: NetworkOverride; persist?: boolean; rememberSuites?: boolean; refreshAborted?: boolean; customTabId?: string; cycleId?: string; markSchedule?: boolean } = {},
 ) {
   const previous = refreshQueue;
   let release!: () => void;
@@ -73,9 +73,12 @@ export async function refreshNGAiData(
     }
 
     const settings = await getRefreshSettings();
+    const cycleId = options.cycleId ?? options.customTabId;
     const refreshStatus = options.markSchedule === false
       ? await getRefreshStatus()
-      : await markRefreshCompleted(settings.intervalSeconds);
+      : cycleId
+        ? await markRefreshCycleCompleted(settings, cycleId)
+        : await markRefreshCompleted(settings.intervalSeconds);
     return { ...result, changed, runId, version, ...refreshStatus };
   } finally {
     release();

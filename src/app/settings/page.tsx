@@ -82,6 +82,7 @@ export default function SettingsPage() {
   const [ngaiTokenError, setNgaiTokenError] = useState("");
   const [ngaiTokenBusy, setNgaiTokenBusy] = useState(false);
   const [refreshInterval, setRefreshInterval] = useState("60");
+  const [refreshIntervalByCycle, setRefreshIntervalByCycle] = useState<Record<string, string>>({});
   const [autoRefreshByCycle, setAutoRefreshByCycle] = useState<Record<string, boolean>>({});
   const [refreshSaved, setRefreshSaved] = useState(false);
   const [refreshError, setRefreshError] = useState("");
@@ -221,9 +222,10 @@ export default function SettingsPage() {
       });
     void fetch("/api/settings/refresh", { cache: "no-store" })
       .then(async (response) => {
-        const data = (await response.json()) as { intervalSeconds?: number; autoRefreshByCycle?: Record<string, boolean>; error?: string };
+        const data = (await response.json()) as { intervalSeconds?: number; intervalByCycle?: Record<string, number>; autoRefreshByCycle?: Record<string, boolean>; error?: string };
         if (!response.ok) throw new Error(data.error || "Could not load refresh settings.");
         setRefreshInterval(String(data.intervalSeconds ?? 60));
+        setRefreshIntervalByCycle(Object.fromEntries(Object.entries(data.intervalByCycle ?? {}).map(([id, value]) => [id, String(value)])));
         setAutoRefreshByCycle(data.autoRefreshByCycle ?? {});
       })
       .catch((error: unknown) => setRefreshError(error instanceof Error ? error.message : "Could not load refresh settings."));
@@ -346,18 +348,33 @@ export default function SettingsPage() {
     setRefreshError("");
     setRefreshSaved(false);
     const intervalSeconds = Number(refreshInterval);
-    if (!Number.isInteger(intervalSeconds) || (intervalSeconds !== 0 && (intervalSeconds < 15 || intervalSeconds > 3600))) {
-      setRefreshError("Enter 0 to disable refresh, or a whole number from 15 to 3600 seconds.");
+    if (!Number.isInteger(intervalSeconds) || (intervalSeconds !== 0 && (intervalSeconds < 15 || intervalSeconds > 86_400))) {
+      setRefreshError("Enter 0 to pause all refreshes, or a whole number from 15 to 86400 seconds.");
       return;
+    }
+    const cycles = [
+      { id: "b0", name: "DMR AP1 PV B0 Execution" },
+      { id: "b2", name: "DMR AP1 PV B2 Execution" },
+      ...customExecutionTabs.map((tab) => ({ id: tab.id, name: tab.name })),
+    ];
+    const intervalByCycle: Record<string, number> = {};
+    for (const cycle of cycles) {
+      const cycleInterval = Number(refreshIntervalByCycle[cycle.id] ?? refreshInterval);
+      if (!Number.isInteger(cycleInterval) || (cycleInterval !== 0 && (cycleInterval < 15 || cycleInterval > 86_400))) {
+        setRefreshError(`${cycle.name}: enter 0, or a whole number from 15 to 86400 seconds.`);
+        return;
+      }
+      intervalByCycle[cycle.id] = cycleInterval;
     }
     try {
       const response = await fetch("/api/settings/refresh", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ intervalSeconds, autoRefreshByCycle }),
+        body: JSON.stringify({ intervalSeconds, intervalByCycle, autoRefreshByCycle }),
       });
-      const data = (await response.json()) as { error?: string; autoRefreshByCycle?: Record<string, boolean> };
+      const data = (await response.json()) as { error?: string; intervalByCycle?: Record<string, number>; autoRefreshByCycle?: Record<string, boolean> };
       if (!response.ok) throw new Error(data.error || "Could not save refresh settings.");
+      setRefreshIntervalByCycle(Object.fromEntries(Object.entries(data.intervalByCycle ?? intervalByCycle).map(([id, value]) => [id, String(value)])));
       setAutoRefreshByCycle(data.autoRefreshByCycle ?? autoRefreshByCycle);
       setRefreshSaved(true);
       window.setTimeout(() => setRefreshSaved(false), 2500);
@@ -712,14 +729,14 @@ export default function SettingsPage() {
     <section className="h-full rounded-lg border border-[var(--accent)] bg-[var(--header-from)] p-5 shadow-sm" aria-labelledby="refresh-heading">
       <h2 id="refresh-heading" className="text-base font-semibold text-[var(--text)]">Automatic NGAi refresh</h2>
       <p className="mt-2 text-sm text-[var(--text-muted)]">
-        The server refreshes selected cycles at this interval. Turning a cycle off stops its scheduled NGAi queries; manual Load NGAi data remains available. Set the interval to 0 to disable all scheduled refreshes.
+        Each selected cycle uses its own interval. The default below is used by new cycles and cycles without a custom interval. Uncheck a cycle or set its interval to 0 to stop its scheduled queries; manual Load NGAi data remains available. Set the default to 0 to pause all scheduled refreshes.
       </p>
       <label className="mt-4 block max-w-xs text-sm font-medium text-[var(--text)]">
-        Refresh interval (seconds)
+        Default interval for new/unconfigured cycles (seconds)
         <input
           type="number"
           min={0}
-          max={3600}
+          max={86400}
           step={15}
           value={refreshInterval}
           onChange={(event) => setRefreshInterval(event.target.value)}
@@ -727,16 +744,19 @@ export default function SettingsPage() {
         />
       </label>
       <fieldset className="mt-5 space-y-3">
-        <legend className="text-sm font-semibold text-[var(--text)]">Cycles included in automatic refresh</legend>
+        <legend className="text-sm font-semibold text-[var(--text)]">Cycle refresh schedules</legend>
         {[
           { id: "b0", name: "DMR AP1 PV B0 Execution", enabled: true },
           { id: "b2", name: "DMR AP1 PV B2 Execution", enabled: true },
           ...customExecutionTabs.map((tab) => ({ id: tab.id, name: tab.name, enabled: tab.enabled })),
         ].map((cycle) => (
-          <label key={cycle.id} className="flex items-center justify-between gap-4 text-sm text-[var(--text)]">
-            <span>{cycle.name}{!cycle.enabled ? " (disabled)" : ""}</span>
-            <input type="checkbox" role="switch" aria-label={`${cycle.name} automatic refresh`} checked={autoRefreshByCycle[cycle.id] !== false} disabled={!cycle.enabled} onChange={(event) => setAutoRefreshByCycle((current) => ({ ...current, [cycle.id]: event.target.checked }))} className="h-4 w-4 shrink-0 accent-[var(--accent)] disabled:opacity-50" />
-          </label>
+          <div key={cycle.id} className="grid gap-3 rounded-md border border-[var(--border)] bg-[var(--surface)] p-3 sm:grid-cols-[minmax(0,1fr)_12rem_auto] sm:items-end">
+            <span className="min-w-0 break-words pb-2 text-sm font-medium text-[var(--text)]">{cycle.name}{!cycle.enabled ? " (disabled)" : ""}</span>
+            <label className="block text-xs font-medium text-[var(--text-muted)]">Refresh interval (seconds)
+              <input type="number" min={0} max={86400} step={15} value={refreshIntervalByCycle[cycle.id] ?? refreshInterval} onChange={(event) => { setRefreshIntervalByCycle((current) => ({ ...current, [cycle.id]: event.target.value })); setRefreshSaved(false); }} disabled={!cycle.enabled} aria-label={`${cycle.name} refresh interval seconds`} className="mt-1 h-9 w-full rounded-md border border-[var(--border)] bg-[var(--surface)] px-2 text-sm text-[var(--text)] disabled:opacity-50" />
+            </label>
+            <label className="flex items-center gap-2 pb-2 text-sm font-medium text-[var(--text)]"><input type="checkbox" role="switch" aria-label={`${cycle.name} automatic refresh`} checked={cycle.enabled && Number(refreshInterval) > 0 && autoRefreshByCycle[cycle.id] !== false && Number(refreshIntervalByCycle[cycle.id] ?? refreshInterval) > 0} disabled={!cycle.enabled || Number(refreshInterval) === 0 || Number(refreshIntervalByCycle[cycle.id] ?? refreshInterval) === 0} onChange={(event) => setAutoRefreshByCycle((current) => ({ ...current, [cycle.id]: event.target.checked }))} className="h-4 w-4 shrink-0 accent-[var(--accent)] disabled:opacity-50" />Auto refresh</label>
+          </div>
         ))}
         {customTabsLoading && <p className="text-xs text-[var(--text-muted)]">Loading saved custom cycles…</p>}
       </fieldset>

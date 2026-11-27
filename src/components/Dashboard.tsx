@@ -315,7 +315,7 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
       const res = await fetch("/api/test-run-data", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ suiteNames: suites, persist: true, customTabId: customTab?.id, ...readNgaiNetworkOverride() }),
+        body: JSON.stringify({ suiteNames: suites, persist: true, customTabId: customTab?.id, cycleId: customTab?.id ?? dashboardProfile ?? "b0", ...readNgaiNetworkOverride() }),
       });
       const data = (await res.json()) as {
         error?: string;
@@ -411,16 +411,6 @@ export default function Dashboard({ profile, customTab }: { profile?: ExecutionP
     })();
     return () => { cancelled = true; };
   }, [abortedCacheKey, run?.meta.runId, run?.meta.stateColumn, isAdmin, autoRefreshSuites, customTab, dashboardProfile]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    void fetch("/api/settings/refresh", { cache: "no-store" })
-      .then(async (response) => {
-        const settings = (await response.json()) as { intervalSeconds?: number };
-        if (response.ok) setRefreshIntervalSeconds(settings.intervalSeconds ?? 0);
-      })
-      .catch(() => setRefreshIntervalSeconds(0));
-  }, [isAdmin]);
 
   useEffect(() => {
     setSharedRefreshSchedule?.({ nextRefreshAt, intervalSeconds: refreshIntervalSeconds });

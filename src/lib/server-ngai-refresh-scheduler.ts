@@ -1,5 +1,4 @@
-import { normalizeSuiteNames } from "./normalize";
-import { getAutoRefreshSuites, getRefreshSettings, getRefreshStatus, isCycleAutoRefreshEnabled, markRefreshCompleted } from "./refresh-settings";
+import { getCycleRefreshSchedule, getRefreshSettings, getRefreshStatus, markRefreshCycleCompleted } from "./refresh-settings";
 import { refreshNGAiData } from "./ngai-refresh-service";
 import { listCustomExecutionTabs } from "./execution-tabs";
 
@@ -12,40 +11,30 @@ export async function runServerNGAiRefreshCheck(now = Date.now()) {
   checking = true;
   try {
     const [settings, status] = await Promise.all([getRefreshSettings(), getRefreshStatus()]);
-    if (settings.intervalSeconds === 0 || !status.nextRefreshAt || now < status.nextRefreshAt) return;
-
-    const suites = getAutoRefreshSuites(settings);
-    const customTabs = (await listCustomExecutionTabs()).filter((tab) => tab.enabled && isCycleAutoRefreshEnabled(settings, tab.id));
-    if (!suites.length && !customTabs.length) {
-      await markRefreshCompleted(settings.intervalSeconds);
-      return;
-    }
-
-    if (suites.length) {
-      try {
-        const result = await refreshNGAiData(suites, { persist: true, refreshAborted: true, markSchedule: false });
-        console.info(`Automatic NGAi refresh completed for ${suites.length} built-in suites (${result.rows.length} rows).`);
-      } catch (error) {
-        console.error("Automatic B0/B2 NGAi refresh failed:", error instanceof Error ? error.message : error);
+    const customTabs = (await listCustomExecutionTabs()).filter((tab) => tab.enabled);
+    const cycles: { id: string; name: string; suiteNames: string[]; customTabId?: string }[] = [
+      { id: "b0", name: "DMR AP1 PV B0 Execution", suiteNames: settings.suitesByProfile.b0 },
+      { id: "b2", name: "DMR AP1 PV B2 Execution", suiteNames: settings.suitesByProfile.b2 },
+      ...customTabs.map((tab) => ({ id: tab.id, name: tab.name, suiteNames: tab.suiteNames, customTabId: tab.id })),
+    ];
+    for (const cycle of cycles) {
+      const schedule = getCycleRefreshSchedule(settings, status, cycle.id);
+      if (schedule.intervalSeconds === 0 || !cycle.suiteNames.length) continue;
+      if (schedule.nextRefreshAt == null) {
+        await markRefreshCycleCompleted(settings, cycle.id, now);
+        continue;
       }
-    }
-    for (const tab of customTabs) {
+      if (now < schedule.nextRefreshAt) continue;
       try {
-        const result = await refreshNGAiData(tab.suiteNames, { persist: true, refreshAborted: true, customTabId: tab.id, markSchedule: false });
-        console.info(`Automatic NGAi refresh completed for custom tab ${tab.name} (${result.rows.length} rows).`);
+        const result = await refreshNGAiData(cycle.suiteNames, { persist: true, refreshAborted: true, cycleId: cycle.id, customTabId: cycle.customTabId, markSchedule: false });
+        console.info(`Automatic NGAi refresh completed for ${cycle.name} (${result.rows.length} rows).`);
       } catch (error) {
-        console.error(`Automatic NGAi refresh failed for custom tab ${tab.name}:`, error instanceof Error ? error.message : error);
+        console.error(`Automatic NGAi refresh failed for ${cycle.name}:`, error instanceof Error ? error.message : error);
       }
+      await markRefreshCycleCompleted(await getRefreshSettings(), cycle.id);
     }
-    await markRefreshCompleted(settings.intervalSeconds);
   } catch (error) {
     console.error("Automatic NGAi refresh failed:", error instanceof Error ? error.message : error);
-    try {
-      const settings = await getRefreshSettings();
-      await markRefreshCompleted(settings.intervalSeconds);
-    } catch (statusError) {
-      console.error("Could not schedule the next NGAi refresh attempt:", statusError instanceof Error ? statusError.message : statusError);
-    }
   } finally {
     checking = false;
   }

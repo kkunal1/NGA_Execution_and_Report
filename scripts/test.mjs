@@ -26,7 +26,7 @@ import { chooseExactIndex, scoped } from "../src/lib/selectors.ts";
 import { checkCondition, matchesExactly } from "../src/lib/verify.ts";
 import { decryptNgaiToken, encryptNgaiToken } from "../src/lib/ngai-token-crypto.ts";
 import { B0_SUITES, B2_SUITES, isSuiteSelectedForProfile } from "../src/lib/execution-suites.ts";
-import { getAutoRefreshSuites, isCycleAutoRefreshEnabled, mergeRefreshSuites, normalizeAutoRefreshByCycle } from "../src/lib/refresh-settings.ts";
+import { getAutoRefreshSuites, getCycleRefreshSchedule, isCycleAutoRefreshEnabled, mergeRefreshSuites, normalizeAutoRefreshByCycle, validateRefreshInterval, validateRefreshIntervals } from "../src/lib/refresh-settings.ts";
 import { buildReportFilename } from "../src/lib/report-filename.ts";
 import { executionSummaryValues, renderExecutionSummaryHtml } from "../src/lib/execution-summary-format.ts";
 import { DEFAULT_EXECUTION_SUMMARY_TEXT } from "../src/lib/weekly-report-defaults.ts";
@@ -395,6 +395,17 @@ assert.deepEqual(normalizeAutoRefreshByCycle({ b0: false, b2: true, "0123456789a
 assert.equal(isCycleAutoRefreshEnabled({ autoRefreshByCycle: {} }, "b0"), true, "old settings keep automatic refresh enabled by default");
 assert.equal(isCycleAutoRefreshEnabled({ autoRefreshByCycle: { b0: false } }, "b0"), false);
 assert.deepEqual(getAutoRefreshSuites({ intervalSeconds: 600, suitesByProfile: { b0: [B0_SUITES.P1], b2: [B2_SUITES.P1] }, autoRefreshByCycle: { b0: false } }), [B2_SUITES.P1]);
+assert.equal(validateRefreshInterval(7200), 7200, "two-hour refresh intervals are accepted");
+assert.deepEqual(validateRefreshIntervals({ b0: 7200, b2: 600 }), { b0: 7200, b2: 600 });
+assert.deepEqual(validateRefreshIntervals({ b0: 0, b2: 600 }), { b0: 0, b2: 600 }, "zero disables only that cycle interval");
+assert.equal(validateRefreshIntervals({ b0: 7200, b2: 5 }), null, "invalid per-cycle intervals are rejected");
+const cycleSchedules = { intervalSeconds: 600, intervalByCycle: { b0: 7200, b2: 600 }, suitesByProfile: { b0: [B0_SUITES.P1], b2: [B2_SUITES.P1] }, autoRefreshByCycle: {} };
+const cycleRefreshStatus = { nextRefreshAt: 6000, nextRefreshAtByCycle: { b0: 72000, b2: 6000 } };
+assert.deepEqual(getCycleRefreshSchedule(cycleSchedules, cycleRefreshStatus, "b0"), { intervalSeconds: 7200, nextRefreshAt: 72000 });
+assert.deepEqual(getCycleRefreshSchedule(cycleSchedules, cycleRefreshStatus, "b2"), { intervalSeconds: 600, nextRefreshAt: 6000 });
+assert.deepEqual(getCycleRefreshSchedule(cycleSchedules, cycleRefreshStatus, "0123456789abcdef0123456789abcdef"), { intervalSeconds: 600, nextRefreshAt: 6000 }, "new cycles fall back to the default interval until configured");
+assert.deepEqual(getCycleRefreshSchedule({ ...cycleSchedules, intervalByCycle: { b0: 0 } }, cycleRefreshStatus, "b0"), { intervalSeconds: 0, nextRefreshAt: null });
+assert.deepEqual(getCycleRefreshSchedule({ ...cycleSchedules, autoRefreshByCycle: { b0: false } }, cycleRefreshStatus, "b0"), { intervalSeconds: 0, nextRefreshAt: null });
 const reportCycles = buildWeeklyReportCycles(
   { b0: [B0_SUITES.P1], b2: [B2_SUITES.P2] },
   [B0_SUITES.P1],
